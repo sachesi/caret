@@ -1,0 +1,343 @@
+//! A window of terminal tabs, with the `win.*` actions.
+
+use std::cell::Cell;
+
+use adw::prelude::*;
+use adw::subclass::prelude::*;
+use gettextrs::{gettext, ngettext};
+
+use crate::application::TangentApplication;
+use crate::session::Command;
+use crate::settings::settings;
+use crate::terminal_view::TerminalView;
+use crate::{adw, gio, glib, gtk};
+
+mod imp {
+    use super::*;
+
+    #[derive(Default, gtk::CompositeTemplate)]
+    #[template(resource = "/io/github/sachesi/tangent/ui/window.ui")]
+    pub struct TangentWindow {
+        #[template_child]
+        pub tab_overview: TemplateChild<adw::TabOverview>,
+        #[template_child]
+        pub tab_view: TemplateChild<adw::TabView>,
+        #[template_child]
+        pub window_title: TemplateChild<adw::WindowTitle>,
+        /// Closing was confirmed, or needs no confirmation.
+        pub closing: Cell<bool>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for TangentWindow {
+        const NAME: &'static str = "TangentWindow";
+        type Type = super::TangentWindow;
+        type ParentType = adw::ApplicationWindow;
+
+        fn class_init(klass: &mut Self::Class) {
+            klass.bind_template();
+            klass.bind_template_callbacks();
+            klass.install_action("win.new-tab", None, |window, _, _| {
+                let directory = window.current_view().and_then(|view| view.directory());
+                window.add_tab(Command {
+                    directory,
+                    ..Command::default()
+                });
+            });
+            klass.install_action("win.close-tab", None, |window, _, _| {
+                let tab_view = &window.imp().tab_view;
+                if let Some(page) = tab_view.selected_page() {
+                    tab_view.close_page(&page);
+                }
+            });
+            klass.install_action("win.close", None, |window, _, _| window.close());
+            klass.install_action("win.copy", None, |window, _, _| {
+                if let Some(view) = window.current_view() {
+                    view.copy();
+                }
+            });
+            klass.install_action("win.paste", None, |window, _, _| {
+                if let Some(view) = window.current_view() {
+                    view.paste();
+                }
+            });
+            klass.install_action("win.tab-overview", None, |window, _, _| {
+                window.imp().tab_overview.set_open(true);
+            });
+            klass.install_action("win.zoom-in", None, |window, _, _| window.zoom(Some(1)));
+            klass.install_action("win.zoom-out", None, |window, _, _| window.zoom(Some(-1)));
+            klass.install_action("win.zoom-reset", None, |window, _, _| window.zoom(None));
+            klass.install_action("win.fullscreen", None, |window, _, _| {
+                window.set_fullscreened(!window.is_fullscreen());
+            });
+        }
+
+        fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
+            obj.init_template();
+        }
+    }
+
+    impl ObjectImpl for TangentWindow {
+        fn constructed(&self) {
+            self.parent_constructed();
+            // Only the tab shortcuts few programs want for themselves: Ctrl+Home and
+            // Ctrl+End, say, stay with editors.
+            self.tab_view.set_shortcuts(
+                adw::TabViewShortcuts::CONTROL_PAGE_UP
+                    | adw::TabViewShortcuts::CONTROL_PAGE_DOWN
+                    | adw::TabViewShortcuts::CONTROL_SHIFT_PAGE_UP
+                    | adw::TabViewShortcuts::CONTROL_SHIFT_PAGE_DOWN
+                    | adw::TabViewShortcuts::ALT_DIGITS
+                    | adw::TabViewShortcuts::ALT_ZERO,
+            );
+            let (width, height) = settings().get::<(i32, i32)>("window-size");
+            if width > 0 && height > 0 {
+                self.obj().set_default_size(width, height);
+            }
+            if settings().boolean("window-maximized") {
+                self.obj().maximize();
+            }
+        }
+    }
+
+    impl WidgetImpl for TangentWindow {}
+
+    impl WindowImpl for TangentWindow {
+        fn close_request(&self) -> glib::Propagation {
+            let obj = self.obj();
+            if !self.closing.get() {
+                let busy = obj.busy_tabs();
+                if busy > 0 {
+                    obj.confirm_close(busy);
+                    return glib::Propagation::Stop;
+                }
+            }
+            obj.save_size();
+            self.parent_close_request()
+        }
+    }
+
+    impl ApplicationWindowImpl for TangentWindow {}
+    impl AdwApplicationWindowImpl for TangentWindow {}
+
+    #[gtk::template_callbacks]
+    impl TangentWindow {
+        #[template_callback]
+        fn on_create_tab(&self) -> adw::TabPage {
+            let obj = self.obj();
+            let directory = obj.current_view().and_then(|view| view.directory());
+            obj.add_tab(Command {
+                directory,
+                ..Command::default()
+            })
+        }
+
+        #[template_callback]
+        fn on_create_window(&self) -> adw::TabView {
+            let application = self
+                .obj()
+                .application()
+                .and_downcast::<TangentApplication>();
+            let window = super::TangentWindow::new(application.as_ref());
+            window.present();
+            window.imp().tab_view.clone()
+        }
+
+        #[template_callback]
+        fn on_close_page(&self, page: &adw::TabPage) -> bool {
+            let obj = self.obj();
+            match super::view_of(page).and_then(|view| view.busy()) {
+                None => self.tab_view.close_page_finish(page, true),
+                Some(program) => obj.confirm_close_tab(page, &program),
+            }
+            true
+        }
+
+        #[template_callback]
+        fn on_selected_page(&self) {
+            let obj = self.obj();
+            if let Some(page) = self.tab_view.selected_page() {
+                page.set_needs_attention(false);
+            }
+            obj.update_title();
+            if let Some(view) = obj.current_view() {
+                view.grab_focus();
+            }
+        }
+
+        #[template_callback]
+        fn on_n_pages(&self) {
+            if self.tab_view.n_pages() == 0 {
+                self.closing.set(true);
+                self.obj().close();
+            }
+        }
+    }
+}
+
+glib::wrapper! {
+    pub struct TangentWindow(ObjectSubclass<imp::TangentWindow>)
+        @extends adw::ApplicationWindow, gtk::ApplicationWindow, gtk::Window, gtk::Widget,
+        @implements gio::ActionGroup, gio::ActionMap, gtk::Accessible, gtk::Buildable,
+                    gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
+}
+
+fn view_of(page: &adw::TabPage) -> Option<TerminalView> {
+    page.child()
+        .downcast::<gtk::ScrolledWindow>()
+        .ok()?
+        .child()
+        .and_downcast::<TerminalView>()
+}
+
+impl TangentWindow {
+    pub fn new(application: Option<&TangentApplication>) -> Self {
+        glib::Object::builder()
+            .property("application", application)
+            .build()
+    }
+
+    pub fn current_view(&self) -> Option<TerminalView> {
+        view_of(&self.imp().tab_view.selected_page()?)
+    }
+
+    pub fn add_tab(&self, command: Command) -> adw::TabPage {
+        let tab_view = &self.imp().tab_view;
+        let view = TerminalView::new();
+        let scrolled = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .child(&view)
+            .build();
+        let page = match tab_view.selected_page() {
+            Some(parent) => tab_view.add_page(&scrolled, Some(&parent)),
+            None => tab_view.append(&scrolled),
+        };
+        view.bind_property("title", &page, "title")
+            .sync_create()
+            .build();
+        view.bind_property("title", &page, "tooltip")
+            .sync_create()
+            .build();
+        page.connect_title_notify(glib::clone!(
+            #[weak(rename_to = window)]
+            self,
+            move |_| window.update_title()
+        ));
+        view.connect_exited(glib::clone!(
+            #[weak]
+            tab_view,
+            #[weak]
+            page,
+            move |_| tab_view.close_page(&page)
+        ));
+        view.connect_bell(glib::clone!(
+            #[weak(rename_to = window)]
+            self,
+            #[weak]
+            page,
+            move |_| {
+                if !page.is_selected() || !window.is_active() {
+                    page.set_needs_attention(true);
+                }
+            }
+        ));
+        view.spawn(command);
+        tab_view.set_selected_page(&page);
+        view.grab_focus();
+        page
+    }
+
+    fn zoom(&self, steps: Option<i32>) {
+        if let Some(view) = self.current_view() {
+            view.zoom(steps);
+        }
+    }
+
+    fn update_title(&self) {
+        let title = self
+            .imp()
+            .tab_view
+            .selected_page()
+            .map(|page| page.title().to_string())
+            .filter(|title| !title.is_empty())
+            .unwrap_or_else(|| gettext("Tangent"));
+        self.imp().window_title.set_title(&title);
+        self.set_title(Some(&title));
+    }
+
+    fn busy_tabs(&self) -> u32 {
+        let pages = self.imp().tab_view.pages();
+        (0..pages.n_items())
+            .filter_map(|index| pages.item(index).and_downcast::<adw::TabPage>())
+            .filter(|page| view_of(page).is_some_and(|view| view.busy().is_some()))
+            .count() as u32
+    }
+
+    fn confirm_close_tab(&self, page: &adw::TabPage, program: &str) {
+        let body = if program.is_empty() {
+            gettext("A program is still running in this tab and will be stopped.")
+        } else {
+            gettext("“%s” is still running in this tab and will be stopped.").replace("%s", program)
+        };
+        let dialog = adw::AlertDialog::new(Some(&gettext("Close Tab?")), Some(&body));
+        dialog.add_responses(&[
+            ("cancel", &gettext("_Cancel")),
+            ("close", &gettext("C_lose")),
+        ]);
+        dialog.set_response_appearance("close", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let tab_view = self.imp().tab_view.clone();
+        let page = page.clone();
+        dialog.choose(Some(self), gio::Cancellable::NONE, move |response| {
+            // A program that ended meanwhile asked to close the tab, which had to wait.
+            let exited = view_of(&page).is_some_and(|view| view.has_exited());
+            tab_view.close_page_finish(&page, response == "close" || exited);
+        });
+    }
+
+    fn confirm_close(&self, busy: u32) {
+        let dialog = adw::AlertDialog::new(
+            Some(&gettext("Close Window?")),
+            Some(
+                &ngettext(
+                    "A program is still running in %d tab and will be stopped.",
+                    "Programs are still running in %d tabs and will be stopped.",
+                    busy,
+                )
+                .replace("%d", &busy.to_string()),
+            ),
+        );
+        dialog.add_responses(&[
+            ("cancel", &gettext("_Cancel")),
+            ("close", &gettext("C_lose")),
+        ]);
+        dialog.set_response_appearance("close", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        dialog.choose(
+            Some(self),
+            gio::Cancellable::NONE,
+            glib::clone!(
+                #[weak(rename_to = window)]
+                self,
+                move |response| {
+                    if response == "close" {
+                        window.imp().closing.set(true);
+                        window.close();
+                    }
+                }
+            ),
+        );
+    }
+
+    fn save_size(&self) {
+        let settings = settings();
+        let maximized = self.is_maximized();
+        if !maximized && !self.is_fullscreen() {
+            let (width, height) = self.default_size();
+            let _ = settings.set("window-size", (width, height));
+        }
+        let _ = settings.set_boolean("window-maximized", maximized);
+    }
+}

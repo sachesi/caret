@@ -1,0 +1,1041 @@
+//! The terminal widget: one session, drawn by the GPU renderer into a texture at the
+//! size of the screen's pixels, scrolled through its history by a `GtkScrolledWindow`
+//! around it. Input, selection and the clipboard are in `input`.
+
+use std::borrow::Cow;
+use std::cell::{Cell, OnceCell, RefCell};
+use std::os::unix::process::ExitStatusExt;
+use std::path::{Path, PathBuf};
+use std::process::ExitStatus;
+use std::sync::LazyLock;
+use std::time::{Duration, Instant};
+
+use adw::prelude::*;
+use adw::subclass::prelude::*;
+use alacritty_terminal::event::{Event, WindowSize};
+use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::term::{self, ClipboardType};
+use alacritty_terminal::vte::ansi::{Color, CursorShape, CursorStyle, NamedColor, Processor, Rgb};
+use gettextrs::gettext;
+use glib::subclass::Signal;
+
+use crate::fonts::Fonts;
+use crate::frame::{self, Look, Screen};
+use crate::gtk::{cairo, graphene, pango};
+use crate::palette::Palette;
+use crate::renderer::{Quads, Renderer};
+use crate::session::{Command, Session};
+use crate::settings::{self, settings};
+use crate::{adw, gdk, glib, gtk};
+
+mod input;
+
+/// Room between the grid and the edges, in logical pixels.
+const PADDING: f64 = 6.0;
+/// Each zoom step scales the font by this much.
+const ZOOM_STEP: f64 = 1.1;
+
+mod imp {
+    use super::*;
+
+    #[derive(Default)]
+    pub struct TerminalView {
+        pub title: RefCell<String>,
+        pub default_title: RefCell<String>,
+        pub hadjustment: RefCell<Option<gtk::Adjustment>>,
+        pub vadjustment: RefCell<Option<gtk::Adjustment>>,
+        pub adjustment_handler: RefCell<Option<glib::SignalHandlerId>>,
+        /// Set while the widget moves the adjustment itself.
+        pub updating_adjustment: Cell<bool>,
+
+        /// What to run, until the first allocation says how big the grid is.
+        pub command: RefCell<Option<Command>>,
+        pub session: RefCell<Option<Session>>,
+        /// Why nothing is shown: the program could not be started, or the GPU refused.
+        /// Nothing is started or sent to the program while there is one.
+        pub failure: RefCell<Option<String>>,
+        /// A program named on the command line, whose failure stays on screen.
+        pub named_program: RefCell<Option<String>>,
+        pub exit_status: Cell<Option<ExitStatus>>,
+        /// The program ended and the terminal asked to be closed.
+        pub exited: Cell<bool>,
+
+        pub gl: RefCell<Option<(gdk::GLContext, Renderer)>>,
+        pub fonts: RefCell<Option<Fonts>>,
+        /// What the fonts were made for: the font, the scale and the resolution.
+        pub fonts_made_for: RefCell<Option<(String, u64, i32)>>,
+        pub glyphs_stale: Cell<bool>,
+        pub zoom: Cell<i32>,
+        pub palette: Cell<Palette>,
+        pub screen: RefCell<Screen>,
+        pub quads: RefCell<Quads>,
+        /// Columns and lines last given to the program.
+        pub grid: Cell<(usize, usize)>,
+        pub scale_handler: RefCell<Option<(gdk::Surface, glib::SignalHandlerId)>>,
+
+        pub im: OnceCell<gtk::IMMulticontext>,
+        pub focused: Cell<bool>,
+        pub cursor_on: Cell<bool>,
+        pub blink: RefCell<Option<glib::SourceId>>,
+
+        pub pointer: Cell<(f64, f64)>,
+        /// The button whose press went to the program, whose release must follow it.
+        pub reported_button: Cell<Option<crate::encode::MouseButton>>,
+        pub reported_cell: Cell<Option<(usize, usize)>>,
+        pub selecting: Cell<bool>,
+        /// Scrolling not yet worth a line.
+        pub scrolled: Cell<f64>,
+        pub popover: RefCell<Option<gtk::PopoverMenu>>,
+        pub handlers: RefCell<Vec<(glib::Object, glib::SignalHandlerId)>>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for TerminalView {
+        const NAME: &'static str = "TangentTerminalView";
+        type Type = super::TerminalView;
+        type ParentType = gtk::Widget;
+        type Interfaces = (gtk::Scrollable,);
+
+        fn class_init(klass: &mut Self::Class) {
+            klass.set_css_name("terminal");
+            klass.set_accessible_role(gtk::AccessibleRole::Terminal);
+            klass.install_action("term.copy", None, |view, _, _| view.copy());
+            klass.install_action("term.paste", None, |view, _, _| view.paste());
+        }
+    }
+
+    impl ObjectImpl for TerminalView {
+        fn properties() -> &'static [glib::ParamSpec] {
+            static PROPERTIES: LazyLock<Vec<glib::ParamSpec>> = LazyLock::new(|| {
+                vec![
+                    glib::ParamSpecString::builder("title").read_only().build(),
+                    glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("hadjustment"),
+                    glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("vadjustment"),
+                    glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("hscroll-policy"),
+                    glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("vscroll-policy"),
+                ]
+            });
+            PROPERTIES.as_ref()
+        }
+
+        fn signals() -> &'static [Signal] {
+            static SIGNALS: LazyLock<Vec<Signal>> = LazyLock::new(|| {
+                vec![
+                    Signal::builder("exited").build(),
+                    Signal::builder("bell").build(),
+                ]
+            });
+            SIGNALS.as_ref()
+        }
+
+        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            match pspec.name() {
+                "hadjustment" => {
+                    self.hadjustment
+                        .replace(value.get().expect("hadjustment is an adjustment"));
+                }
+                "vadjustment" => self
+                    .obj()
+                    .set_vadjustment(value.get().expect("vadjustment is an adjustment")),
+                // Scrolling policies do not apply: the grid fills whatever it is given.
+                _ => {}
+            }
+        }
+
+        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            match pspec.name() {
+                "title" => self.title.borrow().to_value(),
+                "hadjustment" => self.hadjustment.borrow().to_value(),
+                "vadjustment" => self.vadjustment.borrow().to_value(),
+                _ => gtk::ScrollablePolicy::Minimum.to_value(),
+            }
+        }
+
+        fn constructed(&self) {
+            self.parent_constructed();
+            let obj = self.obj();
+            obj.set_focusable(true);
+            obj.set_overflow(gtk::Overflow::Hidden);
+            obj.set_cursor_from_name(Some("text"));
+            self.cursor_on.set(true);
+            obj.update_palette();
+            obj.setup_input();
+            obj.watch_settings();
+        }
+
+        fn dispose(&self) {
+            // Hangs up on the program.
+            self.session.take();
+            if let Some(popover) = self.popover.take() {
+                popover.unparent();
+            }
+            if let Some(blink) = self.blink.take() {
+                blink.remove();
+            }
+            if let (Some(adjustment), Some(handler)) =
+                (self.vadjustment.take(), self.adjustment_handler.take())
+            {
+                adjustment.disconnect(handler);
+            }
+            for (object, handler) in self.handlers.take() {
+                object.disconnect(handler);
+            }
+        }
+    }
+
+    impl WidgetImpl for TerminalView {
+        fn realize(&self) {
+            self.parent_realize();
+            let obj = self.obj();
+            if let Some(surface) = obj.native().and_then(|native| native.surface()) {
+                match renderer_for(&surface) {
+                    Ok(gl) => {
+                        self.gl.replace(Some(gl));
+                        self.glyphs_stale.set(false);
+                    }
+                    Err(error) => {
+                        glib::g_warning!("tangent", "drawing with OpenGL: {error}");
+                        self.failure.replace(Some(
+                            gettext("The terminal cannot be drawn: %s").replace("%s", &error),
+                        ));
+                    }
+                }
+                let weak = obj.downgrade();
+                let handler = surface.connect_scale_notify(move |_| {
+                    if let Some(view) = weak.upgrade() {
+                        view.queue_resize();
+                    }
+                });
+                self.scale_handler.replace(Some((surface, handler)));
+            }
+            if let Some(im) = self.im.get() {
+                im.set_client_widget(Some(&*obj));
+            }
+        }
+
+        fn unrealize(&self) {
+            if let Some((context, renderer)) = self.gl.take() {
+                context.make_current();
+                renderer.destroy();
+                gdk::GLContext::clear_current();
+            }
+            if let Some((surface, handler)) = self.scale_handler.take() {
+                surface.disconnect(handler);
+            }
+            if let Some(im) = self.im.get() {
+                im.set_client_widget(None::<&gtk::Widget>);
+            }
+            self.parent_unrealize();
+        }
+
+        fn measure(&self, orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
+            let obj = self.obj();
+            obj.ensure_fonts();
+            let fonts = self.fonts.borrow();
+            let Some(cell) = fonts.as_ref().map(|fonts| fonts.cell) else {
+                return (0, 0, -1, -1);
+            };
+            let scale = obj.scale();
+            let padding = padding(scale);
+            let logical = |cells: i32, size: i32| {
+                (f64::from(cells * size + 2 * padding) / scale).ceil() as i32
+            };
+            // A classic 80 by 24 when nothing else decides, and room to shrink to phone width.
+            match orientation {
+                gtk::Orientation::Horizontal => {
+                    (logical(2, cell.width), logical(80, cell.width), -1, -1)
+                }
+                _ => (logical(1, cell.height), logical(24, cell.height), -1, -1),
+            }
+        }
+
+        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
+            self.parent_size_allocate(width, height, baseline);
+            self.obj().update_grid();
+            if let Some(popover) = self.popover.borrow().as_ref() {
+                popover.present();
+            }
+        }
+
+        fn snapshot(&self, snapshot: &gtk::Snapshot) {
+            self.obj().draw(snapshot);
+        }
+    }
+
+    impl ScrollableImpl for TerminalView {}
+}
+
+glib::wrapper! {
+    pub struct TerminalView(ObjectSubclass<imp::TerminalView>)
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Scrollable;
+}
+
+impl Default for TerminalView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn padding(scale: f64) -> i32 {
+    (PADDING * scale).round() as i32
+}
+
+fn renderer_for(surface: &gdk::Surface) -> Result<(gdk::GLContext, Renderer), String> {
+    let context = surface
+        .create_gl_context()
+        .map_err(|error| error.to_string())?;
+    context.set_allowed_apis(gdk::GLAPI::GL | gdk::GLAPI::GLES);
+    context.realize().map_err(|error| error.to_string())?;
+    context.make_current();
+    let renderer = Renderer::new(&context)?;
+    Ok((context, renderer))
+}
+
+fn rgba(color: Rgb) -> gdk::RGBA {
+    gdk::RGBA::new(
+        f32::from(color.r) / 255.0,
+        f32::from(color.g) / 255.0,
+        f32::from(color.b) / 255.0,
+        1.0,
+    )
+}
+
+/// `template` with each `%s` replaced by the next of `values`, which are not searched for
+/// placeholders themselves.
+fn fill(template: &str, values: &[&str]) -> String {
+    let mut filled = String::with_capacity(template.len());
+    let mut rest = template;
+    for value in values {
+        let Some((before, after)) = rest.split_once("%s") else {
+            break;
+        };
+        filled.push_str(before);
+        filled.push_str(value);
+        rest = after;
+    }
+    filled.push_str(rest);
+    filled
+}
+
+impl TerminalView {
+    pub fn new() -> Self {
+        glib::Object::new()
+    }
+
+    pub fn title(&self) -> String {
+        self.imp().title.borrow().clone()
+    }
+
+    fn set_title(&self, title: &str) {
+        if *self.imp().title.borrow() != title {
+            self.imp().title.replace(title.to_owned());
+            self.notify("title");
+        }
+    }
+
+    pub fn connect_exited<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "exited",
+            false,
+            glib::closure_local!(move |view: &Self| f(view)),
+        )
+    }
+
+    pub fn connect_bell<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "bell",
+            false,
+            glib::closure_local!(move |view: &Self| f(view)),
+        )
+    }
+
+    /// Runs `command` once the widget has a size, so the program starts at the size it
+    /// will be shown at.
+    pub fn spawn(&self, command: Command) {
+        let program = command.program();
+        let name = Path::new(&program)
+            .file_name()
+            .map_or(program.clone(), |name| name.to_string_lossy().into_owned());
+        let imp = self.imp();
+        imp.default_title.replace(name.clone());
+        self.set_title(&name);
+        imp.named_program.replace(command.argv.first().cloned());
+        imp.command.replace(Some(command));
+        self.queue_allocate();
+    }
+
+    /// The program ended and the tab was asked to close.
+    pub fn has_exited(&self) -> bool {
+        self.imp().exited.get()
+    }
+
+    /// The program in the foreground if it is not the one started, which closing the
+    /// terminal would interrupt.
+    pub fn busy(&self) -> Option<String> {
+        self.imp().session.borrow().as_ref()?.busy()
+    }
+
+    pub fn directory(&self) -> Option<PathBuf> {
+        self.imp().session.borrow().as_ref()?.directory()
+    }
+
+    fn scale(&self) -> f64 {
+        self.native()
+            .and_then(|native| native.surface())
+            .map(|surface| surface.scale())
+            .filter(|&scale| scale > 0.0)
+            .unwrap_or_else(|| f64::from(self.scale_factor()))
+    }
+
+    /// The widget's top left corner in pixels of its surface.
+    fn origin_on_screen(&self, scale: f64) -> (f64, f64) {
+        let Some(native) = self.native() else {
+            return (0.0, 0.0);
+        };
+        let point = self
+            .compute_point(&native, &graphene::Point::zero())
+            .unwrap_or_else(graphene::Point::zero);
+        let (x, y) = native.surface_transform();
+        (
+            (f64::from(point.x()) + x) * scale,
+            (f64::from(point.y()) + y) * scale,
+        )
+    }
+
+    fn write(&self, bytes: impl Into<Cow<'static, [u8]>>) {
+        if self.imp().failure.borrow().is_some() {
+            return;
+        }
+        if let Some(session) = self.imp().session.borrow().as_ref() {
+            session.write(bytes);
+        }
+    }
+
+    /// Bytes the user typed or pasted: they bring the view back to the bottom and the
+    /// cursor out of its blink.
+    fn input(&self, bytes: impl Into<Cow<'static, [u8]>>) {
+        if self.imp().failure.borrow().is_some() {
+            return;
+        }
+        if let Some(session) = self.imp().session.borrow().as_ref() {
+            let mut term = session.term.lock();
+            if term.grid().display_offset() != 0 {
+                term.scroll_display(Scroll::Bottom);
+            }
+            drop(term);
+            session.write(bytes);
+        }
+        self.restart_blink();
+        self.sync_scroll();
+        self.queue_draw();
+    }
+
+    fn handle(&self, event: Event) {
+        let imp = self.imp();
+        match event {
+            Event::Wakeup => {
+                if let Some(session) = imp.session.borrow().as_ref() {
+                    session.rearm();
+                }
+                self.sync_scroll();
+                self.queue_draw();
+            }
+            Event::Title(title) => self.set_title(&title),
+            Event::ResetTitle => {
+                let title = imp.default_title.borrow().clone();
+                self.set_title(&title);
+            }
+            Event::ClipboardStore(ClipboardType::Clipboard, text) => {
+                self.clipboard().set_text(&text)
+            }
+            Event::ClipboardStore(ClipboardType::Selection, text) => {
+                self.primary_clipboard().set_text(&text);
+            }
+            Event::ColorRequest(index, format) => {
+                let color = match index {
+                    0..=255 => Color::Indexed(index as u8),
+                    256 => Color::Named(NamedColor::Foreground),
+                    257 => Color::Named(NamedColor::Background),
+                    _ => Color::Named(NamedColor::Cursor),
+                };
+                let reply = imp.session.borrow().as_ref().map(|session| {
+                    let term = session.term.lock();
+                    format(imp.palette.get().resolve(color, term.colors()))
+                });
+                if let Some(reply) = reply {
+                    self.write(reply.into_bytes());
+                }
+            }
+            Event::PtyWrite(text) => self.write(text.into_bytes()),
+            Event::TextAreaSizeRequest(format) => {
+                if let Some(size) = self.window_size() {
+                    self.write(format(size).into_bytes());
+                }
+            }
+            Event::Bell => {
+                if settings().boolean("audible-bell")
+                    && let Some(surface) = self.native().and_then(|native| native.surface())
+                {
+                    surface.beep();
+                }
+                self.emit_by_name::<()>("bell", &[]);
+            }
+            Event::ChildExit(status) => imp.exit_status.set(Some(status)),
+            // After the program's last output has been read.
+            Event::Exit => self.program_ended(),
+            // OSC 52 reads are refused by the terminal's configuration.
+            _ => {}
+        }
+    }
+
+    /// Closes the tab, unless a program named on the command line failed: then what it
+    /// wrote stays, with how it ended under it.
+    fn program_ended(&self) {
+        let imp = self.imp();
+        let failed = imp.exit_status.get().filter(|status| !status.success());
+        let (Some(status), Some(program)) = (failed, imp.named_program.borrow().clone()) else {
+            imp.exited.set(true);
+            self.emit_by_name::<()>("exited", &[]);
+            return;
+        };
+        let program: String = program.chars().filter(|c| !c.is_control()).collect();
+        let message = match (status.code(), status.signal()) {
+            (Some(code), _) => fill(
+                &gettext("“%s” exited with status %s"),
+                &[&program, &code.to_string()],
+            ),
+            (None, Some(signal)) => fill(
+                &gettext("“%s” was ended by signal %s"),
+                &[&program, &signal.to_string()],
+            ),
+            (None, None) => fill(&gettext("“%s” ended"), &[&program]),
+        };
+        if let Some(session) = imp.session.borrow().as_ref() {
+            let mut term = session.term.lock();
+            term.scroll_display(Scroll::Bottom);
+            let newline = if term.grid().cursor.point.column.0 > 0 {
+                "\r\n"
+            } else {
+                ""
+            };
+            // Bold, then the cursor hidden: nothing is left to type into.
+            let text = format!("{newline}\x1b[1m{message}\x1b[0m\x1b[?25l");
+            let mut parser: Processor = Processor::new();
+            parser.advance(&mut *term, text.as_bytes());
+        }
+        self.sync_scroll();
+        self.queue_draw();
+    }
+
+    fn term_config(&self) -> term::Config {
+        let settings = settings();
+        let shape = match settings.string("cursor-shape").as_str() {
+            "beam" => CursorShape::Beam,
+            "underline" => CursorShape::Underline,
+            _ => CursorShape::Block,
+        };
+        let blinking = gtk::Settings::default().is_none_or(|gtk| gtk.is_gtk_cursor_blink());
+        term::Config {
+            scrolling_history: settings.uint("scrollback-lines") as usize,
+            default_cursor_style: CursorStyle { shape, blinking },
+            osc52: term::Osc52::OnlyCopy,
+            ..term::Config::default()
+        }
+    }
+
+    fn watch_settings(&self) {
+        let imp = self.imp();
+        let mut handlers = imp.handlers.borrow_mut();
+
+        let settings = settings();
+        let weak = self.downgrade();
+        let handler = settings.connect_changed(None, move |_, key| {
+            let Some(view) = weak.upgrade() else { return };
+            match key {
+                "font" => view.font_changed(),
+                "cursor-shape" | "scrollback-lines" => {
+                    let config = view.term_config();
+                    if let Some(session) = view.imp().session.borrow().as_ref() {
+                        session.term.lock().set_options(config);
+                    }
+                    view.queue_draw();
+                }
+                _ => {}
+            }
+        });
+        handlers.push((settings.upcast(), handler));
+
+        let style = adw::StyleManager::default();
+        let weak = self.downgrade();
+        let handler = style.connect_dark_notify(move |_| {
+            if let Some(view) = weak.upgrade() {
+                view.update_palette();
+            }
+        });
+        handlers.push((style.clone().upcast(), handler));
+        let weak = self.downgrade();
+        let handler = style.connect_monospace_font_name_notify(move |_| {
+            if let Some(view) = weak.upgrade() {
+                view.font_changed();
+            }
+        });
+        handlers.push((style.upcast(), handler));
+
+        if let Some(gtk_settings) = gtk::Settings::default() {
+            for property in ["gtk-xft-dpi", "gtk-xft-hintstyle", "gtk-xft-antialias"] {
+                let weak = self.downgrade();
+                let handler = gtk_settings.connect_notify_local(Some(property), move |_, _| {
+                    if let Some(view) = weak.upgrade() {
+                        view.font_changed();
+                    }
+                });
+                handlers.push((gtk_settings.clone().upcast(), handler));
+            }
+            let weak = self.downgrade();
+            let handler = gtk_settings.connect_gtk_cursor_blink_notify(move |_| {
+                if let Some(view) = weak.upgrade() {
+                    let config = view.term_config();
+                    if let Some(session) = view.imp().session.borrow().as_ref() {
+                        session.term.lock().set_options(config);
+                    }
+                    view.restart_blink();
+                }
+            });
+            handlers.push((gtk_settings.upcast(), handler));
+        }
+    }
+
+    fn update_palette(&self) {
+        let palette = if adw::StyleManager::default().is_dark() {
+            Palette::dark()
+        } else {
+            Palette::light()
+        };
+        self.imp().palette.set(palette);
+        self.queue_draw();
+    }
+
+    fn font_changed(&self) {
+        self.imp().fonts_made_for.replace(None);
+        self.queue_resize();
+        self.queue_draw();
+    }
+
+    /// Makes the text bigger by `steps`, smaller for negative ones, or its own size again
+    /// for none.
+    pub fn zoom(&self, steps: Option<i32>) {
+        let imp = self.imp();
+        let zoom = steps.map_or(0, |steps| (imp.zoom.get() + steps).clamp(-8, 16));
+        if zoom != imp.zoom.get() {
+            imp.zoom.set(zoom);
+            self.font_changed();
+        }
+    }
+
+    /// Remakes the fonts when the font, the scale or the resolution changed.
+    fn ensure_fonts(&self) {
+        let imp = self.imp();
+        let scale = self.scale();
+        let gtk_settings = gtk::Settings::default();
+        let dpi = gtk_settings
+            .as_ref()
+            .map(|settings| settings.gtk_xft_dpi())
+            .filter(|&dpi| dpi > 0)
+            .unwrap_or(96 * 1024);
+        let mut font = settings::font();
+        let factor = ZOOM_STEP.powi(imp.zoom.get());
+        if font.is_size_absolute() {
+            font.set_absolute_size(f64::from(font.size()) * factor * scale);
+        } else {
+            font.set_size((f64::from(font.size()) * factor).round() as i32);
+        }
+        let made_for = (font.to_str().to_string(), scale.to_bits(), dpi);
+        if imp.fonts_made_for.borrow().as_ref() == Some(&made_for) {
+            return;
+        }
+        let Ok(mut options) = cairo::FontOptions::new() else {
+            return;
+        };
+        // Grey antialiasing: glyphs are masks tinted per cell, which subpixel colour
+        // fringes would not survive.
+        options.set_antialias(cairo::Antialias::Gray);
+        options.set_hint_metrics(cairo::HintMetrics::On);
+        let hinting = gtk_settings
+            .as_ref()
+            .and_then(|settings| settings.gtk_xft_hintstyle());
+        options.set_hint_style(match hinting.as_deref() {
+            Some("hintnone") => cairo::HintStyle::None,
+            Some("hintslight") => cairo::HintStyle::Slight,
+            Some("hintmedium") => cairo::HintStyle::Medium,
+            Some("hintfull") => cairo::HintStyle::Full,
+            _ => cairo::HintStyle::Default,
+        });
+        let resolution = f64::from(dpi) / 1024.0 * scale;
+        imp.fonts
+            .replace(Some(Fonts::new(&font, resolution, &options)));
+        imp.fonts_made_for.replace(Some(made_for));
+        imp.glyphs_stale.set(true);
+    }
+
+    fn window_size(&self) -> Option<WindowSize> {
+        let fonts = self.imp().fonts.borrow();
+        let cell = fonts.as_ref()?.cell;
+        let (columns, lines) = self.imp().grid.get();
+        Some(WindowSize {
+            num_lines: u16::try_from(lines).ok()?,
+            num_cols: u16::try_from(columns).ok()?,
+            cell_width: u16::try_from(cell.width).ok()?,
+            cell_height: u16::try_from(cell.height).ok()?,
+        })
+    }
+
+    /// Fits the grid to the allocation, and starts the program at the first one.
+    fn update_grid(&self) {
+        let imp = self.imp();
+        if self.width() <= 0 || self.height() <= 0 || imp.failure.borrow().is_some() {
+            return;
+        }
+        self.ensure_fonts();
+        let Some(cell) = imp.fonts.borrow().as_ref().map(|fonts| fonts.cell) else {
+            return;
+        };
+        let scale = self.scale();
+        let padding = padding(scale);
+        let width = (f64::from(self.width()) * scale).ceil() as i32 - 2 * padding;
+        let height = (f64::from(self.height()) * scale).ceil() as i32 - 2 * padding;
+        let columns = (width / cell.width).clamp(2, i32::from(u16::MAX)) as usize;
+        let lines = (height / cell.height).clamp(1, i32::from(u16::MAX)) as usize;
+        let previous = imp.grid.replace((columns, lines));
+        let Some(size) = self.window_size() else {
+            return;
+        };
+
+        let pending = imp.command.borrow_mut().take();
+        if let Some(command) = pending {
+            self.start(&command, size);
+        } else if previous != (columns, lines)
+            && let Some(session) = imp.session.borrow().as_ref()
+        {
+            session.resize(size);
+            // The history can change with the width.
+            glib::idle_add_local_once(glib::clone!(
+                #[weak(rename_to = view)]
+                self,
+                move || view.sync_scroll()
+            ));
+        }
+    }
+
+    fn start(&self, command: &Command, size: WindowSize) {
+        let imp = self.imp();
+        match Session::spawn(command, size, self.term_config()) {
+            Ok((session, events)) => {
+                session.term.lock().is_focused = imp.focused.get();
+                imp.session.replace(Some(session));
+                let weak = self.downgrade();
+                glib::spawn_future_local(async move {
+                    while let Ok(event) = events.recv().await {
+                        let Some(view) = weak.upgrade() else { break };
+                        view.handle(event);
+                    }
+                });
+            }
+            Err(error) => {
+                let error = error.to_string();
+                let message = match command.argv.first() {
+                    Some(program) => fill(
+                        // Translators: the program, then why it could not start.
+                        &gettext("Could not start “%s”: %s"),
+                        &[program, &error],
+                    ),
+                    None => fill(&gettext("Could not start the shell: %s"), &[&error]),
+                };
+                imp.failure.replace(Some(message));
+                self.queue_draw();
+            }
+        }
+    }
+
+    fn set_vadjustment(&self, adjustment: Option<gtk::Adjustment>) {
+        let imp = self.imp();
+        if let (Some(old), Some(handler)) = (imp.vadjustment.take(), imp.adjustment_handler.take())
+        {
+            old.disconnect(handler);
+        }
+        if let Some(adjustment) = &adjustment {
+            let weak = self.downgrade();
+            let handler = adjustment.connect_value_changed(move |adjustment| {
+                if let Some(view) = weak.upgrade() {
+                    view.scroll_to(adjustment.value());
+                }
+            });
+            imp.adjustment_handler.replace(Some(handler));
+        }
+        imp.vadjustment.replace(adjustment);
+        self.sync_scroll();
+    }
+
+    /// Scrolls the history to where the scroll bar was dragged, in lines from the top.
+    fn scroll_to(&self, value: f64) {
+        let imp = self.imp();
+        if imp.updating_adjustment.get() {
+            return;
+        }
+        if let Some(session) = imp.session.borrow().as_ref() {
+            let mut term = session.term.lock();
+            let offset = term.history_size().saturating_sub(value.round() as usize);
+            let delta = offset as i32 - term.grid().display_offset() as i32;
+            if delta != 0 {
+                term.scroll_display(Scroll::Delta(delta));
+            }
+        }
+        self.queue_draw();
+    }
+
+    /// Scrolls by `lines`, towards the history for positive ones.
+    fn scroll_lines(&self, lines: i32) {
+        if let Some(session) = self.imp().session.borrow().as_ref() {
+            session.term.lock().scroll_display(Scroll::Delta(lines));
+        }
+        self.sync_scroll();
+        self.queue_draw();
+    }
+
+    pub fn scroll_page(&self, up: bool) {
+        if let Some(session) = self.imp().session.borrow().as_ref() {
+            let scroll = if up { Scroll::PageUp } else { Scroll::PageDown };
+            session.term.lock().scroll_display(scroll);
+        }
+        self.sync_scroll();
+        self.queue_draw();
+    }
+
+    /// Puts the scroll bar where the view is in the history.
+    fn sync_scroll(&self) {
+        let imp = self.imp();
+        let Some(adjustment) = imp.vadjustment.borrow().clone() else {
+            return;
+        };
+        let Some((history, lines, offset)) = imp.session.borrow().as_ref().map(|session| {
+            let term = session.term.lock();
+            (
+                term.history_size(),
+                term.screen_lines(),
+                term.grid().display_offset(),
+            )
+        }) else {
+            return;
+        };
+        let lines = lines as f64;
+        imp.updating_adjustment.set(true);
+        adjustment.configure(
+            history.saturating_sub(offset) as f64,
+            0.0,
+            history as f64 + lines,
+            1.0,
+            lines,
+            lines,
+        );
+        imp.updating_adjustment.set(false);
+    }
+
+    fn restart_blink(&self) {
+        let imp = self.imp();
+        if let Some(blink) = imp.blink.take() {
+            blink.remove();
+        }
+        imp.cursor_on.set(true);
+        let Some(gtk_settings) = gtk::Settings::default() else {
+            return;
+        };
+        if !imp.focused.get() || !gtk_settings.is_gtk_cursor_blink() {
+            return;
+        }
+        let half = u64::try_from(gtk_settings.gtk_cursor_blink_time() / 2).unwrap_or(600);
+        let timeout = u64::try_from(gtk_settings.gtk_cursor_blink_timeout()).unwrap_or(0);
+        let started = Instant::now();
+        let weak = self.downgrade();
+        let blink = glib::timeout_add_local(Duration::from_millis(half.max(50)), move || {
+            let Some(view) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let imp = view.imp();
+            // Like GTK's own text, the cursor stops blinking a while after the last key.
+            let done = timeout > 0 && started.elapsed() >= Duration::from_secs(timeout);
+            imp.cursor_on.set(done || !imp.cursor_on.get());
+            if imp.screen.borrow().cursor_blinks {
+                view.queue_draw();
+            }
+            if done {
+                imp.blink.take();
+                glib::ControlFlow::Break
+            } else {
+                glib::ControlFlow::Continue
+            }
+        });
+        imp.blink.replace(Some(blink));
+    }
+
+    fn draw(&self, snapshot: &gtk::Snapshot) {
+        let imp = self.imp();
+        let (width, height) = (self.width(), self.height());
+        if width <= 0 || height <= 0 {
+            return;
+        }
+        let palette = imp.palette.get();
+        let bounds = graphene::Rect::new(0.0, 0.0, width as f32, height as f32);
+        if let Some(message) = imp.failure.borrow().as_ref() {
+            snapshot.append_color(&rgba(palette.background), &bounds);
+            let layout = self.create_pango_layout(Some(message));
+            layout.set_width((width - 24).max(1) * pango::SCALE);
+            layout.set_wrap(pango::WrapMode::WordChar);
+            snapshot.save();
+            snapshot.translate(&graphene::Point::new(12.0, 12.0));
+            snapshot.append_layout(&layout, &rgba(palette.foreground));
+            snapshot.restore();
+            return;
+        }
+
+        self.ensure_fonts();
+        let session = imp.session.borrow();
+        let mut gl = imp.gl.borrow_mut();
+        let fonts = imp.fonts.borrow();
+        let (Some(session), Some((context, renderer)), Some(fonts)) =
+            (session.as_ref(), gl.as_mut(), fonts.as_ref())
+        else {
+            snapshot.append_color(&rgba(palette.background), &bounds);
+            return;
+        };
+
+        let mut screen = imp.screen.borrow_mut();
+        screen.capture(&session.term.lock(), &palette);
+        let scale = self.scale();
+        let look = Look {
+            selection: palette.selection,
+            focused: imp.focused.get(),
+            cursor_on: imp.cursor_on.get() || !screen.cursor_blinks,
+            padding: padding(scale),
+            scale,
+        };
+
+        context.make_current();
+        if imp.glyphs_stale.replace(false) {
+            renderer.clear_glyphs(false);
+        }
+        let mut quads = imp.quads.borrow_mut();
+        let mut built = frame::build(&screen, &look, fonts, renderer, &mut quads, false);
+        if built.is_err() {
+            renderer.clear_glyphs(true);
+            built = frame::build(&screen, &look, fonts, renderer, &mut quads, false);
+        }
+        if built.is_err() {
+            // More glyphs than the largest atlas holds: what fits is shown.
+            renderer.clear_glyphs(false);
+            let _ = frame::build(&screen, &look, fonts, renderer, &mut quads, true);
+        }
+
+        // The texture starts on the screen pixel at or before the widget's corner, which
+        // on a fractional scale can fall between pixels.
+        let (x, y) = self.origin_on_screen(scale);
+        let (x, y) = (x - x.floor(), y - y.floor());
+        let pixels_wide = (x + f64::from(width) * scale).ceil() as i32;
+        let pixels_high = (y + f64::from(height) * scale).ceil() as i32;
+        let background = screen.background;
+        match renderer.render(
+            context,
+            pixels_wide,
+            pixels_high,
+            [background.r, background.g, background.b],
+            &quads,
+        ) {
+            Ok(texture) => {
+                // One texel to one screen pixel on the pixel grid, so sampling copies them.
+                let size = graphene::Rect::new(
+                    (-x / scale) as f32,
+                    (-y / scale) as f32,
+                    (f64::from(pixels_wide) / scale) as f32,
+                    (f64::from(pixels_high) / scale) as f32,
+                );
+                snapshot.push_clip(&bounds);
+                snapshot.append_texture(&texture, &size);
+                snapshot.pop();
+            }
+            Err(error) => {
+                glib::g_warning!("tangent", "drawing a frame: {error}");
+                snapshot.append_color(&rgba(background), &bounds);
+            }
+        }
+
+        if let (Some(cursor), Some(im)) = (screen.cursor, imp.im.get()) {
+            let cell = fonts.cell;
+            let x = f64::from(look.padding + cursor.column as i32 * cell.width) / scale;
+            let y = f64::from(look.padding + cursor.line as i32 * cell.height) / scale;
+            im.set_cursor_location(&gdk::Rectangle::new(
+                x as i32,
+                y as i32,
+                (f64::from(cell.width) / scale).ceil() as i32,
+                (f64::from(cell.height) / scale).ceil() as i32,
+            ));
+        }
+    }
+
+    pub fn has_selection(&self) -> bool {
+        self.selection_text().is_some()
+    }
+
+    fn selection_text(&self) -> Option<String> {
+        let session = self.imp().session.borrow();
+        let text = session.as_ref()?.term.lock().selection_to_string()?;
+        (!text.is_empty()).then_some(text)
+    }
+
+    pub fn copy(&self) {
+        if let Some(text) = self.selection_text() {
+            self.clipboard().set_text(&text);
+        }
+    }
+
+    pub fn paste(&self) {
+        self.paste_from(&self.clipboard());
+    }
+
+    fn paste_from(&self, clipboard: &gdk::Clipboard) {
+        let clipboard = clipboard.clone();
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            async move {
+                if let Ok(Some(text)) = clipboard.read_text_future().await {
+                    view.paste_text(text.as_bytes());
+                }
+            }
+        ));
+    }
+
+    fn paste_text(&self, text: &[u8]) {
+        let bracketed = self.imp().session.borrow().as_ref().is_some_and(|session| {
+            session
+                .term
+                .lock()
+                .mode()
+                .contains(term::TermMode::BRACKETED_PASTE)
+        });
+        self.input(crate::encode::paste(text, bracketed));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn placeholders_in_values_are_left_alone() {
+        let template = "Could not start “%s”: %s";
+        assert_eq!(
+            fill(template, &["echo %s", "not found"]),
+            "Could not start “echo %s”: not found"
+        );
+        assert_eq!(fill("%s and %s", &["one"]), "one and %s");
+    }
+}

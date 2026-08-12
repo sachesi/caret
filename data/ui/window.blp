@@ -1,0 +1,80 @@
+using Gtk 4.0;
+using Adw 1;
+
+menu primary_menu {
+  section {
+    item {
+      label: _("New _Window");
+      action: "app.new-window";
+    }
+
+    item {
+      label: _("New _Tab");
+      action: "win.new-tab";
+    }
+  }
+
+  section {
+    item {
+      label: _("_About Tangent");
+      action: "app.about";
+    }
+  }
+}
+
+template $TangentWindow: Adw.ApplicationWindow {
+  width-request: 360;
+  height-request: 294;
+  title: _("Tangent");
+
+  // The tab button and the overview are enough where the bar would be cramped.
+  content: Adw.TabOverview tab_overview {
+    view: tab_view;
+    enable-new-tab: true;
+    create-tab => $on_create_tab() swapped;
+
+    child: Adw.ToolbarView {
+      [top]
+      Adw.HeaderBar {
+        [start]
+        Button {
+          icon-name: "tab-new-symbolic";
+          tooltip-text: _("New Tab");
+          action-name: "win.new-tab";
+        }
+
+        title-widget: Adw.WindowTitle window_title {
+          title: _("Tangent");
+        };
+
+        [end]
+        MenuButton {
+          icon-name: "open-menu-symbolic";
+          menu-model: primary_menu;
+          primary: true;
+          tooltip-text: _("Main Menu");
+        }
+
+        [end]
+        Adw.TabButton {
+          view: tab_view;
+          action-name: "overview.open";
+        }
+      }
+
+      [top]
+      Adw.TabBar {
+        view: tab_view;
+        autohide: true;
+      }
+
+      content: Adw.TabView tab_view {
+        vexpand: true;
+        close-page => $on_close_page() swapped;
+        create-window => $on_create_window() swapped;
+        notify::selected-page => $on_selected_page() swapped;
+        notify::n-pages => $on_n_pages() swapped;
+      };
+    };
+  };
+}
