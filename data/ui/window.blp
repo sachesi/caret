@@ -68,12 +68,14 @@ template $TangentWindow: Adw.ApplicationWindow {
         autohide: true;
       }
 
-      content: Adw.TabView tab_view {
-        vexpand: true;
-        close-page => $on_close_page() swapped;
-        create-window => $on_create_window() swapped;
-        notify::selected-page => $on_selected_page() swapped;
-        notify::n-pages => $on_n_pages() swapped;
+      content: Adw.ToastOverlay {
+        child: Adw.TabView tab_view {
+          vexpand: true;
+          close-page => $on_close_page() swapped;
+          create-window => $on_create_window() swapped;
+          notify::selected-page => $on_selected_page() swapped;
+          notify::n-pages => $on_n_pages() swapped;
+        };
       };
     };
   };

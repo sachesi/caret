@@ -86,6 +86,7 @@ mod imp {
         /// Scrolling not yet worth a line.
         pub scrolled: Cell<f64>,
         pub popover: RefCell<Option<gtk::PopoverMenu>>,
+        pub menu_link: RefCell<Option<String>>,
         pub handlers: RefCell<Vec<(glib::Object, glib::SignalHandlerId)>>,
     }
 
@@ -101,6 +102,8 @@ mod imp {
             klass.set_accessible_role(gtk::AccessibleRole::Terminal);
             klass.install_action("term.copy", None, |view, _, _| view.copy());
             klass.install_action("term.paste", None, |view, _, _| view.paste());
+            klass.install_action("term.open-link", None, |view, _, _| view.open_menu_link());
+            klass.install_action("term.copy-link", None, |view, _, _| view.copy_menu_link());
         }
     }
 

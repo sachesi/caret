@@ -2,14 +2,17 @@
 
 use std::os::unix::ffi::OsStrExt;
 
-use alacritty_terminal::index::{Column, Point, Side};
+use alacritty_terminal::grid::Dimensions;
+use alacritty_terminal::index::{Column, Line, Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
+use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::{TermMode, viewport_to_point};
 use gettextrs::gettext;
 
 use super::*;
 use crate::encode::{self, Key, Modifiers, MouseAction, MouseButton};
 use crate::gio;
+use crate::links;
 
 fn modifiers(state: gdk::ModifierType) -> Modifiers {
     Modifiers {
@@ -332,6 +335,11 @@ impl TerminalView {
             return;
         }
         match button {
+            MouseButton::Left if state.contains(gdk::ModifierType::CONTROL_MASK) => {
+                if let Some(link) = self.link_at(x, y) {
+                    self.open(&link);
+                }
+            }
             MouseButton::Left => {
                 let kind = match presses {
                     1 => SelectionType::Simple,
@@ -395,6 +403,19 @@ impl TerminalView {
             )
         {
             self.report_mouse(MouseButton::None, MouseAction::Motion, x, y, state);
+        }
+        // With Ctrl, any address opens; without, a program's link still shows where it goes,
+        // since its text may say otherwise.
+        let ctrl = state.contains(gdk::ModifierType::CONTROL_MASK);
+        let link = if ctrl {
+            self.link_at(x, y)
+        } else {
+            self.hyperlink_at(x, y)
+        };
+        let pointer = ctrl && link.is_some();
+        self.set_cursor_from_name(Some(if pointer { "pointer" } else { "text" }));
+        if self.tooltip_text().as_deref() != link.as_deref() {
+            self.set_tooltip_text(link.as_deref());
         }
     }
 
@@ -489,8 +510,85 @@ impl TerminalView {
         true
     }
 
+    /// The hyperlink a program gave the text under a point.
+    fn hyperlink_at(&self, x: f64, y: f64) -> Option<String> {
+        let (point, _) = self.cell_at(x, y)?;
+        let session = self.imp().session.borrow();
+        let term = session.as_ref()?.term.lock();
+        let point = viewport_to_point(term.grid().display_offset(), point);
+        term.grid()[point]
+            .hyperlink()
+            .map(|link| link.uri().to_owned())
+    }
+
+    /// The address under a point: a hyperlink a program gave the text, or one written
+    /// out in it, followed across wrapped lines.
+    fn link_at(&self, x: f64, y: f64) -> Option<String> {
+        if let Some(link) = self.hyperlink_at(x, y) {
+            return Some(link);
+        }
+        let (point, _) = self.cell_at(x, y)?;
+        let session = self.imp().session.borrow();
+        let term = session.as_ref()?.term.lock();
+        let point = viewport_to_point(term.grid().display_offset(), point);
+        let grid = term.grid();
+
+        let last = term.last_column();
+        let wraps = |line: i32| grid[Line(line)][last].flags.contains(Flags::WRAPLINE);
+        let mut first = point.line.0;
+        while first > term.topmost_line().0 && wraps(first - 1) {
+            first -= 1;
+        }
+        let mut end = point.line.0;
+        while end < term.bottommost_line().0 && wraps(end) {
+            end += 1;
+        }
+        let columns = term.columns();
+        let mut text = Vec::with_capacity(columns * (end - first + 1) as usize);
+        for line in first..=end {
+            for column in 0..columns {
+                let cell = &grid[Line(line)][Column(column)];
+                let spacer = cell
+                    .flags
+                    .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER);
+                text.push(if spacer { '\0' } else { cell.c });
+            }
+        }
+        let index = (point.line.0 - first) as usize * columns + point.column.0;
+        let range = links::address_at(&text, index)?;
+        Some(text[range].iter().filter(|&&c| c != '\0').collect())
+    }
+
+    fn open(&self, uri: &str) {
+        let window = self.root().and_downcast::<gtk::Window>();
+        let weak = self.downgrade();
+        gtk::UriLauncher::new(uri).launch(window.as_ref(), gio::Cancellable::NONE, move |result| {
+            let Err(error) = result else { return };
+            let chose_not_to = error.matches(gtk::DialogError::Dismissed)
+                || error.matches(gtk::DialogError::Cancelled)
+                || error.matches(gio::IOErrorEnum::Cancelled);
+            if let Some(view) = weak.upgrade().filter(|_| !chose_not_to) {
+                view.toast(&fill(
+                    &gettext("Could not open the link: %s"),
+                    &[error.message()],
+                ));
+            }
+        });
+    }
+
+    /// A message over the window the terminal is in.
+    fn toast(&self, text: &str) {
+        if let Some(overlay) = self
+            .ancestor(adw::ToastOverlay::static_type())
+            .and_downcast::<adw::ToastOverlay>()
+        {
+            overlay.add_toast(adw::Toast::builder().title(text).use_markup(false).build());
+        }
+    }
+
     fn show_menu(&self, x: f64, y: f64) {
         let imp = self.imp();
+        let link = self.link_at(x, y);
         let menu = gio::Menu::new();
         let edit = gio::Menu::new();
         // The window's Ctrl+Shift shortcuts do the same; shown here, not bound twice.
@@ -503,9 +601,16 @@ impl TerminalView {
             edit.append_item(&item);
         }
         menu.append_section(None, &edit);
+        if link.is_some() {
+            let links = gio::Menu::new();
+            links.append(Some(&gettext("_Open Link")), Some("term.open-link"));
+            links.append(Some(&gettext("Copy _Link Address")), Some("term.copy-link"));
+            menu.append_section(None, &links);
+        }
         let window = gio::Menu::new();
         window.append(Some(&gettext("New _Tab")), Some("win.new-tab"));
         menu.append_section(None, &window);
+        imp.menu_link.replace(link);
         self.action_set_enabled("term.copy", self.has_selection());
 
         let popover = imp
@@ -522,5 +627,17 @@ impl TerminalView {
         popover.set_menu_model(Some(&menu));
         popover.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
         popover.popup();
+    }
+
+    pub(super) fn open_menu_link(&self) {
+        if let Some(link) = self.imp().menu_link.borrow().clone() {
+            self.open(&link);
+        }
+    }
+
+    pub(super) fn copy_menu_link(&self) {
+        if let Some(link) = self.imp().menu_link.borrow().as_ref() {
+            self.clipboard().set_text(link);
+        }
     }
 }

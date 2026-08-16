@@ -4,6 +4,7 @@ pub mod config;
 pub mod encode;
 pub mod fonts;
 pub mod frame;
+pub mod links;
 pub mod palette;
 pub mod renderer;
 pub mod session;
