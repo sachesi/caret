@@ -14,6 +14,9 @@ use adw::prelude::*;
 use adw::subclass::prelude::*;
 use alacritty_terminal::event::{Event, WindowSize};
 use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::index::{Boundary, Column, Direction, Line, Point, Side};
+use alacritty_terminal::selection::{Selection, SelectionType};
+use alacritty_terminal::term::search::RegexSearch;
 use alacritty_terminal::term::{self, ClipboardType};
 use alacritty_terminal::vte::ansi::{Color, CursorShape, CursorStyle, NamedColor, Processor, Rgb};
 use gettextrs::gettext;
@@ -319,6 +322,18 @@ fn fill(template: &str, values: &[&str]) -> String {
     }
     filled.push_str(rest);
     filled
+}
+
+/// `text` as a regular expression that matches it literally.
+fn literal(text: &str) -> String {
+    let mut pattern = String::with_capacity(text.len());
+    for c in text.chars() {
+        if "\\.+*?()|[]{}^$#&-~".contains(c) {
+            pattern.push('\\');
+        }
+        pattern.push(c);
+    }
+    pattern
 }
 
 impl TerminalView {
@@ -1025,6 +1040,64 @@ impl TerminalView {
                 .contains(term::TermMode::BRACKETED_PASTE)
         });
         self.input(crate::encode::paste(text, bracketed));
+    }
+
+    pub fn clear_selection(&self) {
+        if let Some(session) = self.imp().session.borrow().as_ref() {
+            session.term.lock().selection = None;
+        }
+        self.queue_draw();
+    }
+
+    /// Selects the next place `text` appears, upwards through the history or back down,
+    /// and scrolls to it. False when it appears nowhere.
+    pub fn find(&self, text: &str, upwards: bool) -> bool {
+        let found = self.find_in_terminal(text, upwards);
+        self.sync_scroll();
+        self.queue_draw();
+        found
+    }
+
+    fn find_in_terminal(&self, text: &str, upwards: bool) -> bool {
+        let session = self.imp().session.borrow();
+        let Some(session) = session.as_ref() else {
+            return false;
+        };
+        let mut term = session.term.lock();
+        if text.is_empty() {
+            term.selection = None;
+            return false;
+        }
+        let Ok(mut regex) = RegexSearch::new(&literal(text)) else {
+            return false;
+        };
+        let offset = term.grid().display_offset() as i32;
+        let current = term
+            .selection
+            .as_ref()
+            .and_then(|selection| selection.to_range(&*term));
+        let origin = match current {
+            Some(range) if upwards => range.start.sub(&*term, Boundary::None, 1),
+            Some(range) => range.end.add(&*term, Boundary::None, 1),
+            None if upwards => Point::new(
+                Line(term.screen_lines() as i32 - 1 - offset),
+                term.last_column(),
+            ),
+            None => Point::new(Line(-offset), Column(0)),
+        };
+        let (direction, side) = if upwards {
+            (Direction::Left, Side::Right)
+        } else {
+            (Direction::Right, Side::Left)
+        };
+        let Some(found) = term.search_next(&mut regex, origin, direction, side, None) else {
+            return false;
+        };
+        let mut selection = Selection::new(SelectionType::Simple, *found.start(), Side::Left);
+        selection.update(*found.end(), Side::Right);
+        term.selection = Some(selection);
+        term.scroll_to_point(*found.start());
+        true
     }
 }
 

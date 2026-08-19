@@ -609,6 +609,7 @@ impl TerminalView {
         }
         let window = gio::Menu::new();
         window.append(Some(&gettext("New _Tab")), Some("win.new-tab"));
+        window.append(Some(&gettext("_Find…")), Some("win.find"));
         menu.append_section(None, &window);
         imp.menu_link.replace(link);
         self.action_set_enabled("term.copy", self.has_selection());

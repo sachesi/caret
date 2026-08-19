@@ -60,12 +60,60 @@ template $TangentWindow: Adw.ApplicationWindow {
           view: tab_view;
           action-name: "overview.open";
         }
+
+        [end]
+        ToggleButton {
+          icon-name: "edit-find-symbolic";
+          tooltip-text: _("Find");
+          active: bind search_bar.search-mode-enabled bidirectional;
+        }
       }
 
       [top]
       Adw.TabBar {
         view: tab_view;
         autohide: true;
+      }
+
+      [top]
+      SearchBar search_bar {
+        notify::search-mode-enabled => $on_search_mode() swapped;
+
+        child: Adw.Clamp {
+          maximum-size: 500;
+
+          child: Box {
+            spacing: 6;
+
+            SearchEntry search_entry {
+              hexpand: true;
+              placeholder-text: _("Find in the history");
+              search-changed => $on_search_changed() swapped;
+              activate => $on_search_up() swapped;
+              next-match => $on_search_up() swapped;
+              previous-match => $on_search_down() swapped;
+              stop-search => $on_stop_search() swapped;
+            }
+
+            Box {
+              styles [
+                "linked",
+              ]
+
+              Button {
+                icon-name: "go-up-symbolic";
+                tooltip-text: _("Find Upwards");
+                clicked => $on_search_up() swapped;
+              }
+
+              Button {
+                icon-name: "go-down-symbolic";
+                tooltip-text: _("Find Downwards");
+                clicked => $on_search_down() swapped;
+              }
+            }
+          };
+        };
       }
 
       content: Adw.ToastOverlay {

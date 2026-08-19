@@ -195,6 +195,7 @@ impl TangentApplication {
             ("win.close-tab", &["<Control><Shift>w"]),
             ("win.copy", &["<Control><Shift>c"]),
             ("win.paste", &["<Control><Shift>v"]),
+            ("win.find", &["<Control><Shift>f"]),
             (
                 "win.zoom-in",
                 &["<Control>plus", "<Control>equal", "<Control>KP_Add"],

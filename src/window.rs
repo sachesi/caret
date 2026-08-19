@@ -1,4 +1,4 @@
-//! A window of terminal tabs, with the `win.*` actions.
+//! A window of terminal tabs, with the find bar and the `win.*` actions.
 
 use std::cell::Cell;
 
@@ -24,6 +24,10 @@ mod imp {
         pub tab_view: TemplateChild<adw::TabView>,
         #[template_child]
         pub window_title: TemplateChild<adw::WindowTitle>,
+        #[template_child]
+        pub search_bar: TemplateChild<gtk::SearchBar>,
+        #[template_child]
+        pub search_entry: TemplateChild<gtk::SearchEntry>,
         /// Closing was confirmed, or needs no confirmation.
         pub closing: Cell<bool>,
     }
@@ -60,6 +64,11 @@ mod imp {
                 if let Some(view) = window.current_view() {
                     view.paste();
                 }
+            });
+            klass.install_action("win.find", None, |window, _, _| {
+                let imp = window.imp();
+                imp.search_bar.set_search_mode(true);
+                imp.search_entry.grab_focus();
             });
             klass.install_action("win.tab-overview", None, |window, _, _| {
                 window.imp().tab_overview.set_open(true);
@@ -170,6 +179,58 @@ mod imp {
             if self.tab_view.n_pages() == 0 {
                 self.closing.set(true);
                 self.obj().close();
+            }
+        }
+
+        #[template_callback]
+        fn on_search_mode(&self) {
+            if !self.search_bar.is_search_mode()
+                && let Some(view) = self.obj().current_view()
+            {
+                view.clear_selection();
+                view.grab_focus();
+            }
+        }
+
+        #[template_callback]
+        fn on_search_changed(&self) {
+            if let Some(view) = self.obj().current_view() {
+                view.clear_selection();
+                let text = self.search_entry.text();
+                let found = view.find(&text, true);
+                self.show_found(found || text.is_empty());
+            }
+        }
+
+        #[template_callback]
+        fn on_search_up(&self) {
+            self.search(true);
+        }
+
+        #[template_callback]
+        fn on_search_down(&self) {
+            self.search(false);
+        }
+
+        #[template_callback]
+        fn on_stop_search(&self) {
+            self.search_bar.set_search_mode(false);
+        }
+    }
+
+    impl TangentWindow {
+        fn search(&self, upwards: bool) {
+            if let Some(view) = self.obj().current_view() {
+                let found = view.find(&self.search_entry.text(), upwards);
+                self.show_found(found);
+            }
+        }
+
+        fn show_found(&self, found: bool) {
+            if found {
+                self.search_entry.remove_css_class("error");
+            } else {
+                self.search_entry.add_css_class("error");
             }
         }
     }
