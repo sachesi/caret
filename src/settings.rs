@@ -12,7 +12,7 @@ pub fn settings() -> gio::Settings {
     SETTINGS.with(Clone::clone)
 }
 
-/// The font chosen in the settings, or the desktop's monospace font.
+/// The font chosen in the preferences, or the desktop's monospace font.
 pub fn font() -> pango::FontDescription {
     let chosen = settings().string("font");
     let name = if chosen.is_empty() {

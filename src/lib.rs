@@ -6,6 +6,7 @@ pub mod fonts;
 pub mod frame;
 pub mod links;
 pub mod palette;
+pub mod preferences;
 pub mod renderer;
 pub mod session;
 pub mod settings;

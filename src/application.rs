@@ -185,12 +185,18 @@ impl TangentApplication {
         let about = gio::ActionEntry::builder("about")
             .activate(|app: &Self, _, _| app.show_about())
             .build();
-        self.add_action_entries([new_window, about]);
+        let preferences = gio::ActionEntry::builder("preferences")
+            .activate(|app: &Self, _, _| {
+                crate::preferences::preferences_dialog().present(app.active_window().as_ref());
+            })
+            .build();
+        self.add_action_entries([new_window, about, preferences]);
 
         // Ctrl with Shift: plain Ctrl and a letter belong to the programs in the terminal.
         for (action, accels) in [
             ("app.new-window", &["<Control><Shift>n"][..]),
             ("win.close", &["<Control><Shift>q"]),
+            ("app.preferences", &["<Control>comma"]),
             ("win.new-tab", &["<Control><Shift>t"]),
             ("win.close-tab", &["<Control><Shift>w"]),
             ("win.copy", &["<Control><Shift>c"]),
