@@ -1,0 +1,122 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.ShortcutsDialog shortcuts_dialog {
+  Adw.ShortcutsSection {
+    title: _("Windows and Tabs");
+
+    Adw.ShortcutsItem {
+      title: _("New Window");
+      accelerator: "<Control><Shift>n";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("New Tab");
+      accelerator: "<Control><Shift>t";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Close Tab");
+      accelerator: "<Control><Shift>w";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Close Window");
+      accelerator: "<Control><Shift>q";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Next Tab");
+      accelerator: "<Control>Page_Down";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Previous Tab");
+      accelerator: "<Control>Page_Up";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Move Tab Right");
+      accelerator: "<Control><Shift>Page_Down";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Move Tab Left");
+      accelerator: "<Control><Shift>Page_Up";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Switch to a Tab");
+      subtitle: _("Alt and the number of the tab");
+      accelerator: "<Alt>1";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Show All Tabs");
+      accelerator: "<Control><Shift>o";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Full Screen");
+      accelerator: "F11";
+    }
+  }
+
+  Adw.ShortcutsSection {
+    title: _("Terminal");
+
+    Adw.ShortcutsItem {
+      title: _("Copy");
+      accelerator: "<Control><Shift>c";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Paste");
+      accelerator: "<Control><Shift>v";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Find");
+      accelerator: "<Control><Shift>f";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Scroll Up a Page");
+      accelerator: "<Shift>Page_Up";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Scroll Down a Page");
+      accelerator: "<Shift>Page_Down";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Zoom In");
+      accelerator: "<Control>plus";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Zoom Out");
+      accelerator: "<Control>minus";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Original Size");
+      accelerator: "<Control>0";
+    }
+  }
+
+  Adw.ShortcutsSection {
+    title: _("General");
+
+    Adw.ShortcutsItem {
+      title: _("Preferences");
+      accelerator: "<Control>comma";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Keyboard Shortcuts");
+      accelerator: "<Control>question";
+    }
+  }
+}

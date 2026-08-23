@@ -2,6 +2,7 @@
 <gresources>
   <gresource prefix="/io/github/sachesi/tangent">
     <file preprocess="xml-stripblanks">ui/window.ui</file>
+    <file preprocess="xml-stripblanks" alias="shortcuts-dialog.ui">ui/shortcuts_dialog.ui</file>
     <file preprocess="xml-stripblanks" alias="icons/scalable/apps/io.github.sachesi.tangent.svg">icons/hicolor/scalable/apps/io.github.sachesi.tangent.svg</file>
     <file preprocess="xml-stripblanks" alias="icons/symbolic/apps/io.github.sachesi.tangent-symbolic.svg">icons/hicolor/symbolic/apps/io.github.sachesi.tangent-symbolic.svg</file>
   </gresource>
