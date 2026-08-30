@@ -36,6 +36,7 @@ Launchers that go through xdg-terminal-exec open Tangent once
 ## Documentation
 
 - [Installing](docs/installing.md)
+- [Using Tangent](docs/usage.md), including [keyboard shortcuts](docs/keyboard-shortcuts.md) and [settings](docs/settings.md)
 
 Tabs are not restored between runs.
 
