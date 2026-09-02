@@ -5,7 +5,7 @@
 To build: Rust 1.92 or newer, `blueprint-compiler`, `just`, and the development packages
 of GTK 4.22 and libadwaita 1.9. On Fedora that is `gtk4-devel libadwaita-devel
 blueprint-compiler just`; on Debian `libgtk-4-dev libadwaita-1-dev blueprint-compiler
-just`. `just check` also wants `desktop-file-validate` and `appstreamcli`.
+just`. `just check` also wants `desktop-file-validate`, `appstreamcli` and gettext.
 
 To run: GTK 4.22, libadwaita 1.9, `libEGL.so.1` with a driver for OpenGL 3.3 or OpenGL ES
 3.0, and a session bus. Without a GL context the tab says why and starts no
@@ -30,9 +30,10 @@ somewhere else.
     DESTDIR=/tmp/stage just install
 
 `install` copies what `just build` produced; it never builds. The default prefix is
-`/usr/local`. It puts the binary in `bin`, and the desktop entry, metainfo, icons and
-GSettings schema under `share`, then compiles the schema and refreshes the desktop and
-icon caches. With `DESTDIR` set, those caches are left to the package manager.
+`/usr/local`. It puts the binary in `bin`, and the desktop entry, metainfo, icons,
+GSettings schema and translations under `share`, then compiles the schema and refreshes
+the desktop and icon caches. With `DESTDIR` set, those caches are left to the package
+manager.
 
 ## Remove
 
