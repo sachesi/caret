@@ -1,4 +1,4 @@
-# Russian translation for Tangent.
+# Ukrainian translation for Tangent.
 # This file is distributed under the same license as the tangent package.
 #
 msgid ""
@@ -6,10 +6,10 @@ msgstr ""
 "Project-Id-Version: tangent\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/tangent/issues\n"
 "POT-Creation-Date: 2026-09-04 21:12+0300\n"
-"PO-Revision-Date: 2026-09-03 22:05+0300\n"
+"PO-Revision-Date: 2026-09-04 21:37+0300\n"
 "Last-Translator: sachesi\n"
-"Language-Team: Russian\n"
-"Language: ru\n"
+"Language-Team: Ukrainian\n"
+"Language: uk\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -25,22 +25,22 @@ msgstr "Tangent"
 
 #: data/io.github.sachesi.tangent.desktop:3 ui/shortcuts_dialog.ui:84
 msgid "Terminal"
-msgstr "Терминал"
+msgstr "Термінал"
 
 #: data/io.github.sachesi.tangent.desktop:4
 #: data/io.github.sachesi.tangent.metainfo.xml:7
 msgid "Use the command line"
-msgstr "Работа с командной строкой"
+msgstr "Робота з командним рядком"
 
 #: data/io.github.sachesi.tangent.desktop:11
 msgid "shell;prompt;command;commandline;console;"
 msgstr ""
-"оболочка;приглашение;команда;командная "
-"строка;консоль;shell;prompt;command;commandline;console;"
+"оболонка;запрошення;команда;командний "
+"рядок;консоль;shell;prompt;command;commandline;console;"
 
 #: data/io.github.sachesi.tangent.desktop:17 ui/shortcuts_dialog.ui:15
 msgid "New Window"
-msgstr "Новое окно"
+msgstr "Нове вікно"
 
 #: data/io.github.sachesi.tangent.gschema.xml:16 src/preferences.rs:52
 #, no-c-format
@@ -52,16 +52,16 @@ msgid ""
 "A Pango font description such as “Monospace 11”; empty for the desktop's "
 "monospace font."
 msgstr ""
-"Описание шрифта Pango, например «Monospace 11»; пустое значение — "
-"моноширинный шрифт рабочего стола."
+"Опис шрифту Pango, наприклад «Monospace 11»; порожнє значення — моноширинний "
+"шрифт стільниці."
 
 #: data/io.github.sachesi.tangent.gschema.xml:21
 msgid "Light or dark"
-msgstr "Светлый или тёмный"
+msgstr "Світлий чи темний"
 
 #: data/io.github.sachesi.tangent.gschema.xml:22
 msgid "“system” follows the desktop's preference."
-msgstr "«system» следует настройке рабочего стола."
+msgstr "«system» слідує налаштуванню стільниці."
 
 #: data/io.github.sachesi.tangent.gschema.xml:26
 msgid "Cursor shape"
@@ -69,72 +69,73 @@ msgstr "Форма курсора"
 
 #: data/io.github.sachesi.tangent.gschema.xml:27
 msgid "The shape of the cursor until a program asks for another."
-msgstr "Форма курсора, пока программа не запросит другую."
+msgstr "Форма курсора, доки програма не попросить іншу."
 
 #: data/io.github.sachesi.tangent.gschema.xml:32
 msgid "Lines of history"
-msgstr "Строк истории"
+msgstr "Рядків історії"
 
 #: data/io.github.sachesi.tangent.gschema.xml:33
 msgid "How many lines that scrolled off the top are kept to scroll back to."
-msgstr "Сколько строк, ушедших за верхний край, хранится для прокрутки назад."
+msgstr ""
+"Скільки рядків, що пішли за верхній край, зберігається для прокручування "
+"назад."
 
 #: data/io.github.sachesi.tangent.gschema.xml:37
 msgid "Terminal bell"
-msgstr "Звонок терминала"
+msgstr "Дзвінок термінала"
 
 #: data/io.github.sachesi.tangent.gschema.xml:38
 msgid ""
 "Whether the bell a program rings makes a sound. A tab in the background is "
 "marked either way."
 msgstr ""
-"Звучит ли звонок, поданный программой. Фоновая вкладка отмечается в любом "
-"случае."
+"Чи звучить дзвінок, поданий програмою. Фонова вкладка позначається в будь-"
+"якому разі."
 
 #: data/io.github.sachesi.tangent.gschema.xml:42
 msgid "Window size"
-msgstr "Размер окна"
+msgstr "Розмір вікна"
 
 #: data/io.github.sachesi.tangent.gschema.xml:43
 msgid "The size of new windows; 0 fits 80 columns by 24 lines of the font."
-msgstr "Размер новых окон; 0 — 80 столбцов на 24 строки шрифта."
+msgstr "Розмір нових вікон; 0 — 80 стовпців на 24 рядки шрифту."
 
 #: data/io.github.sachesi.tangent.gschema.xml:47
 msgid "Window maximized"
-msgstr "Окно развёрнуто"
+msgstr "Вікно розгорнуте"
 
 #: data/io.github.sachesi.tangent.metainfo.xml:9
 msgid ""
 "Tangent is a terminal built with GTK 4 and libadwaita. Its text is drawn by "
 "the GPU, pixel for pixel at any display scale."
 msgstr ""
-"Tangent — терминал на GTK 4 и libadwaita. Его текст рисует графический "
-"процессор, пиксель в пиксель при любом масштабе экрана."
+"Tangent — термінал на GTK 4 і libadwaita. Його текст малює графічний "
+"процесор, піксель у піксель за будь-якого масштабу екрана."
 
 #: data/io.github.sachesi.tangent.metainfo.xml:11
 msgid ""
 "Tabs with an overview, and new tabs and windows in the folder of the current "
 "one"
-msgstr "Вкладки с обзором; новые вкладки и окна открываются в папке текущей"
+msgstr "Вкладки з оглядом; нові вкладки й вікна відкриваються в теці поточної"
 
 #: data/io.github.sachesi.tangent.metainfo.xml:12
 msgid ""
 "Search through the history, selection by word or line, and addresses opened "
 "with Ctrl and a click"
 msgstr ""
-"Поиск по истории, выделение словами и строками, адреса открываются щелчком с "
-"Ctrl"
+"Пошук в історії, виділення словами й рядками, адреси відкриваються клацанням "
+"із Ctrl"
 
 #: data/io.github.sachesi.tangent.metainfo.xml:13
 msgid "Mouse reporting, bracketed paste, true colour, and underline styles"
 msgstr ""
-"Передача событий мыши, вставка в скобках, полноцветный режим и стили "
-"подчёркивания"
+"Передавання подій миші, вставлення в дужках, повнокольоровий режим і стилі "
+"підкреслення"
 
 #: data/io.github.sachesi.tangent.metainfo.xml:14
 msgid "The desktop's monospace font and colour scheme, or ones of its own"
-msgstr ""
-"Моноширинный шрифт и цветовая схема рабочего стола или свои собственные"
+msgstr "Моноширинний шрифт і колірна схема стільниці або власні"
 
 #: data/io.github.sachesi.tangent.metainfo.xml:21
 msgid "sachesi"
@@ -143,7 +144,7 @@ msgstr "sachesi"
 #: src/application.rs:143
 #, no-c-format
 msgid "Start in this directory"
-msgstr "Запустить в этом каталоге"
+msgstr "Запустити в цьому каталозі"
 
 #: src/application.rs:144
 #, no-c-format
@@ -153,7 +154,7 @@ msgstr "КАТАЛОГ"
 #: src/application.rs:151
 #, no-c-format
 msgid "Print the version and exit"
-msgstr "Показать версию и выйти"
+msgstr "Показати версію й вийти"
 
 #: src/application.rs:160
 #, no-c-format
@@ -163,7 +164,7 @@ msgstr "[-e] [КОМАНДА [АРГУМЕНТ…]]"
 #: src/application.rs:227
 #, no-c-format
 msgid "A terminal drawn by the GPU"
-msgstr "Терминал, который рисует графический процессор"
+msgstr "Термінал, який малює графічний процесор"
 
 #. Translators: put your name here, one per line, optionally with an email address.
 #: src/application.rs:229
@@ -174,12 +175,12 @@ msgstr "sachesi"
 #: src/preferences.rs:15 ui/shortcuts_dialog.ui:140
 #, no-c-format
 msgid "Preferences"
-msgstr "Параметры"
+msgstr "Параметри"
 
 #: src/preferences.rs:20 ui/shortcuts_dialog.ui:137
 #, no-c-format
 msgid "General"
-msgstr "Общие"
+msgstr "Загальне"
 
 #: src/preferences.rs:25
 #, no-c-format
@@ -189,17 +190,17 @@ msgstr "Текст"
 #: src/preferences.rs:28
 #, no-c-format
 msgid "Use the System Font"
-msgstr "Системный шрифт"
+msgstr "Системний шрифт"
 
 #: src/preferences.rs:34
 #, no-c-format
 msgid "Terminal Font"
-msgstr "Шрифт терминала"
+msgstr "Шрифт термінала"
 
 #: src/preferences.rs:133
 #, no-c-format
 msgid "Appearance"
-msgstr "Внешний вид"
+msgstr "Вигляд"
 
 #: src/preferences.rs:138
 #, no-c-format
@@ -209,17 +210,17 @@ msgstr "Стиль"
 #: src/preferences.rs:140
 #, no-c-format
 msgid "Follow System"
-msgstr "Как в системе"
+msgstr "Як у системі"
 
 #: src/preferences.rs:141
 #, no-c-format
 msgid "Light"
-msgstr "Светлый"
+msgstr "Світлий"
 
 #: src/preferences.rs:142
 #, no-c-format
 msgid "Dark"
-msgstr "Тёмный"
+msgstr "Темний"
 
 #: src/preferences.rs:148
 #, no-c-format
@@ -234,254 +235,254 @@ msgstr "Блок"
 #: src/preferences.rs:151
 #, no-c-format
 msgid "I-Beam"
-msgstr "Черта"
+msgstr "Риска"
 
 #: src/preferences.rs:152
 #, no-c-format
 msgid "Underline"
-msgstr "Подчёркивание"
+msgstr "Підкреслення"
 
 #: src/preferences.rs:158
 #, no-c-format
 msgid "Behaviour"
-msgstr "Поведение"
+msgstr "Поведінка"
 
 #: src/preferences.rs:161
 #, no-c-format
 msgid "Lines of History"
-msgstr "Строк истории"
+msgstr "Рядків історії"
 
 #: src/preferences.rs:163
 #, no-c-format
 msgid "Kept for scrolling back after they leave the screen"
-msgstr "Хранятся для прокрутки назад, когда уходят с экрана"
+msgstr "Зберігаються для прокручування назад, коли зникають з екрана"
 
 #: src/preferences.rs:179
 #, no-c-format
 msgid "Terminal Bell"
-msgstr "Звонок терминала"
+msgstr "Дзвінок термінала"
 
 #: src/preferences.rs:180
 #, no-c-format
 msgid "Sound the bell when a program rings it"
-msgstr "Звук, когда программа подаёт звонок"
+msgstr "Звук, коли програма подає дзвінок"
 
 #: src/terminal_view.rs:205
 #, no-c-format
 msgid "The terminal cannot be drawn: %s"
-msgstr "Не удаётся нарисовать терминал: %s"
+msgstr "Не вдається намалювати термінал: %s"
 
 #: src/terminal_view.rs:523
 #, no-c-format
 msgid "“%s” exited with status %s"
-msgstr "«%s» завершилась с кодом %s"
+msgstr "«%s» завершилася з кодом %s"
 
 #: src/terminal_view.rs:527
 #, no-c-format
 msgid "“%s” was ended by signal %s"
-msgstr "«%s» завершена сигналом %s"
+msgstr "«%s» завершено сигналом %s"
 
 #: src/terminal_view.rs:530
 #, no-c-format
 msgid "“%s” ended"
-msgstr "«%s» завершилась"
+msgstr "«%s» завершилася"
 
 #. Translators: the program, then why it could not start.
 #: src/terminal_view.rs:767
 #, no-c-format
 msgid "Could not start “%s”: %s"
-msgstr "Не удалось запустить «%s»: %s"
+msgstr "Не вдалося запустити «%s»: %s"
 
 #: src/terminal_view.rs:770
 #, no-c-format
 msgid "Could not start the shell: %s"
-msgstr "Не удалось запустить командную оболочку: %s"
+msgstr "Не вдалося запустити командну оболонку: %s"
 
 #: src/terminal_view/input.rs:572
 #, no-c-format
 msgid "Could not open the link: %s"
-msgstr "Не удалось открыть ссылку: %s"
+msgstr "Не вдалося відкрити посилання: %s"
 
 #: src/terminal_view/input.rs:596
 #, no-c-format
 msgid "_Copy"
-msgstr "_Копировать"
+msgstr "_Копіювати"
 
 #: src/terminal_view/input.rs:597
 #, no-c-format
 msgid "_Paste"
-msgstr "_Вставить"
+msgstr "_Вставити"
 
 #: src/terminal_view/input.rs:606
 #, no-c-format
 msgid "_Open Link"
-msgstr "_Открыть ссылку"
+msgstr "_Відкрити посилання"
 
 #: src/terminal_view/input.rs:607
 #, no-c-format
 msgid "Copy _Link Address"
-msgstr "Копировать _адрес ссылки"
+msgstr "Копіювати _адресу посилання"
 
 #: src/terminal_view/input.rs:611 ui/window.ui:16
 #, no-c-format
 msgid "New _Tab"
-msgstr "Новая _вкладка"
+msgstr "Нова _вкладка"
 
 #: src/terminal_view/input.rs:612
 #, no-c-format
 msgid "_Find…"
-msgstr "_Найти…"
+msgstr "_Знайти…"
 
 #: src/window.rs:339
 #, no-c-format
 msgid "A program is still running in this tab and will be stopped."
-msgstr "В этой вкладке ещё работает программа, её работа будет прервана."
+msgstr "У цій вкладці ще працює програма, її роботу буде перервано."
 
 #: src/window.rs:341
 #, no-c-format
 msgid "“%s” is still running in this tab and will be stopped."
-msgstr "В этой вкладке ещё работает «%s», и её работа будет прервана."
+msgstr "У цій вкладці ще працює «%s», і її роботу буде перервано."
 
 #: src/window.rs:343
 #, no-c-format
 msgid "Close Tab?"
-msgstr "Закрыть вкладку?"
+msgstr "Закрити вкладку?"
 
 #: src/window.rs:345 src/window.rs:373
 #, no-c-format
 msgid "_Cancel"
-msgstr "_Отмена"
+msgstr "_Скасувати"
 
 #: src/window.rs:346 src/window.rs:374
 #, no-c-format
 msgid "C_lose"
-msgstr "_Закрыть"
+msgstr "_Закрити"
 
 #: src/window.rs:362
 #, no-c-format
 msgid "Close Window?"
-msgstr "Закрыть окно?"
+msgstr "Закрити вікно?"
 
 #: src/window.rs:365
 #, no-c-format
 msgid "A program is still running in %d tab and will be stopped."
 msgid_plural "Programs are still running in %d tabs and will be stopped."
-msgstr[0] "Работа программ в %d вкладке будет прервана."
-msgstr[1] "Работа программ в %d вкладках будет прервана."
-msgstr[2] "Работа программ в %d вкладках будет прервана."
+msgstr[0] "Роботу програм у %d вкладці буде перервано."
+msgstr[1] "Роботу програм у %d вкладках буде перервано."
+msgstr[2] "Роботу програм у %d вкладках буде перервано."
 
 #: ui/shortcuts_dialog.ui:12
 msgid "Windows and Tabs"
-msgstr "Окна и вкладки"
+msgstr "Вікна та вкладки"
 
 #: ui/shortcuts_dialog.ui:21 ui/window.ui:51
 msgid "New Tab"
-msgstr "Новая вкладка"
+msgstr "Нова вкладка"
 
 #: ui/shortcuts_dialog.ui:27
 msgid "Close Tab"
-msgstr "Закрыть вкладку"
+msgstr "Закрити вкладку"
 
 #: ui/shortcuts_dialog.ui:33
 msgid "Close Window"
-msgstr "Закрыть окно"
+msgstr "Закрити вікно"
 
 #: ui/shortcuts_dialog.ui:39
 msgid "Next Tab"
-msgstr "Следующая вкладка"
+msgstr "Наступна вкладка"
 
 #: ui/shortcuts_dialog.ui:45
 msgid "Previous Tab"
-msgstr "Предыдущая вкладка"
+msgstr "Попередня вкладка"
 
 #: ui/shortcuts_dialog.ui:51
 msgid "Move Tab Right"
-msgstr "Переместить вкладку вправо"
+msgstr "Перемістити вкладку праворуч"
 
 #: ui/shortcuts_dialog.ui:57
 msgid "Move Tab Left"
-msgstr "Переместить вкладку влево"
+msgstr "Перемістити вкладку ліворуч"
 
 #: ui/shortcuts_dialog.ui:63
 msgid "Switch to a Tab"
-msgstr "Перейти к вкладке"
+msgstr "Перейти до вкладки"
 
 #: ui/shortcuts_dialog.ui:64
 msgid "Alt and the number of the tab"
-msgstr "Alt и номер вкладки"
+msgstr "Alt і номер вкладки"
 
 #: ui/shortcuts_dialog.ui:70
 msgid "Show All Tabs"
-msgstr "Показать все вкладки"
+msgstr "Показати всі вкладки"
 
 #: ui/shortcuts_dialog.ui:76
 msgid "Full Screen"
-msgstr "Во весь экран"
+msgstr "На весь екран"
 
 #: ui/shortcuts_dialog.ui:87
 msgid "Copy"
-msgstr "Копировать"
+msgstr "Копіювати"
 
 #: ui/shortcuts_dialog.ui:93
 msgid "Paste"
-msgstr "Вставить"
+msgstr "Вставити"
 
 #: ui/shortcuts_dialog.ui:99 ui/window.ui:77
 msgid "Find"
-msgstr "Найти"
+msgstr "Знайти"
 
 #: ui/shortcuts_dialog.ui:105
 msgid "Scroll Up a Page"
-msgstr "На страницу вверх"
+msgstr "На сторінку вгору"
 
 #: ui/shortcuts_dialog.ui:111
 msgid "Scroll Down a Page"
-msgstr "На страницу вниз"
+msgstr "На сторінку вниз"
 
 #: ui/shortcuts_dialog.ui:117
 msgid "Zoom In"
-msgstr "Увеличить"
+msgstr "Збільшити"
 
 #: ui/shortcuts_dialog.ui:123
 msgid "Zoom Out"
-msgstr "Уменьшить"
+msgstr "Зменшити"
 
 #: ui/shortcuts_dialog.ui:129
 msgid "Original Size"
-msgstr "Обычный размер"
+msgstr "Звичайний розмір"
 
 #: ui/shortcuts_dialog.ui:146
 msgid "Keyboard Shortcuts"
-msgstr "Комбинации клавиш"
+msgstr "Клавіатурні скорочення"
 
 #: ui/window.ui:12
 msgid "New _Window"
-msgstr "Новое _окно"
+msgstr "Нове _вікно"
 
 #: ui/window.ui:22
 msgid "_Preferences"
-msgstr "_Параметры"
+msgstr "_Параметри"
 
 #: ui/window.ui:26
 msgid "_Keyboard Shortcuts"
-msgstr "_Комбинации клавиш"
+msgstr "_Клавіатурні скорочення"
 
 #: ui/window.ui:30
 msgid "_About Tangent"
-msgstr "_О Tangent"
+msgstr "_Про Tangent"
 
 #: ui/window.ui:65
 msgid "Main Menu"
-msgstr "Главное меню"
+msgstr "Головне меню"
 
 #: ui/window.ui:101
 msgid "Find in the history"
-msgstr "Поиск в истории"
+msgstr "Пошук в історії"
 
 #: ui/window.ui:117
 msgid "Find Upwards"
-msgstr "Найти выше"
+msgstr "Знайти вище"
 
 #: ui/window.ui:124
 msgid "Find Downwards"
-msgstr "Найти ниже"
+msgstr "Знайти нижче"
