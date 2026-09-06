@@ -37,6 +37,7 @@ Launchers that go through xdg-terminal-exec open Tangent once
 
 - [Installing](docs/installing.md)
 - [Using Tangent](docs/usage.md), including [keyboard shortcuts](docs/keyboard-shortcuts.md) and [settings](docs/settings.md)
+- [Contributing](CONTRIBUTING.md), including where things are in the code, and [reporting a vulnerability](SECURITY.md)
 
 Tabs are not restored between runs. The interface is available in English, Russian and
 Ukrainian.
