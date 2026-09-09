@@ -274,6 +274,9 @@ impl TerminalView {
         let imp = self.imp();
         let cell = imp.fonts.borrow().as_ref()?.cell;
         let (columns, lines) = imp.grid.get();
+        if columns == 0 || lines == 0 {
+            return None;
+        }
         let scale = self.scale();
         let padding = f64::from(padding(scale));
         let x = x * scale - padding;
