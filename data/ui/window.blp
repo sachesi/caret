@@ -38,6 +38,14 @@ template $TangentWindow: Adw.ApplicationWindow {
   title: _("Tangent");
 
   // The tab button and the overview are enough where the bar would be cramped.
+  Adw.Breakpoint {
+    condition ("max-width: 500sp")
+
+    setters {
+      tab_bar.visible: false;
+    }
+  }
+
   content: Adw.TabOverview tab_overview {
     view: tab_view;
     enable-new-tab: true;
@@ -80,7 +88,7 @@ template $TangentWindow: Adw.ApplicationWindow {
       }
 
       [top]
-      Adw.TabBar {
+      Adw.TabBar tab_bar {
         view: tab_view;
         autohide: true;
       }

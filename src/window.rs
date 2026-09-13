@@ -106,6 +106,27 @@ mod imp {
             if settings().boolean("window-maximized") {
                 self.obj().maximize();
             }
+            // libadwaita hides the content for a frame while it changes breakpoints, and the
+            // terminal does not get the keyboard back from that; typing would go nowhere.
+            self.obj().connect_current_breakpoint_notify(|window| {
+                let Some(focus) = gtk::prelude::RootExt::focus(window) else {
+                    return;
+                };
+                let focus = focus.downgrade();
+                let frames = Cell::new(0);
+                window.add_tick_callback(move |window, _| {
+                    frames.set(frames.get() + 1);
+                    if frames.get() < 3 {
+                        return glib::ControlFlow::Continue;
+                    }
+                    if let Some(focus) = focus.upgrade()
+                        && gtk::prelude::RootExt::focus(window).as_ref() != Some(&focus)
+                    {
+                        focus.grab_focus();
+                    }
+                    glib::ControlFlow::Break
+                });
+            });
         }
     }
 
