@@ -10,7 +10,9 @@
 Everything after `-e` or `-x` is the command and its arguments, as launchers such as
 xdg-terminal-exec expect. The shell is `$SHELL`, or the one in your passwd entry. Each
 start opens a window in the Tangent that is already running, and its program gets the
-environment of that start rather than the running Tangent's.
+environment of that start rather than the running Tangent's. Variables that belong to
+another terminal, or to tmux or screen around the command line (`TMUX`, `VTE_VERSION`,
+`KITTY_WINDOW_ID` and the like), are left out.
 
 A tab closes when its program exits, and the window goes with its last tab. A command
 named on the command line that fails stays on screen instead, with its output and how it

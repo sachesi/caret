@@ -84,6 +84,38 @@ pub struct Command {
     pub env: HashMap<String, String>,
 }
 
+/// Variables that describe the terminal a command line was typed in, or a multiplexer
+/// running in it, and would mislead programs in this one; and those alacritty_terminal
+/// sets for its own windows.
+const FOREIGN: [&str; 26] = [
+    "ALACRITTY_LOG",
+    "ALACRITTY_SOCKET",
+    "ALACRITTY_WINDOW_ID",
+    "COLUMNS",
+    "DESKTOP_STARTUP_ID",
+    "GNOME_TERMINAL_SCREEN",
+    "GNOME_TERMINAL_SERVICE",
+    "KITTY_PID",
+    "KITTY_PUBLIC_KEY",
+    "KITTY_WINDOW_ID",
+    "KONSOLE_DBUS_SERVICE",
+    "KONSOLE_DBUS_SESSION",
+    "KONSOLE_DBUS_WINDOW",
+    "KONSOLE_VERSION",
+    "LINES",
+    "OLDPWD",
+    "PTYXIS_VERSION",
+    "PWD",
+    "STY",
+    "TMUX",
+    "TMUX_PANE",
+    "VTE_VERSION",
+    "WEZTERM_PANE",
+    "WEZTERM_UNIX_SOCKET",
+    "WINDOWID",
+    "XDG_ACTIVATION_TOKEN",
+];
+
 /// The account's entry in the password database: its name, home and shell.
 fn account() -> Option<(String, String, String)> {
     let mut buffer = vec![0; 16 * 1024];
@@ -134,6 +166,7 @@ impl Command {
         } else {
             self.env.clone()
         };
+        env.retain(|name, _| !FOREIGN.contains(&name.as_str()));
         if !["USER", "HOME", "SHELL"]
             .iter()
             .all(|name| env.contains_key(*name))
@@ -314,9 +347,11 @@ mod tests {
     }
 
     #[test]
-    fn the_environment_is_the_command_lines() {
+    fn the_environment_is_the_command_lines_without_other_terminals() {
         let command = command(&[
             ("EDITOR", "vi"),
+            ("TMUX", "/tmp/tmux-1000/default,1,0"),
+            ("VTE_VERSION", "7800"),
             ("TERM", "screen"),
             ("USER", "someone"),
             ("HOME", "/home/someone"),
@@ -325,6 +360,8 @@ mod tests {
         let env = command.environment();
         assert_eq!(env.get("EDITOR").map(String::as_str), Some("vi"));
         assert_eq!(env.get("TERM").map(String::as_str), Some("xterm-256color"));
+        assert!(!env.contains_key("TMUX"));
+        assert!(!env.contains_key("VTE_VERSION"));
         assert_eq!(command.program(), "/bin/zsh");
     }
 
