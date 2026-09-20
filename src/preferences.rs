@@ -45,7 +45,7 @@ pub fn preferences_dialog() -> adw::PreferencesDialog {
                 .build(),
         )
         .level(gtk::FontLevel::Font)
-        .font_desc(&settings::font())
+        .font_desc(&resolved(&dialog, &settings::font()))
         .valign(gtk::Align::Center)
         .build();
     let font_row = adw::ActionRow::builder()
@@ -109,7 +109,7 @@ pub fn preferences_dialog() -> adw::PreferencesDialog {
             font_button,
             move |settings, _| {
                 following.set(true);
-                font_button.set_font_desc(&settings::font());
+                font_button.set_font_desc(&resolved(&font_button, &settings::font()));
                 system_font.set_active(settings.string("font").is_empty());
                 following.set(false);
             }
@@ -185,6 +185,33 @@ pub fn preferences_dialog() -> adw::PreferencesDialog {
 
     dialog.add(&page);
     dialog
+}
+
+/// `font` with the family the terminal draws it in: the one fontconfig finds for the name,
+/// and the `Monospace` alias's when that is not monospaced or not installed, as in `Fonts`.
+fn resolved(
+    widget: &impl IsA<gtk::Widget>,
+    font: &pango::FontDescription,
+) -> pango::FontDescription {
+    let context = widget.pango_context();
+    let family_of = |font: &pango::FontDescription| {
+        context
+            .load_font(font)
+            .and_then(|loaded| loaded.face())
+            .map(|face| face.family())
+    };
+    let mut font = font.clone();
+    let family = match family_of(&font) {
+        Some(family) if family.is_monospace() => Some(family),
+        _ => {
+            font.set_family("Monospace");
+            family_of(&font)
+        }
+    };
+    if let Some(family) = family {
+        font.set_family(&family.name());
+    }
+    font
 }
 
 /// A row choosing one of the values of an enum key, given as its nicks and their labels.
