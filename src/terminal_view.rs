@@ -31,6 +31,7 @@ use crate::session::{Command, Session};
 use crate::settings::{self, settings};
 use crate::{adw, gdk, glib, gtk};
 
+mod accessible;
 mod input;
 
 /// Room between the grid and the edges, in logical pixels.
@@ -91,6 +92,8 @@ mod imp {
         pub popover: RefCell<Option<gtk::PopoverMenu>>,
         pub menu_link: RefCell<Option<String>>,
         pub handlers: RefCell<Vec<(glib::Object, glib::SignalHandlerId)>>,
+        /// The screen as the last frame showed it, for screen readers.
+        pub text: RefCell<accessible::ScreenText>,
     }
 
     #[glib::object_subclass]
@@ -98,7 +101,7 @@ mod imp {
         const NAME: &'static str = "TangentTerminalView";
         type Type = super::TerminalView;
         type ParentType = gtk::Widget;
-        type Interfaces = (gtk::Scrollable,);
+        type Interfaces = (gtk::Scrollable, gtk::AccessibleText);
 
         fn class_init(klass: &mut Self::Class) {
             klass.set_css_name("terminal");
@@ -274,7 +277,8 @@ mod imp {
 glib::wrapper! {
     pub struct TerminalView(ObjectSubclass<imp::TerminalView>)
         @extends gtk::Widget,
-        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Scrollable;
+        @implements gtk::Accessible, gtk::AccessibleText, gtk::Buildable, gtk::ConstraintTarget,
+                    gtk::Scrollable;
 }
 
 impl Default for TerminalView {
@@ -928,6 +932,7 @@ impl TerminalView {
 
         let mut screen = imp.screen.borrow_mut();
         screen.capture(&session.term.lock(), &palette);
+        self.update_accessible_text(&screen);
         let scale = self.scale();
         let look = Look {
             selection: palette.selection,

@@ -13,7 +13,8 @@ one. You can search the history, select a word or a line with a double or triple
 and open an address with Ctrl and a click. Programs get mouse reporting, bracketed paste,
 true colour and double, curly, dotted and dashed underlines. Box drawing and block
 characters are drawn to fill their cells, so lines join without gaps. The font and the
-light or dark style follow the desktop unless you choose others.
+light or dark style follow the desktop unless you choose others, and screen readers can
+read what is on the screen.
 
 ## Building and installing
 
