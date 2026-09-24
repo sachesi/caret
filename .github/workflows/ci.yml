@@ -40,6 +40,22 @@ jobs:
       - name: Test
         run: just test
 
+  msrv:
+    name: Minimum Rust version
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install the build dependencies
+        run: >
+          dnf install -y --setopt=install_weak_deps=False
+          git-core gcc rustup blueprint-compiler
+          gtk4-devel libadwaita-devel glib2-devel
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check with the version Cargo.toml names
+        run: |
+          rustup-init -y --profile minimal --default-toolchain "$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)"
+          ~/.cargo/bin/cargo check --all-targets
+
   deny:
     name: Dependencies
     runs-on: ubuntu-latest
