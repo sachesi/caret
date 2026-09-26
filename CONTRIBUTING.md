@@ -41,7 +41,10 @@ context menu.
 The terminal state is alacritty_terminal's `Term`, behind a lock that its reader thread
 and the main context share. The thread parses what the program writes and wakes the main
 context through a channel; the next frame takes the lock long enough to copy what is on
-screen, and draws from that copy. Nothing else leaves the main context.
+screen, and draws from that copy. A search runs on a thread of its own, holding the
+lock's lease so no output moves the lines under it, and the lock itself a few thousand
+lines at a time; the main context takes the lock without the lease, so it never waits
+for more than one of those steps.
 
 ## Drawing
 

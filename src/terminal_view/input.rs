@@ -207,7 +207,7 @@ impl TerminalView {
             .session
             .borrow()
             .as_ref()
-            .map_or(TermMode::empty(), |session| *session.term.lock().mode())
+            .map_or(TermMode::empty(), |session| *session.lock().mode())
     }
 
     fn key_pressed(
@@ -279,7 +279,7 @@ impl TerminalView {
             }
         }
         let report = imp.session.borrow().as_ref().is_some_and(|session| {
-            let mut term = session.term.lock();
+            let mut term = session.lock();
             term.is_focused = focused;
             term.mode().contains(TermMode::FOCUS_IN_OUT)
         });
@@ -476,7 +476,7 @@ impl TerminalView {
             return;
         };
         if let Some(session) = self.imp().session.borrow().as_ref() {
-            let mut term = session.term.lock();
+            let mut term = session.lock();
             let point = viewport_to_point(term.grid().display_offset(), point);
             match term.selection.as_mut() {
                 Some(selection) if extend => selection.update(point, side),
@@ -565,7 +565,7 @@ impl TerminalView {
     fn link_at(&self, x: f64, y: f64) -> Option<String> {
         let (point, _) = self.cell_at(x, y)?;
         let session = self.imp().session.borrow();
-        link_in(&session.as_ref()?.term.lock(), point, true)
+        link_in(&session.as_ref()?.lock(), point, true)
     }
 
     fn open(&self, uri: &str) {

@@ -7,17 +7,19 @@ use std::cell::{Cell, OnceCell, RefCell};
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
-use std::sync::LazyLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use alacritty_terminal::event::{Event, WindowSize};
+use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Boundary, Column, Direction, Line, Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
+use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::search::RegexSearch;
-use alacritty_terminal::term::{self, ClipboardType};
+use alacritty_terminal::term::{self, ClipboardType, Term};
 use alacritty_terminal::vte::ansi::{Color, CursorShape, CursorStyle, NamedColor, Processor, Rgb};
 use gettextrs::gettext;
 use glib::subclass::Signal;
@@ -29,7 +31,7 @@ use crate::palette::Palette;
 use crate::renderer::{Quads, Renderer};
 use crate::session::{Command, Session};
 use crate::settings::{self, settings};
-use crate::{adw, gdk, glib, gtk};
+use crate::{adw, gdk, gio, glib, gtk};
 
 mod accessible;
 mod input;
@@ -38,6 +40,8 @@ mod input;
 const PADDING: f64 = 6.0;
 /// Each zoom step scales the font by this much.
 const ZOOM_STEP: f64 = 1.1;
+/// Lines a search goes through while it holds the terminal.
+const SEARCH_STEP: usize = 5000;
 
 mod imp {
     use super::*;
@@ -51,6 +55,8 @@ mod imp {
         pub adjustment_handler: RefCell<Option<glib::SignalHandlerId>>,
         /// Set while the widget moves the adjustment itself.
         pub updating_adjustment: Cell<bool>,
+        /// Counts searches, so that one that is no longer the latest stops.
+        pub searches: Arc<AtomicU64>,
         /// History, lines and offset from the last frame, for the scroll bar to catch up
         /// with once the frame is done.
         pub frame_scroll: Cell<Option<(usize, usize, usize)>>,
@@ -444,7 +450,7 @@ impl TerminalView {
             return;
         }
         if let Some(session) = self.imp().session.borrow().as_ref() {
-            let mut term = session.term.lock();
+            let mut term = session.lock();
             if term.grid().display_offset() != 0 {
                 term.scroll_display(Scroll::Bottom);
             }
@@ -480,7 +486,7 @@ impl TerminalView {
                     _ => Color::Named(NamedColor::Cursor),
                 };
                 let reply = imp.session.borrow().as_ref().map(|session| {
-                    let term = session.term.lock();
+                    let term = session.lock();
                     format(imp.palette.get().resolve(color, term.colors()))
                 });
                 if let Some(reply) = reply {
@@ -532,7 +538,7 @@ impl TerminalView {
             (None, None) => fill(&gettext("“%s” ended"), &[&program]),
         };
         if let Some(session) = imp.session.borrow().as_ref() {
-            let mut term = session.term.lock();
+            let mut term = session.lock();
             term.scroll_display(Scroll::Bottom);
             let newline = if term.grid().cursor.point.column.0 > 0 {
                 "\r\n"
@@ -577,7 +583,7 @@ impl TerminalView {
                 "cursor-shape" | "scrollback-lines" => {
                     let config = view.term_config();
                     if let Some(session) = view.imp().session.borrow().as_ref() {
-                        session.term.lock().set_options(config);
+                        session.lock().set_options(config);
                     }
                     view.queue_draw();
                 }
@@ -617,7 +623,7 @@ impl TerminalView {
                 if let Some(view) = weak.upgrade() {
                     let config = view.term_config();
                     if let Some(session) = view.imp().session.borrow().as_ref() {
-                        session.term.lock().set_options(config);
+                        session.lock().set_options(config);
                     }
                     view.restart_blink();
                 }
@@ -751,7 +757,7 @@ impl TerminalView {
         let imp = self.imp();
         match Session::spawn(command, size, self.term_config()) {
             Ok((session, events)) => {
-                session.term.lock().is_focused = imp.focused.get();
+                session.lock().is_focused = imp.focused.get();
                 imp.session.replace(Some(session));
                 let weak = self.downgrade();
                 glib::spawn_future_local(async move {
@@ -803,7 +809,7 @@ impl TerminalView {
             return;
         }
         if let Some(session) = imp.session.borrow().as_ref() {
-            let mut term = session.term.lock();
+            let mut term = session.lock();
             let offset = term.history_size().saturating_sub(value.round() as usize);
             let delta = offset as i32 - term.grid().display_offset() as i32;
             if delta != 0 {
@@ -816,7 +822,7 @@ impl TerminalView {
     /// Scrolls by `lines`, towards the history for positive ones.
     fn scroll_lines(&self, lines: i32) {
         if let Some(session) = self.imp().session.borrow().as_ref() {
-            session.term.lock().scroll_display(Scroll::Delta(lines));
+            session.lock().scroll_display(Scroll::Delta(lines));
         }
         self.sync_scroll();
         self.queue_draw();
@@ -825,7 +831,7 @@ impl TerminalView {
     pub fn scroll_page(&self, up: bool) {
         if let Some(session) = self.imp().session.borrow().as_ref() {
             let scroll = if up { Scroll::PageUp } else { Scroll::PageDown };
-            session.term.lock().scroll_display(scroll);
+            session.lock().scroll_display(scroll);
         }
         self.sync_scroll();
         self.queue_draw();
@@ -838,7 +844,7 @@ impl TerminalView {
             return;
         };
         let Some(scroll) = imp.session.borrow().as_ref().map(|session| {
-            let term = session.term.lock();
+            let term = session.lock();
             (
                 term.history_size(),
                 term.screen_lines(),
@@ -959,7 +965,7 @@ impl TerminalView {
         };
 
         let mut screen = imp.screen.borrow_mut();
-        let term = session.term.lock();
+        let term = session.lock();
         // Rearmed under the lock: output after the capture wakes the widget again.
         session.rearm();
         screen.capture(&term, &palette);
@@ -1047,7 +1053,7 @@ impl TerminalView {
 
     fn selection_text(&self) -> Option<String> {
         let session = self.imp().session.borrow();
-        let text = session.as_ref()?.term.lock().selection_to_string()?;
+        let text = session.as_ref()?.lock().selection_to_string()?;
         (!text.is_empty()).then_some(text)
     }
 
@@ -1077,7 +1083,6 @@ impl TerminalView {
     fn paste_text(&self, text: &[u8]) {
         let bracketed = self.imp().session.borrow().as_ref().is_some_and(|session| {
             session
-                .term
                 .lock()
                 .mode()
                 .contains(term::TermMode::BRACKETED_PASTE)
@@ -1086,67 +1091,145 @@ impl TerminalView {
     }
 
     pub fn clear_selection(&self) {
+        self.imp().searches.fetch_add(1, Ordering::SeqCst);
         if let Some(session) = self.imp().session.borrow().as_ref() {
-            session.term.lock().selection = None;
+            session.lock().selection = None;
         }
         self.queue_draw();
     }
 
     /// Selects the next place `text` appears, upwards through the history or back down,
-    /// and scrolls to it. False when it appears nowhere.
-    pub fn find(&self, text: &str, upwards: bool) -> bool {
-        let found = self.find_in_terminal(text, upwards);
-        self.sync_scroll();
-        self.queue_draw();
-        found
-    }
-
-    fn find_in_terminal(&self, text: &str, upwards: bool) -> bool {
-        let session = self.imp().session.borrow();
-        let Some(session) = session.as_ref() else {
-            return false;
-        };
-        let mut term = session.term.lock();
-        if text.is_empty() {
-            term.selection = None;
-            return false;
-        }
-        let Ok(mut regex) = RegexSearch::new(&literal(text)) else {
-            return false;
-        };
-        let offset = term.grid().display_offset() as i32;
-        let current = term
-            .selection
+    /// and scrolls to it, searching on a worker thread; then `done` hears whether it
+    /// appears anywhere. A later search or a cleared selection cancels it, and then `done`
+    /// is never called.
+    pub fn find(&self, text: &str, upwards: bool, done: impl FnOnce(bool) + 'static) {
+        let imp = self.imp();
+        let search = imp.searches.fetch_add(1, Ordering::SeqCst) + 1;
+        let Some(term) = imp
+            .session
+            .borrow()
             .as_ref()
-            .and_then(|selection| selection.to_range(&*term));
-        let origin = match current {
-            Some(range) if upwards => range.start.sub(&*term, Boundary::None, 1),
-            Some(range) => range.end.add(&*term, Boundary::None, 1),
-            None if upwards => Point::new(
+            .map(|session| session.term.clone())
+        else {
+            return done(false);
+        };
+        let regex = match RegexSearch::new(&literal(text)) {
+            Ok(regex) if !text.is_empty() => regex,
+            _ => {
+                self.clear_selection();
+                return done(false);
+            }
+        };
+        let searches = imp.searches.clone();
+        let task = gio::spawn_blocking(move || {
+            search_history(&term, regex, upwards, || {
+                searches.load(Ordering::SeqCst) != search
+            })
+        });
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            async move {
+                let Ok(Some(found)) = task.await else { return };
+                if view.imp().searches.load(Ordering::SeqCst) == search {
+                    view.sync_scroll();
+                    view.queue_draw();
+                    done(found);
+                }
+            }
+        ));
+    }
+}
+
+/// Selects the next match of `regex` after the selection, or from the edge of the view,
+/// going round the whole history, and scrolls to it. Whether there is one, or None when
+/// `cancelled` says so between steps.
+///
+/// The lease is held throughout, so that no output moves the lines between steps, and the
+/// terminal only for a step at a time; the main context takes it without the lease.
+fn search_history<T: EventListener>(
+    term: &FairMutex<Term<T>>,
+    mut regex: RegexSearch,
+    upwards: bool,
+    cancelled: impl Fn() -> bool,
+) -> Option<bool> {
+    let _lease = term.lease();
+    'search: loop {
+        let (mut from, total, size) = {
+            let term = term.lock_unfair();
+            (
+                search_origin(&term, upwards),
+                term.total_lines(),
+                (term.columns(), term.screen_lines()),
+            )
+        };
+        let mut searched = 0;
+        // One line more than the history, for the part of the first line before the origin.
+        while searched <= total {
+            let mut term = term.lock_unfair();
+            if cancelled() {
+                return None;
+            }
+            // A resize reflows the lines under the step.
+            if (term.columns(), term.screen_lines()) != size {
+                continue 'search;
+            }
+            let (found, to) = if upwards {
+                let line = (from.line - SEARCH_STEP as i32).max(term.topmost_line());
+                let to = term.line_search_left(Point::new(line, Column(0)));
+                (term.regex_search_left(&mut regex, from, to), to)
+            } else {
+                let line = (from.line + SEARCH_STEP as i32).min(term.bottommost_line());
+                let to = term.line_search_right(Point::new(line, term.last_column()));
+                (term.regex_search_right(&mut regex, from, to), to)
+            };
+            if let Some(found) = found {
+                let mut selection =
+                    Selection::new(SelectionType::Simple, *found.start(), Side::Left);
+                selection.update(*found.end(), Side::Right);
+                term.selection = Some(selection);
+                term.scroll_to_point(*found.start());
+                return Some(true);
+            }
+            searched += from.line.0.abs_diff(to.line.0) as usize + 1;
+            // Past the end of the history, the next step starts at the other end.
+            from = if upwards {
+                to.sub(&*term, Boundary::None, 1)
+            } else {
+                to.add(&*term, Boundary::None, 1)
+            };
+        }
+        return Some(false);
+    }
+}
+
+/// Where a search starts: next to the selection, or at the edge of the view it goes away
+/// from.
+fn search_origin<T>(term: &Term<T>, upwards: bool) -> Point {
+    let offset = term.grid().display_offset() as i32;
+    let current = term
+        .selection
+        .as_ref()
+        .and_then(|selection| selection.to_range(term));
+    let (origin, direction) = match current {
+        Some(range) if upwards => (range.start.sub(term, Boundary::None, 1), Direction::Left),
+        Some(range) => (range.end.add(term, Boundary::None, 1), Direction::Right),
+        None if upwards => (
+            Point::new(
                 Line(term.screen_lines() as i32 - 1 - offset),
                 term.last_column(),
             ),
-            None => Point::new(Line(-offset), Column(0)),
-        };
-        let (direction, side) = if upwards {
-            (Direction::Left, Side::Right)
-        } else {
-            (Direction::Right, Side::Left)
-        };
-        let Some(found) = term.search_next(&mut regex, origin, direction, side, None) else {
-            return false;
-        };
-        let mut selection = Selection::new(SelectionType::Simple, *found.start(), Side::Left);
-        selection.update(*found.end(), Side::Right);
-        term.selection = Some(selection);
-        term.scroll_to_point(*found.start());
-        true
-    }
+            Direction::Left,
+        ),
+        None => (Point::new(Line(-offset), Column(0)), Direction::Right),
+    };
+    term.expand_wide(origin, direction)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alacritty_terminal::event::VoidListener;
 
     #[test]
     fn placeholders_in_values_are_left_alone() {
@@ -1156,5 +1239,52 @@ mod tests {
             "Could not start “echo %s”: not found"
         );
         assert_eq!(fill("%s and %s", &["one"]), "one and %s");
+    }
+
+    #[test]
+    fn searches_go_round_the_history_in_steps() {
+        let config = term::Config {
+            scrolling_history: 3 * SEARCH_STEP,
+            ..term::Config::default()
+        };
+        let size = crate::session::GridSize {
+            columns: 20,
+            lines: 5,
+        };
+        let term = FairMutex::new(Term::new(config, &size, VoidListener));
+        let mut parser: Processor = Processor::new();
+        for line in 0..2 * SEARCH_STEP {
+            let text = match line {
+                100 => "a needle here".to_owned(),
+                line if line == SEARCH_STEP + 100 => "needle".to_owned(),
+                line => format!("hay {line}"),
+            };
+            parser.advance(&mut *term.lock(), format!("{text}\r\n").as_bytes());
+        }
+        let find = |text: &str, upwards: bool| {
+            search_history(&term, RegexSearch::new(text).unwrap(), upwards, || false)
+        };
+        let selected = || {
+            let term = term.lock();
+            let range = term.selection.as_ref()?.to_range(&*term)?;
+            Some((
+                range.start.line.0 + term.history_size() as i32,
+                range.start.column.0,
+            ))
+        };
+        let needle = |line: usize, column| Some((line as i32, column));
+
+        assert_eq!(find("needle", true), Some(true));
+        assert_eq!(selected(), needle(SEARCH_STEP + 100, 0));
+        assert_eq!(find("needle", true), Some(true));
+        assert_eq!(selected(), needle(100, 2));
+        assert_eq!(find("needle", true), Some(true));
+        assert_eq!(selected(), needle(SEARCH_STEP + 100, 0));
+        assert_eq!(find("needle", false), Some(true));
+        assert_eq!(selected(), needle(100, 2));
+
+        assert_eq!(find("thread", true), Some(false));
+        let cancelled = search_history(&term, RegexSearch::new("hay").unwrap(), true, || true);
+        assert_eq!(cancelled, None);
     }
 }

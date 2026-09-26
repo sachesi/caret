@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::ffi::CStr;
 use std::fs::File;
 use std::io;
+use std::ops::DerefMut;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -300,8 +301,15 @@ impl Session {
         }
     }
 
+    /// The terminal, for the main context. It takes the lock without the lease a search
+    /// holds from start to end, so it waits for one step of a search at most, as for one
+    /// read of the program's output.
+    pub fn lock(&self) -> impl DerefMut<Target = Term<Listener>> + '_ {
+        self.term.lock_unfair()
+    }
+
     pub fn resize(&self, size: WindowSize) {
-        self.term.lock().resize(GridSize {
+        self.lock().resize(GridSize {
             columns: usize::from(size.num_cols),
             lines: usize::from(size.num_lines),
         });

@@ -218,8 +218,13 @@ mod imp {
             if let Some(view) = self.obj().current_view() {
                 view.clear_selection();
                 let text = self.search_entry.text();
-                let found = view.find(&text, true);
-                self.show_found(found || text.is_empty());
+                let empty = text.is_empty();
+                let window = self.obj().downgrade();
+                view.find(&text, true, move |found| {
+                    if let Some(window) = window.upgrade() {
+                        window.imp().show_found(found || empty);
+                    }
+                });
             }
         }
 
@@ -242,8 +247,12 @@ mod imp {
     impl TangentWindow {
         fn search(&self, upwards: bool) {
             if let Some(view) = self.obj().current_view() {
-                let found = view.find(&self.search_entry.text(), upwards);
-                self.show_found(found);
+                let window = self.obj().downgrade();
+                view.find(&self.search_entry.text(), upwards, move |found| {
+                    if let Some(window) = window.upgrade() {
+                        window.imp().show_found(found);
+                    }
+                });
             }
         }
 
