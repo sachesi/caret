@@ -51,6 +51,9 @@ mod imp {
         pub adjustment_handler: RefCell<Option<glib::SignalHandlerId>>,
         /// Set while the widget moves the adjustment itself.
         pub updating_adjustment: Cell<bool>,
+        /// History, lines and offset from the last frame, for the scroll bar to catch up
+        /// with once the frame is done.
+        pub frame_scroll: Cell<Option<(usize, usize, usize)>>,
 
         /// What to run, until the first allocation says how big the grid is.
         pub command: RefCell<Option<Command>>,
@@ -456,13 +459,8 @@ impl TerminalView {
     fn handle(&self, event: Event) {
         let imp = self.imp();
         match event {
-            Event::Wakeup => {
-                if let Some(session) = imp.session.borrow().as_ref() {
-                    session.rearm();
-                }
-                self.sync_scroll();
-                self.queue_draw();
-            }
+            // The frame takes the terminal's lock once for all the output since the last one.
+            Event::Wakeup => self.queue_draw(),
             Event::Title(title) => self.set_title(&title),
             Event::ResetTitle => {
                 let title = imp.default_title.borrow().clone();
@@ -839,7 +837,7 @@ impl TerminalView {
         let Some(adjustment) = imp.vadjustment.borrow().clone() else {
             return;
         };
-        let Some((history, lines, offset)) = imp.session.borrow().as_ref().map(|session| {
+        let Some(scroll) = imp.session.borrow().as_ref().map(|session| {
             let term = session.term.lock();
             (
                 term.history_size(),
@@ -849,6 +847,15 @@ impl TerminalView {
         }) else {
             return;
         };
+        self.show_scroll(&adjustment, scroll);
+    }
+
+    fn show_scroll(
+        &self,
+        adjustment: &gtk::Adjustment,
+        (history, lines, offset): (usize, usize, usize),
+    ) {
+        let imp = self.imp();
         let lines = lines as f64;
         imp.updating_adjustment.set(true);
         adjustment.configure(
@@ -860,6 +867,27 @@ impl TerminalView {
             lines,
         );
         imp.updating_adjustment.set(false);
+    }
+
+    /// Moves the scroll bar to where a frame found the view, after the frame: changing the
+    /// adjustment while drawing would lay out the scroll bar in the middle of a snapshot.
+    fn follow_scroll(&self, scroll: (usize, usize, usize)) {
+        let imp = self.imp();
+        if imp.frame_scroll.replace(Some(scroll)).is_some() {
+            return;
+        }
+        glib::idle_add_local_once(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            move || {
+                let imp = view.imp();
+                if let (Some(scroll), Some(adjustment)) =
+                    (imp.frame_scroll.take(), imp.vadjustment.borrow().clone())
+                {
+                    view.show_scroll(&adjustment, scroll);
+                }
+            }
+        ));
     }
 
     fn restart_blink(&self) {
@@ -931,7 +959,17 @@ impl TerminalView {
         };
 
         let mut screen = imp.screen.borrow_mut();
-        screen.capture(&session.term.lock(), &palette);
+        let term = session.term.lock();
+        // Rearmed under the lock: output after the capture wakes the widget again.
+        session.rearm();
+        screen.capture(&term, &palette);
+        let scroll = (
+            term.history_size(),
+            term.screen_lines(),
+            term.grid().display_offset(),
+        );
+        drop(term);
+        self.follow_scroll(scroll);
         self.update_accessible_text(&screen);
         let scale = self.scale();
         let look = Look {

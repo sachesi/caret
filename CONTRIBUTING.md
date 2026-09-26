@@ -40,7 +40,7 @@ context menu.
 
 The terminal state is alacritty_terminal's `Term`, behind a lock that its reader thread
 and the main context share. The thread parses what the program writes and wakes the main
-context through a channel; the widget then takes the lock long enough to copy what is on
+context through a channel; the next frame takes the lock long enough to copy what is on
 screen, and draws from that copy. Nothing else leaves the main context.
 
 ## Drawing
