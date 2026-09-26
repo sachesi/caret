@@ -6,13 +6,14 @@ use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::{Column, Line, Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::term::cell::Flags;
-use alacritty_terminal::term::{TermMode, viewport_to_point};
+use alacritty_terminal::term::{Term, TermMode, viewport_to_point};
 use gettextrs::gettext;
 
 use super::*;
 use crate::encode::{self, Key, Modifiers, MouseAction, MouseButton};
 use crate::gio;
 use crate::links;
+use crate::session::Listener;
 
 fn modifiers(state: gdk::ModifierType) -> Modifiers {
     Modifiers {
@@ -62,6 +63,44 @@ fn mouse_button(button: u32) -> Option<MouseButton> {
         gdk::BUTTON_SECONDARY => Some(MouseButton::Right),
         _ => None,
     }
+}
+
+/// The address at a point of the view: the hyperlink a program gave the text there, and
+/// with `written` also one written out in it.
+fn link_in(term: &Term<Listener>, point: Point<usize>, written: bool) -> Option<String> {
+    let point = viewport_to_point(term.grid().display_offset(), point);
+    if let Some(link) = term.grid()[point].hyperlink() {
+        return Some(link.uri().to_owned());
+    }
+    if !written {
+        return None;
+    }
+    let grid = term.grid();
+
+    let last = term.last_column();
+    let wraps = |line: i32| grid[Line(line)][last].flags.contains(Flags::WRAPLINE);
+    let mut first = point.line.0;
+    while first > term.topmost_line().0 && wraps(first - 1) {
+        first -= 1;
+    }
+    let mut end = point.line.0;
+    while end < term.bottommost_line().0 && wraps(end) {
+        end += 1;
+    }
+    let columns = term.columns();
+    let mut text = Vec::with_capacity(columns * (end - first + 1) as usize);
+    for line in first..=end {
+        for column in 0..columns {
+            let cell = &grid[Line(line)][Column(column)];
+            let spacer = cell
+                .flags
+                .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER);
+            text.push(if spacer { '\0' } else { cell.c });
+        }
+    }
+    let index = (point.line.0 - first) as usize * columns + point.column.0;
+    let range = links::address_at(&text, index)?;
+    Some(text[range].iter().filter(|&&c| c != '\0').collect())
 }
 
 impl TerminalView {
@@ -410,10 +449,18 @@ impl TerminalView {
         // With Ctrl, any address opens; without, a program's link still shows where it goes,
         // since its text may say otherwise.
         let ctrl = state.contains(gdk::ModifierType::CONTROL_MASK);
-        let link = if ctrl {
-            self.link_at(x, y)
-        } else {
-            self.hyperlink_at(x, y)
+        let link = {
+            let session = imp.session.borrow();
+            let Some(session) = session.as_ref() else {
+                return;
+            };
+            // While output is being read, the pointer keeps what it showed rather than
+            // waiting on every move.
+            let Some(term) = session.term.try_lock_unfair() else {
+                return;
+            };
+            self.cell_at(x, y)
+                .and_then(|(point, _)| link_in(&term, point, ctrl))
         };
         let pointer = ctrl && link.is_some();
         self.set_cursor_from_name(Some(if pointer { "pointer" } else { "text" }));
@@ -513,53 +560,12 @@ impl TerminalView {
         true
     }
 
-    /// The hyperlink a program gave the text under a point.
-    fn hyperlink_at(&self, x: f64, y: f64) -> Option<String> {
-        let (point, _) = self.cell_at(x, y)?;
-        let session = self.imp().session.borrow();
-        let term = session.as_ref()?.term.lock();
-        let point = viewport_to_point(term.grid().display_offset(), point);
-        term.grid()[point]
-            .hyperlink()
-            .map(|link| link.uri().to_owned())
-    }
-
     /// The address under a point: a hyperlink a program gave the text, or one written
     /// out in it, followed across wrapped lines.
     fn link_at(&self, x: f64, y: f64) -> Option<String> {
-        if let Some(link) = self.hyperlink_at(x, y) {
-            return Some(link);
-        }
         let (point, _) = self.cell_at(x, y)?;
         let session = self.imp().session.borrow();
-        let term = session.as_ref()?.term.lock();
-        let point = viewport_to_point(term.grid().display_offset(), point);
-        let grid = term.grid();
-
-        let last = term.last_column();
-        let wraps = |line: i32| grid[Line(line)][last].flags.contains(Flags::WRAPLINE);
-        let mut first = point.line.0;
-        while first > term.topmost_line().0 && wraps(first - 1) {
-            first -= 1;
-        }
-        let mut end = point.line.0;
-        while end < term.bottommost_line().0 && wraps(end) {
-            end += 1;
-        }
-        let columns = term.columns();
-        let mut text = Vec::with_capacity(columns * (end - first + 1) as usize);
-        for line in first..=end {
-            for column in 0..columns {
-                let cell = &grid[Line(line)][Column(column)];
-                let spacer = cell
-                    .flags
-                    .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER);
-                text.push(if spacer { '\0' } else { cell.c });
-            }
-        }
-        let index = (point.line.0 - first) as usize * columns + point.column.0;
-        let range = links::address_at(&text, index)?;
-        Some(text[range].iter().filter(|&&c| c != '\0').collect())
+        link_in(&session.as_ref()?.term.lock(), point, true)
     }
 
     fn open(&self, uri: &str) {
