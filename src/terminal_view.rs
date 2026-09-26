@@ -4,6 +4,7 @@
 
 use std::borrow::Cow;
 use std::cell::{Cell, OnceCell, RefCell};
+use std::collections::HashMap;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
@@ -24,7 +25,7 @@ use alacritty_terminal::vte::ansi::{Color, CursorShape, CursorStyle, NamedColor,
 use gettextrs::gettext;
 use glib::subclass::Signal;
 
-use crate::fonts::Fonts;
+use crate::fonts::{Bitmap, Fonts, GlyphKey, GlyphThread};
 use crate::frame::{self, Look, Screen};
 use crate::gtk::{cairo, graphene, pango};
 use crate::palette::Palette;
@@ -42,6 +43,8 @@ const PADDING: f64 = 6.0;
 const ZOOM_STEP: f64 = 1.1;
 /// Lines a search goes through while it holds the terminal.
 const SEARCH_STEP: usize = 5000;
+/// How long a frame rasterises glyphs itself before it leaves the rest to the glyph thread.
+const GLYPH_TIME: Duration = Duration::from_millis(8);
 
 mod imp {
     use super::*;
@@ -78,6 +81,9 @@ mod imp {
         /// What the fonts were made for: the font, the scale and the resolution.
         pub fonts_made_for: RefCell<Option<(String, u64, i32)>>,
         pub glyphs_stale: Cell<bool>,
+        pub glyph_thread: RefCell<Option<GlyphThread>>,
+        /// Glyphs back from the thread, for the next frame.
+        pub finished_glyphs: RefCell<HashMap<GlyphKey, Option<Bitmap>>>,
         pub zoom: Cell<i32>,
         pub palette: Cell<Palette>,
         pub screen: RefCell<Screen>,
@@ -700,8 +706,44 @@ impl TerminalView {
         let resolution = f64::from(dpi) / 1024.0 * scale;
         imp.fonts
             .replace(Some(Fonts::new(&font, resolution, &options)));
+        imp.glyph_thread.take();
+        imp.finished_glyphs.borrow_mut().clear();
         imp.fonts_made_for.replace(Some(made_for));
         imp.glyphs_stale.set(true);
+    }
+
+    /// Has the glyph thread rasterise `key`, starting it the first time, and draws again
+    /// as glyphs come back.
+    fn request_glyph(&self, fonts: &Fonts, key: &GlyphKey) {
+        let mut thread = self.imp().glyph_thread.borrow_mut();
+        let thread = thread.get_or_insert_with(|| {
+            let (thread, results) = GlyphThread::spawn(fonts);
+            glib::spawn_future_local(glib::clone!(
+                #[weak(rename_to = view)]
+                self,
+                async move {
+                    while let Ok((key, bitmap)) = results.recv().await {
+                        // Closed when the fonts changed: what is left is in the old ones.
+                        if results.is_closed() {
+                            break;
+                        }
+                        let imp = view.imp();
+                        if let Some(thread) = imp.glyph_thread.borrow_mut().as_mut() {
+                            thread.received(&key);
+                        }
+                        imp.finished_glyphs.borrow_mut().insert(key, bitmap);
+                        view.queue_draw();
+                    }
+                }
+            ));
+            thread
+        });
+        thread.request(key);
+    }
+
+    fn glyph_pending(&self, key: &GlyphKey) -> bool {
+        let thread = self.imp().glyph_thread.borrow();
+        thread.as_ref().is_some_and(|thread| thread.is_pending(key))
     }
 
     fn window_size(&self) -> Option<WindowSize> {
@@ -991,15 +1033,40 @@ impl TerminalView {
             renderer.clear_glyphs(false);
         }
         let mut quads = imp.quads.borrow_mut();
-        let mut built = frame::build(&screen, &look, fonts, renderer, &mut quads, false);
+        let mut finished = imp.finished_glyphs.take();
+        let deadline = Instant::now() + GLYPH_TIME;
+        let mut rasterize = |key: &GlyphKey| {
+            if let Some(bitmap) = finished.remove(key) {
+                Some(bitmap)
+            } else if self.glyph_pending(key) {
+                None
+            } else if Instant::now() < deadline {
+                Some(fonts.rasterize(key))
+            } else {
+                self.request_glyph(fonts, key);
+                None
+            }
+        };
+        let mut build = |renderer: &mut Renderer, quads: &mut Quads, partial| {
+            frame::build(
+                &screen,
+                &look,
+                fonts.cell,
+                &mut rasterize,
+                renderer,
+                quads,
+                partial,
+            )
+        };
+        let mut built = build(renderer, &mut quads, false);
         if built.is_err() {
             renderer.clear_glyphs(true);
-            built = frame::build(&screen, &look, fonts, renderer, &mut quads, false);
+            built = build(renderer, &mut quads, false);
         }
         if built.is_err() {
             // More glyphs than the largest atlas holds: what fits is shown.
             renderer.clear_glyphs(false);
-            let _ = frame::build(&screen, &look, fonts, renderer, &mut quads, true);
+            let _ = build(renderer, &mut quads, true);
         }
 
         // The texture starts on the screen pixel at or before the widget's corner, which

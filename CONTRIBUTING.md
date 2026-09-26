@@ -56,7 +56,9 @@ than being a `GtkGLArea`, whose buffer is sized by the integer scale and would b
 resampled on a fractional one.
 
 Glyphs are rasterised at the screen's scale, with the desktop's hinting, and packed into
-an atlas texture that grows when it fills. Box drawing and block characters are drawn
+an atlas texture that grows when it fills. A frame rasterises new glyphs itself for a few
+milliseconds and hands the rest to a thread with its own copy of the fonts; those cells
+fill in over the next frames. Box drawing and block characters are drawn
 by `box_drawing.rs` to the cell's exact size, so lines join across cells.
 
 ## Running

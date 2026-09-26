@@ -1,6 +1,9 @@
 //! The font at the size of the screen's pixels: cell metrics, and glyphs rasterised to
 //! bitmaps for the atlas, with Pango choosing fallback fonts and cairo drawing them.
 
+use std::collections::HashSet;
+use std::sync::mpsc;
+
 use crate::box_drawing;
 use crate::gtk::pango::prelude::*;
 use crate::gtk::{cairo, pango};
@@ -52,6 +55,8 @@ pub struct Fonts {
     /// Regular, bold, italic, bold italic: indexed by style.
     faces: [pango::FontDescription; 4],
     pub cell: CellMetrics,
+    /// What the fonts were made from, for a thread to make the same ones.
+    made_from: (pango::FontDescription, f64, cairo::FontOptions),
 }
 
 impl Fonts {
@@ -83,6 +88,7 @@ impl Fonts {
             context,
             faces: [regular, bold, italic, bold_italic],
             cell,
+            made_from: (font.clone(), dpi, options.clone()),
         }
     }
 
@@ -139,6 +145,64 @@ impl Fonts {
             pixels,
             color,
         })
+    }
+}
+
+/// Rasterises glyphs on a thread of its own, with the same fonts, for frames that would
+/// otherwise wait for many: a screenful of new CJK text takes a quarter of a second.
+pub struct GlyphThread {
+    requests: mpsc::Sender<GlyphKey>,
+    results: async_channel::Receiver<(GlyphKey, Option<Bitmap>)>,
+    /// Asked for and not yet taken back, so that each is asked for once.
+    pending: HashSet<GlyphKey>,
+}
+
+impl GlyphThread {
+    /// A thread rasterising with fonts made as `fonts` were. Its glyphs come back on the
+    /// receiver, until the thread is dropped.
+    pub fn spawn(fonts: &Fonts) -> (Self, async_channel::Receiver<(GlyphKey, Option<Bitmap>)>) {
+        let (requests, requested) = mpsc::channel::<GlyphKey>();
+        let (done, results) = async_channel::unbounded();
+        let (font, dpi, options) = fonts.made_from.clone();
+        let _ = std::thread::Builder::new()
+            .name("glyphs".to_owned())
+            .spawn(move || {
+                let fonts = Fonts::new(&font, dpi, &options);
+                for key in requested {
+                    let bitmap = fonts.rasterize(&key);
+                    if done.send_blocking((key, bitmap)).is_err() {
+                        break;
+                    }
+                }
+            });
+        let thread = Self {
+            requests,
+            results: results.clone(),
+            pending: HashSet::new(),
+        };
+        (thread, results)
+    }
+
+    pub fn request(&mut self, key: &GlyphKey) {
+        if self.pending.insert(key.clone()) {
+            let _ = self.requests.send(key.clone());
+        }
+    }
+
+    pub fn is_pending(&self, key: &GlyphKey) -> bool {
+        self.pending.contains(key)
+    }
+
+    /// Takes back a glyph the thread sent.
+    pub fn received(&mut self, key: &GlyphKey) {
+        self.pending.remove(key);
+    }
+}
+
+impl Drop for GlyphThread {
+    fn drop(&mut self) {
+        // Stops the thread at its next glyph, rather than after all it was asked for.
+        self.results.close();
     }
 }
 

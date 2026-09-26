@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use glow::HasContext;
 
-use crate::fonts::{Fonts, GlyphKey};
+use crate::fonts::{Bitmap, GlyphKey};
 use crate::gdk;
 use crate::gdk::prelude::*;
 use crate::glib;
@@ -311,16 +311,19 @@ impl Renderer {
         }
     }
 
-    /// Where `key`'s glyph is in the atlas, rasterised and uploaded the first time.
-    pub fn glyph(
+    /// Where `key`'s glyph is in the atlas, when it was uploaded; inside, nothing for a
+    /// glyph without ink.
+    pub fn glyph(&self, key: &GlyphKey) -> Option<Option<AtlasGlyph>> {
+        self.atlas.glyphs.get(key).copied()
+    }
+
+    /// Uploads `key`'s glyph to the atlas and says where it went.
+    pub fn insert_glyph(
         &mut self,
-        fonts: &Fonts,
         key: &GlyphKey,
+        bitmap: Option<Bitmap>,
     ) -> Result<Option<AtlasGlyph>, AtlasFull> {
-        if let Some(glyph) = self.atlas.glyphs.get(key) {
-            return Ok(*glyph);
-        }
-        let glyph = match fonts.rasterize(key) {
+        let glyph = match bitmap {
             None => None,
             Some(bitmap) => {
                 let (x, y) = self

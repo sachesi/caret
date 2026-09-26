@@ -8,7 +8,7 @@ use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::{Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor, Rgb};
 
-use crate::fonts::{self, CellMetrics, Fonts, GlyphKey, GlyphText};
+use crate::fonts::{self, Bitmap, CellMetrics, GlyphKey, GlyphText};
 use crate::palette::Palette;
 use crate::renderer::{AtlasFull, Kind, Quads, Renderer};
 
@@ -193,18 +193,20 @@ fn rgba(color: Rgb) -> [u8; 4] {
 }
 
 /// Fills `quads` in drawing order: backgrounds, the selection and a block cursor, glyphs,
-/// lines under and through text, then the other cursors. With `partial`, glyphs the atlas
-/// has no room for are left out instead of failing the frame.
+/// lines under and through text, then the other cursors. Glyphs not in the atlas yet come
+/// from `rasterize`, which may have none to give yet, and are then left out. With
+/// `partial`, so are glyphs the atlas has no room for, instead of failing the frame.
 pub fn build(
     screen: &Screen,
     look: &Look,
-    fonts: &Fonts,
+    metrics: CellMetrics,
+    rasterize: &mut impl FnMut(&GlyphKey) -> Option<Option<Bitmap>>,
     renderer: &mut Renderer,
     quads: &mut Quads,
     partial: bool,
 ) -> Result<(), AtlasFull> {
     quads.clear();
-    let cell = fonts.cell;
+    let cell = metrics;
     let x_of = |column: usize| (look.padding + column as i32 * cell.width) as f32;
     let y_of = |line: usize| (look.padding + line as i32 * cell.height) as f32;
     let (width, height) = (cell.width as f32, cell.height as f32);
@@ -289,11 +291,19 @@ pub fn build(
         let Some(key) = &cell.glyph else {
             continue;
         };
-        let glyph = match renderer.glyph(fonts, key) {
-            Ok(Some(glyph)) => glyph,
-            Ok(None) => continue,
-            Err(_) if partial => continue,
-            Err(full) => return Err(full),
+        let glyph = match renderer.glyph(key) {
+            Some(glyph) => glyph,
+            None => match rasterize(key) {
+                Some(bitmap) => match renderer.insert_glyph(key, bitmap) {
+                    Ok(glyph) => glyph,
+                    Err(_) if partial => continue,
+                    Err(full) => return Err(full),
+                },
+                None => continue,
+            },
+        };
+        let Some(glyph) = glyph else {
+            continue;
         };
         let under_cursor =
             block.is_some_and(|cursor| cursor.line == cell.line && cursor.column == cell.column);
@@ -317,7 +327,7 @@ pub fn build(
     }
 
     for cell in &screen.cells {
-        decorate(cell, &fonts.cell, x_of(cell.column), y_of(cell.line), quads);
+        decorate(cell, &metrics, x_of(cell.column), y_of(cell.line), quads);
     }
 
     if let Some(cursor) = cursor.filter(|_| look.cursor_on || !look.focused) {
