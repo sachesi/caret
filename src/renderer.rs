@@ -51,8 +51,13 @@ impl Quads {
 
     pub fn push(&mut self, rect: [f32; 4], uv: [f32; 4], color: [u8; 4], kind: Kind) {
         let mut quad = [0; QUAD_SIZE as usize];
-        for (bytes, value) in quad.chunks_exact_mut(4).zip(rect.into_iter().chain(uv)) {
-            bytes.copy_from_slice(&value.to_ne_bytes());
+        for (bytes, value) in quad
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .zip(rect.into_iter().chain(uv))
+        {
+            *bytes = value.to_ne_bytes();
         }
         quad[32..36].copy_from_slice(&color);
         quad[36..].copy_from_slice(&(kind as u8 as f32).to_ne_bytes());

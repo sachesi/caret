@@ -134,7 +134,9 @@ impl Fonts {
         })?;
         // A white mask has every colour channel equal to its alpha.
         let color = pixels
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|p| p[0] != p[3] || p[1] != p[3] || p[2] != p[3]);
         let baseline = pango::units_to_double(layout.baseline()).round() as i32;
         Some(Bitmap {
@@ -250,9 +252,8 @@ fn paint(width: i32, height: i32, draw: impl FnOnce(&cairo::Context)) -> Option<
     let mut pixels = Vec::with_capacity(row * usize::try_from(height).ok()?);
     for line in data.chunks(stride) {
         // Cairo's ARGB32 is a native-endian word per pixel.
-        for pixel in line[..row].chunks_exact(4) {
-            let [b, g, r, a] =
-                u32::from_ne_bytes([pixel[0], pixel[1], pixel[2], pixel[3]]).to_le_bytes();
+        for pixel in line[..row].as_chunks::<4>().0 {
+            let [b, g, r, a] = u32::from_ne_bytes(*pixel).to_le_bytes();
             pixels.extend_from_slice(&[r, g, b, a]);
         }
     }
