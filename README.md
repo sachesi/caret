@@ -45,6 +45,8 @@ Debian 13 and Ubuntu 24.04 ship a GTK and libadwaita older than Tangent needs.
 Arch Linux: the AUR package [tangent](https://aur.archlinux.org/packages/tangent), built
 from [packaging/aur/PKGBUILD](packaging/aur/PKGBUILD), which each release tag updates.
 
+The same packages are attached to each [release](https://github.com/sachesi/tangent/releases).
+
 ## Building and installing
 
     just build

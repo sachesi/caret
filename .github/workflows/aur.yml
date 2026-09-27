@@ -1,8 +1,8 @@
 name: AUR
 
 # A release tag updates the tangent package on the AUR from packaging/aur/PKGBUILD, once
-# its GitHub release is published (ci.yml calls this). The PKGBUILD is built and installed
-# first, then pushed with its checksums and .SRCINFO filled in. Run by hand, it does the
+# CI has passed (ci.yml calls this). The release has already built and installed that
+# PKGBUILD, so this only fills in its checksums and .SRCINFO. Run by hand, it does the
 # same for the given version and pushes it only when asked to.
 on:
   workflow_call:
@@ -58,12 +58,6 @@ jobs:
           sed -i "s/^pkgver=.*/pkgver=${VERSION#v}/; s/^pkgrel=.*/pkgrel=$PKGREL/" aur/PKGBUILD
           chown -R builder aur
           su builder -c 'cd aur && updpkgsums && makepkg --printsrcinfo > .SRCINFO'
-      - name: Build
-        run: |
-          (source aur/PKGBUILD && pacman -S --noconfirm --needed --asdeps "${depends[@]}" "${makedepends[@]}")
-          su builder -c 'cd aur && makepkg --noconfirm'
-          # The dependencies resolve on Arch as it is today.
-          pacman -U --noconfirm aur/"$PKGNAME-${VERSION#v}-$PKGREL"-*.pkg.tar.zst
       - name: Push
         if: github.event_name == 'push' || inputs.push
         run: |
