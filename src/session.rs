@@ -168,6 +168,9 @@ impl Command {
             self.env.clone()
         };
         env.retain(|name, _| !FOREIGN.contains(&name.as_str()));
+        if env.remove(crate::CHOSE_RENDERER).is_some() {
+            env.remove("GSK_RENDERER");
+        }
         if !["USER", "HOME", "SHELL"]
             .iter()
             .all(|name| env.contains_key(*name))
@@ -371,6 +374,19 @@ mod tests {
         assert!(!env.contains_key("TMUX"));
         assert!(!env.contains_key("VTE_VERSION"));
         assert_eq!(command.program(), "/bin/zsh");
+    }
+
+    #[test]
+    fn the_renderer_tangent_chose_is_not_passed_on() {
+        let chosen = command(&[("GSK_RENDERER", "gl"), (crate::CHOSE_RENDERER, "1")]);
+        let env = chosen.environment();
+        assert!(!env.contains_key("GSK_RENDERER"));
+        assert!(!env.contains_key(crate::CHOSE_RENDERER));
+        let own = command(&[("GSK_RENDERER", "vulkan")]);
+        assert_eq!(
+            own.environment().get("GSK_RENDERER").map(String::as_str),
+            Some("vulkan")
+        );
     }
 
     #[test]

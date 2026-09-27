@@ -53,7 +53,10 @@ from the atlas, and lines for underlines and strikeout. It goes into a texture t
 owns, as large as the widget in the screen's pixels, and GTK composites that texture one
 texel to a pixel, placed on the pixel grid. The widget makes its own `GdkGLContext` rather
 than being a `GtkGLArea`, whose buffer is sized by the integer scale and would be
-resampled on a fractional one.
+resampled on a fractional one. Tangent asks GTK for its GL renderer, which takes that
+texture as it is, unless `GSK_RENDERER` already names one: the Vulkan renderer has to
+import it as a dmabuf, and where the driver refuses Mesa's implicit modifier it copies
+every frame through the CPU instead.
 
 Glyphs are rasterised at the screen's scale, with the desktop's hinting, and packed into
 an atlas texture that grows when it fills. A frame rasterises new glyphs itself for a few

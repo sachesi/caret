@@ -16,15 +16,31 @@ pub mod window;
 pub use adw::{gdk, gio, glib, gtk};
 pub use libadwaita as adw;
 
-/// Translations, resources, the application name: everything that does not touch GTK.
+/// Set beside `GSK_RENDERER` when Tangent chose GTK's renderer itself, so that the
+/// programs it starts get neither.
+pub const CHOSE_RENDERER: &str = "TANGENT_CHOSE_GSK_RENDERER";
+
+/// Translations, resources, the application name, GTK's renderer: everything that is
+/// settled before GTK starts.
 ///
 /// # Safety
 ///
-/// Call it first in `main`, before any thread is started: it sets the locale, which reads
-/// the environment and changes state other threads may be reading.
+/// Call it first in `main`, before any thread is started: it sets the locale and the
+/// environment, which other threads may be reading.
 pub unsafe fn init_early() {
     // SAFETY: the caller has started no thread yet.
     unsafe { gettextrs::setlocale(gettextrs::LocaleCategory::LcAll, "") };
+    // The terminal draws into OpenGL textures, which GTK's GL renderer takes as they are.
+    // Its Vulkan renderer exports each one as a dmabuf, which some drivers cannot import
+    // (radv refuses Mesa's implicit modifier), and then copies every frame through the
+    // CPU: 12 ms a frame on the main thread instead of 2.
+    if std::env::var_os("GSK_RENDERER").is_none() {
+        // SAFETY: as above.
+        unsafe {
+            std::env::set_var("GSK_RENDERER", "gl");
+            std::env::set_var(CHOSE_RENDERER, "1");
+        }
+    }
     gettextrs::bindtextdomain(config::GETTEXT_PACKAGE, config::LOCALEDIR).ok();
     gettextrs::bind_textdomain_codeset(config::GETTEXT_PACKAGE, "UTF-8").ok();
     gettextrs::textdomain(config::GETTEXT_PACKAGE).ok();

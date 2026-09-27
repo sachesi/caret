@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use glow::HasContext;
 
-use crate::fonts::{Bitmap, GlyphKey};
+use crate::fonts::{Bitmap, GlyphKey, GlyphText};
 use crate::gdk;
 use crate::gdk::prelude::*;
 use crate::glib;
@@ -50,12 +50,13 @@ impl Quads {
     }
 
     pub fn push(&mut self, rect: [f32; 4], uv: [f32; 4], color: [u8; 4], kind: Kind) {
-        for value in rect.into_iter().chain(uv) {
-            self.bytes.extend_from_slice(&value.to_ne_bytes());
+        let mut quad = [0; QUAD_SIZE as usize];
+        for (bytes, value) in quad.chunks_exact_mut(4).zip(rect.into_iter().chain(uv)) {
+            bytes.copy_from_slice(&value.to_ne_bytes());
         }
-        self.bytes.extend_from_slice(&color);
-        self.bytes
-            .extend_from_slice(&(kind as u8 as f32).to_ne_bytes());
+        quad[32..36].copy_from_slice(&color);
+        quad[36..].copy_from_slice(&(kind as u8 as f32).to_ne_bytes());
+        self.bytes.extend_from_slice(&quad);
         self.count += 1;
     }
 }
@@ -71,6 +72,16 @@ pub struct AtlasGlyph {
     pub color: bool,
 }
 
+/// Where an ASCII glyph in one of the four styles is kept in the atlas's table.
+fn ascii_index(key: &GlyphKey) -> Option<usize> {
+    match key.text {
+        GlyphText::Char(c) if c.is_ascii() && !key.wide => {
+            Some(usize::from(key.style & 3) * 128 + c as usize)
+        }
+        _ => None,
+    }
+}
+
 /// The atlas has no room left for a glyph a frame needs.
 #[derive(Debug)]
 pub struct AtlasFull;
@@ -83,6 +94,8 @@ struct Atlas {
     y: i32,
     row: i32,
     glyphs: HashMap<GlyphKey, Option<AtlasGlyph>>,
+    /// ASCII in each style, most of what a frame draws, looked up without hashing.
+    ascii: Vec<Option<Option<AtlasGlyph>>>,
 }
 
 impl Atlas {
@@ -292,6 +305,7 @@ impl Renderer {
                 y: 0,
                 row: 0,
                 glyphs: HashMap::new(),
+                ascii: vec![None; 4 * 128],
             };
             let framebuffer = gl.create_framebuffer()?;
 
@@ -314,7 +328,10 @@ impl Renderer {
     /// Where `key`'s glyph is in the atlas, when it was uploaded; inside, nothing for a
     /// glyph without ink.
     pub fn glyph(&self, key: &GlyphKey) -> Option<Option<AtlasGlyph>> {
-        self.atlas.glyphs.get(key).copied()
+        match ascii_index(key) {
+            Some(index) => self.atlas.ascii[index],
+            None => self.atlas.glyphs.get(key).copied(),
+        }
     }
 
     /// Uploads `key`'s glyph to the atlas and says where it went.
@@ -359,7 +376,12 @@ impl Renderer {
                 })
             }
         };
-        self.atlas.glyphs.insert(key.clone(), glyph);
+        match ascii_index(key) {
+            Some(index) => self.atlas.ascii[index] = Some(glyph),
+            None => {
+                self.atlas.glyphs.insert(key.clone(), glyph);
+            }
+        }
         Ok(glyph)
     }
 
@@ -367,6 +389,7 @@ impl Renderer {
     /// grows first, while the GPU allows.
     pub fn clear_glyphs(&mut self, grow: bool) {
         self.atlas.glyphs.clear();
+        self.atlas.ascii.fill(None);
         self.atlas.x = 0;
         self.atlas.y = 0;
         self.atlas.row = 0;

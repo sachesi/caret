@@ -9,7 +9,8 @@ just`. `just check` also wants `desktop-file-validate`, `appstreamcli` and gette
 
 To run: GTK 4.22, libadwaita 1.9, `libEGL.so.1` with a driver for OpenGL 3.3 or OpenGL ES
 3.0, and a session bus. Without a GL context the tab says why and starts no
-program.
+program. Tangent runs GTK's GL renderer unless `GSK_RENDERER` names another; the
+programs in the terminal do not inherit that choice.
 
 ## Build
 
