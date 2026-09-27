@@ -1,0 +1,33 @@
+Source: tangent
+Section: x11
+Priority: optional
+Maintainer: sachesi <xsachesi@pm.me>
+Build-Depends: debhelper-compat (= 13),
+               cargo,
+               rustc (>= 1.92),
+               pkg-config,
+               just,
+               blueprint-compiler,
+               gettext,
+               libgtk-4-dev (>= 4.22),
+               libadwaita-1-dev (>= 1.9),
+               libglib2.0-dev (>= 2.80)
+Standards-Version: 4.7.2
+Homepage: https://github.com/sachesi/tangent
+Rules-Requires-Root: no
+
+Package: tangent
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         libgtk-4-1 (>= 4.22),
+         libadwaita-1-0 (>= 1.9),
+         hicolor-icon-theme,
+         libegl1
+Suggests: xdg-terminal-exec
+Description: GPU-rendered terminal for GTK 4 and libadwaita
+ Tangent is a terminal built with GTK 4 and libadwaita. Programs' output is
+ parsed by alacritty_terminal, and Tangent draws the text itself with OpenGL,
+ one texel to each pixel of the screen, so it stays sharp at fractional scales.
+ It has tabs, search through the history, links opened with Ctrl and a click,
+ and follows the desktop's font and style.
