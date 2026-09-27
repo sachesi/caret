@@ -88,3 +88,12 @@ jobs:
       contents: write
     # A called workflow sees no secrets unless the caller passes them on.
     secrets: inherit
+
+  aur:
+    name: AUR
+    # After the release, whose job also checks that the tag matches the sources.
+    needs: release
+    uses: ./.github/workflows/aur.yml
+    # A called workflow sees no secrets, its environment's included, unless the
+    # caller passes them on.
+    secrets: inherit
