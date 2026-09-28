@@ -140,6 +140,8 @@ mod imp {
             klass.set_accessible_role(gtk::AccessibleRole::Terminal);
             klass.install_action("term.copy", None, |view, _, _| view.copy());
             klass.install_action("term.paste", None, |view, _, _| view.paste());
+            klass.install_action("term.select-all", None, |view, _, _| view.select_all());
+            klass.install_action("term.deselect", None, |view, _, _| view.clear_selection());
             klass.install_action("term.open-link", None, |view, _, _| view.open_menu_link());
             klass.install_action("term.copy-link", None, |view, _, _| view.copy_menu_link());
         }
@@ -1338,6 +1340,29 @@ impl TerminalView {
         if let Some(text) = self.selection_text() {
             self.clipboard().set_text(&text);
         }
+    }
+
+    pub fn select_all(&self) {
+        if let Some(session) = self.imp().session.borrow().as_ref() {
+            let mut term = session.lock();
+            let top = term.topmost_line();
+            let blank = |line: Line| {
+                let row = &term.grid()[line];
+                (0..term.columns()).all(|column| row[Column(column)].c == ' ')
+            };
+            let mut bottom = term.bottommost_line();
+            while bottom > top && blank(bottom) {
+                bottom -= 1;
+            }
+            let mut selection = Selection::new(
+                SelectionType::Simple,
+                Point::new(top, Column(0)),
+                Side::Left,
+            );
+            selection.update(Point::new(bottom, term.last_column()), Side::Right);
+            term.selection = Some(selection);
+        }
+        self.queue_draw();
     }
 
     pub fn paste(&self) {

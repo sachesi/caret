@@ -214,6 +214,8 @@ impl TangentApplication {
             ("win.close-tab", &["<Control><Shift>w"]),
             ("win.copy", &["<Control><Shift>c"]),
             ("win.paste", &["<Control><Shift>v"]),
+            ("win.select-all", &["<Control><Shift>a"]),
+            ("win.deselect", &["<Control><Shift>d"]),
             ("win.find", &["<Control><Shift>f"]),
             (
                 "win.zoom-in",

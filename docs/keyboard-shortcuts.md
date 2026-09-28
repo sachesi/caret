@@ -18,6 +18,7 @@ programs in the terminal.
 | Ctrl+Shift+H | Show or hide the title bar |
 | F11 | Full screen |
 | Ctrl+Shift+C, Ctrl+Shift+V | Copy, paste |
+| Ctrl+Shift+A, Ctrl+Shift+D | Select all text, including the history, and deselect |
 | Ctrl+Shift+F | Find in the history |
 | Shift+Page Up, Shift+Page Down | Scroll a page |
 | Ctrl+Shift+Up, Ctrl+Shift+Down | Scroll to the previous, next prompt, where the shell marks them |

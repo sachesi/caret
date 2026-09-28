@@ -57,7 +57,8 @@ foreground asks first.
 Dragging selects, a double click selects a word and a triple click a line, and Shift and a
 click extends the selection. What is selected is also the primary selection, which a
 middle click pastes. Ctrl+Shift+C and Ctrl+Shift+V copy and paste with the clipboard,
-and the context menu has both. A program that asks for mouse events gets them; hold Shift
+and the context menu has both. Ctrl+Shift+A selects all the text, the history too, and
+Ctrl+Shift+D deselects. A program that asks for mouse events gets them; hold Shift
 to select anyway.
 
 Pasting into a program that asks for bracketed paste marks the text as pasted, so a

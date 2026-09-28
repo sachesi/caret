@@ -60,6 +60,16 @@ mod imp {
                     view.copy();
                 }
             });
+            klass.install_action("win.select-all", None, |window, _, _| {
+                if let Some(view) = window.current_view() {
+                    view.select_all();
+                }
+            });
+            klass.install_action("win.deselect", None, |window, _, _| {
+                if let Some(view) = window.current_view() {
+                    view.clear_selection();
+                }
+            });
             klass.install_action("win.paste", None, |window, _, _| {
                 if let Some(view) = window.current_view() {
                     view.paste();

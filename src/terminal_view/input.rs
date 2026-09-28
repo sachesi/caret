@@ -675,6 +675,12 @@ impl TerminalView {
         for (label, action, accel) in [
             (gettext("_Copy"), "term.copy", "<Control><Shift>c"),
             (gettext("_Paste"), "term.paste", "<Control><Shift>v"),
+            (
+                gettext("Select _All"),
+                "term.select-all",
+                "<Control><Shift>a",
+            ),
+            (gettext("_Deselect"), "term.deselect", "<Control><Shift>d"),
         ] {
             let item = gio::MenuItem::new(Some(&label), Some(action));
             item.set_attribute_value("accel", Some(&accel.to_variant()));
@@ -715,7 +721,9 @@ impl TerminalView {
             menu.append_section(None, &close);
         }
         imp.menu_link.replace(link);
-        self.action_set_enabled("term.copy", self.has_selection());
+        let selected = self.has_selection();
+        self.action_set_enabled("term.copy", selected);
+        self.action_set_enabled("term.deselect", selected);
 
         let popover = imp
             .popover

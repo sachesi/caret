@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tangent 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/tangent/issues\n"
-"POT-Creation-Date: 2026-09-28 15:00+0300\n"
+"POT-Creation-Date: 2026-09-28 23:11+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -19,7 +19,7 @@ msgstr ""
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
 #: data/io.github.sachesi.tangent.desktop:2
-#: data/io.github.sachesi.tangent.metainfo.xml:6 src/window.rs:511
+#: data/io.github.sachesi.tangent.metainfo.xml:6 src/window.rs:521
 #: ui/window.ui:58 ui/window.ui:83
 #, no-c-format
 msgid "Tangent"
@@ -212,23 +212,23 @@ msgstr ""
 msgid "[-e] [COMMAND [ARGUMENT…]]"
 msgstr ""
 
-#: src/application.rs:241
+#: src/application.rs:243
 #, no-c-format
 msgid "A terminal drawn by the GPU"
 msgstr ""
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:243
+#: src/application.rs:245
 #, no-c-format
 msgid "translator-credits"
 msgstr ""
 
-#: src/preferences.rs:15 ui/shortcuts_dialog.ui:158
+#: src/preferences.rs:15 ui/shortcuts_dialog.ui:170
 #, no-c-format
 msgid "Preferences"
 msgstr ""
 
-#: src/preferences.rs:20 ui/shortcuts_dialog.ui:155
+#: src/preferences.rs:20 ui/shortcuts_dialog.ui:167
 #, no-c-format
 msgid "General"
 msgstr ""
@@ -385,56 +385,56 @@ msgstr ""
 msgid "Programs can put text on the clipboard, but never read it"
 msgstr ""
 
-#: src/terminal_view.rs:253
+#: src/terminal_view.rs:255
 #, no-c-format
 msgid "The terminal cannot be drawn: %s"
 msgstr ""
 
-#: src/terminal_view.rs:701
+#: src/terminal_view.rs:703
 #, no-c-format
 msgid "“%s” exited with status %s"
 msgstr ""
 
-#: src/terminal_view.rs:705
+#: src/terminal_view.rs:707
 #, no-c-format
 msgid "“%s” was ended by signal %s"
 msgstr ""
 
-#: src/terminal_view.rs:708
+#: src/terminal_view.rs:710
 #, no-c-format
 msgid "“%s” ended"
 msgstr ""
 
 #. Translators: the program, then why it could not start.
-#: src/terminal_view.rs:992
+#: src/terminal_view.rs:994
 #, no-c-format
 msgid "Could not start “%s”: %s"
 msgstr ""
 
-#: src/terminal_view.rs:995
+#: src/terminal_view.rs:997
 #, no-c-format
 msgid "Could not start the shell: %s"
 msgstr ""
 
-#: src/terminal_view.rs:1374
+#: src/terminal_view.rs:1393
 #, no-c-format
 msgid "Paste Several Lines?"
 msgstr ""
 
-#: src/terminal_view.rs:1376
+#: src/terminal_view.rs:1395
 #, no-c-format
 msgid ""
 "The program here does not mark pasted text, so each line runs as if typed "
 "and entered."
 msgstr ""
 
-#: src/terminal_view.rs:1380 src/window.rs:436 src/window.rs:532
-#: src/window.rs:560
+#: src/terminal_view.rs:1399 src/window.rs:446 src/window.rs:542
+#: src/window.rs:570
 #, no-c-format
 msgid "_Cancel"
 msgstr ""
 
-#: src/terminal_view.rs:1381 src/terminal_view/input.rs:677
+#: src/terminal_view.rs:1400 src/terminal_view/input.rs:677
 #, no-c-format
 msgid "_Paste"
 msgstr ""
@@ -449,117 +449,127 @@ msgstr ""
 msgid "_Copy"
 msgstr ""
 
-#: src/terminal_view/input.rs:686
+#: src/terminal_view/input.rs:679
+#, no-c-format
+msgid "Select _All"
+msgstr ""
+
+#: src/terminal_view/input.rs:683
+#, no-c-format
+msgid "_Deselect"
+msgstr ""
+
+#: src/terminal_view/input.rs:692
 #, no-c-format
 msgid "_Open Link"
 msgstr ""
 
-#: src/terminal_view/input.rs:687
+#: src/terminal_view/input.rs:693
 #, no-c-format
 msgid "Copy _Link Address"
 msgstr ""
 
-#: src/terminal_view/input.rs:696 ui/window.ui:12
+#: src/terminal_view/input.rs:702 ui/window.ui:12
 #, no-c-format
 msgid "New _Window"
 msgstr ""
 
-#: src/terminal_view/input.rs:698 ui/window.ui:16
+#: src/terminal_view/input.rs:704 ui/window.ui:16
 #, no-c-format
 msgid "New _Tab"
 msgstr ""
 
-#: src/terminal_view/input.rs:699
+#: src/terminal_view/input.rs:705
 #, no-c-format
 msgid "_Find…"
 msgstr ""
 
-#: src/terminal_view/input.rs:702
+#: src/terminal_view/input.rs:708
 #, no-c-format
 msgid "Show _All Tabs"
 msgstr ""
 
-#: src/terminal_view/input.rs:707
+#: src/terminal_view/input.rs:713
 #, no-c-format
 msgid "Title _Bar"
 msgstr ""
 
-#: src/terminal_view/input.rs:708 ui/window.ui:22
+#: src/terminal_view/input.rs:714 ui/window.ui:22
 #, no-c-format
 msgid "_Full Screen"
 msgstr ""
 
-#: src/terminal_view/input.rs:709 ui/window.ui:28
+#: src/terminal_view/input.rs:715 ui/window.ui:28
 #, no-c-format
 msgid "_Preferences"
 msgstr ""
 
-#: src/terminal_view/input.rs:710 ui/window.ui:32
+#: src/terminal_view/input.rs:716 ui/window.ui:32
 #, no-c-format
 msgid "_Keyboard Shortcuts"
 msgstr ""
 
-#: src/terminal_view/input.rs:711 ui/window.ui:36
+#: src/terminal_view/input.rs:717 ui/window.ui:36
 #, no-c-format
 msgid "_About Tangent"
 msgstr ""
 
-#: src/terminal_view/input.rs:714
+#: src/terminal_view/input.rs:720
 #, no-c-format
 msgid "_Close Window"
 msgstr ""
 
-#: src/window.rs:389
+#: src/window.rs:399
 #, no-c-format
 msgid "Command Finished"
 msgstr ""
 
-#: src/window.rs:390
+#: src/window.rs:400
 #, no-c-format
 msgid "Command Failed"
 msgstr ""
 
-#: src/window.rs:429
+#: src/window.rs:439
 #, no-c-format
 msgid "Rename Tab"
 msgstr ""
 
-#: src/window.rs:431
+#: src/window.rs:441
 #, no-c-format
 msgid "Without a name, the tab shows the program’s title."
 msgstr ""
 
-#: src/window.rs:437
+#: src/window.rs:447
 #, no-c-format
 msgid "_Rename"
 msgstr ""
 
-#: src/window.rs:526
+#: src/window.rs:536
 #, no-c-format
 msgid "A program is still running in this tab and will be stopped."
 msgstr ""
 
-#: src/window.rs:528
+#: src/window.rs:538
 #, no-c-format
 msgid "“%s” is still running in this tab and will be stopped."
 msgstr ""
 
-#: src/window.rs:530
+#: src/window.rs:540
 #, no-c-format
 msgid "Close Tab?"
 msgstr ""
 
-#: src/window.rs:533 src/window.rs:561
+#: src/window.rs:543 src/window.rs:571
 #, no-c-format
 msgid "C_lose"
 msgstr ""
 
-#: src/window.rs:549
+#: src/window.rs:559
 #, no-c-format
 msgid "Close Window?"
 msgstr ""
 
-#: src/window.rs:552
+#: src/window.rs:562
 #, no-c-format
 msgid "A program is still running in %d tab and will be stopped."
 msgid_plural "Programs are still running in %d tabs and will be stopped."
@@ -626,39 +636,47 @@ msgstr ""
 msgid "Paste"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:105 ui/window.ui:103
-msgid "Find"
+#: ui/shortcuts_dialog.ui:105
+msgid "Select All"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:111
-msgid "Scroll Up a Page"
+msgid "Deselect"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:117
-msgid "Scroll Down a Page"
+#: ui/shortcuts_dialog.ui:117 ui/window.ui:103
+msgid "Find"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:123
-msgid "Scroll to the Previous Prompt"
+msgid "Scroll Up a Page"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:129
-msgid "Scroll to the Next Prompt"
+msgid "Scroll Down a Page"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:135
-msgid "Zoom In"
+msgid "Scroll to the Previous Prompt"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:141
-msgid "Zoom Out"
+msgid "Scroll to the Next Prompt"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:147
+msgid "Zoom In"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:153
+msgid "Zoom Out"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:159
 msgid "Original Size"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:164
+#: ui/shortcuts_dialog.ui:176
 msgid "Keyboard Shortcuts"
 msgstr ""
 
