@@ -100,6 +100,13 @@ impl Filter {
                     self.finish(out, reports);
                 }
                 0x1b => self.state = State::BodyEscape,
+                // Cancel and substitute end the command in the parser too, which then acts
+                // on them; holding on would hide the output after them.
+                0x18 | 0x1a => {
+                    self.state = State::Ground;
+                    self.finish(out, reports);
+                    out.push(byte);
+                }
                 _ => {
                     self.body.push(byte);
                     let taken = TAKEN.iter().any(|prefix| {
@@ -121,15 +128,15 @@ impl Filter {
                     self.state = State::Ground;
                     self.finish(out, reports);
                 } else {
-                    // An escape that is not a terminator cuts the command short, as it
-                    // does in the parser.
-                    self.body.clear();
+                    // An escape that is not a terminator ends the command, as it does in
+                    // the parser, and starts a sequence of its own.
+                    self.finish(out, reports);
                     self.state = State::Escape;
                     self.byte(byte, out, reports);
                 }
             }
             State::Passing => match byte {
-                0x07 => {
+                0x07 | 0x18 | 0x1a => {
                     out.push(byte);
                     self.state = State::Ground;
                 }
@@ -162,7 +169,7 @@ impl Filter {
                     }),
                     (Some("container"), Some("push")) => {
                         if let (Some(name), Some(runtime)) = (fields.next(), fields.next())
-                            && !name.is_empty()
+                            && container_name(name)
                         {
                             reports.push(Report::ContainerEntered {
                                 name: name.to_owned(),
@@ -199,6 +206,14 @@ impl Filter {
             _ => {}
         }
     }
+}
+
+/// Whether `name` is one a container can have, which also keeps it from reading as an
+/// option to the tool that enters it.
+fn container_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && chars.all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c))
 }
 
 /// The local path of a `file://` address, or none for another host's.
@@ -357,6 +372,31 @@ mod tests {
         let (out, reports) = filtered(&[b"x\x1b]7;file://", b"/tmp/a%20b\x1b", b"\\y"]);
         assert_eq!(out, b"xy");
         assert_eq!(reports, [Report::Directory(PathBuf::from("/tmp/a b"))]);
+    }
+
+    #[test]
+    fn cancel_ends_a_command_as_in_the_parser() {
+        let (out, reports) = filtered(&[b"\x1b]7;file:///tmp\x18shown\x1b]9;hi\x1b[1mbold"]);
+        assert_eq!(out, b"\x18shown\x1b[1mbold");
+        assert_eq!(
+            reports,
+            [
+                Report::Directory(PathBuf::from("/tmp")),
+                Report::Notification {
+                    title: String::new(),
+                    body: "hi".into()
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn containers_with_names_that_read_as_options_are_ignored() {
+        let (_, reports) = filtered(&[
+            b"\x1b]777;container;push;--root;distrobox\x07",
+            b"\x1b]777;container;push;a b;toolbox\x07",
+        ]);
+        assert!(reports.is_empty());
     }
 
     #[test]
