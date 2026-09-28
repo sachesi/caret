@@ -462,8 +462,16 @@ impl TerminalView {
             self.cell_at(x, y)
                 .and_then(|(point, _)| link_in(&term, point, ctrl))
         };
-        let pointer = ctrl && link.is_some();
-        self.set_cursor_from_name(Some(if pointer { "pointer" } else { "text" }));
+        let reporting = self.mode().intersects(TermMode::MOUSE_MODE)
+            && !state.contains(gdk::ModifierType::SHIFT_MASK);
+        let cursor = if ctrl && link.is_some() {
+            "pointer"
+        } else if reporting {
+            "default"
+        } else {
+            "text"
+        };
+        self.set_cursor_from_name(Some(cursor));
         if self.tooltip_text().as_deref() != link.as_deref() {
             self.set_tooltip_text(link.as_deref());
         }
