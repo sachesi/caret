@@ -32,6 +32,16 @@
       <summary>Lines of history</summary>
       <description>How many lines that scrolled off the top are kept to scroll back to.</description>
     </key>
+    <key name="scroll-on-output" type="b">
+      <default>false</default>
+      <summary>Scroll on output</summary>
+      <description>Whether output brings a view scrolled back into the history to the bottom.</description>
+    </key>
+    <key name="scroll-on-keystroke" type="b">
+      <default>true</default>
+      <summary>Scroll on keystroke</summary>
+      <description>Whether typing or pasting brings a view scrolled back into the history to the bottom.</description>
+    </key>
     <key name="audible-bell" type="b">
       <default>true</default>
       <summary>Terminal bell</summary>

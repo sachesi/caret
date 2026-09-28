@@ -181,6 +181,22 @@ pub fn preferences_dialog() -> adw::PreferencesDialog {
         .bind("scrollback-lines", &scrollback, "value")
         .build();
     behaviour.add(&scrollback);
+    let scroll_on_output = adw::SwitchRow::builder()
+        .title(gettext("Scroll on Output"))
+        .subtitle(gettext("Go back to the bottom when a program writes"))
+        .build();
+    settings
+        .bind("scroll-on-output", &scroll_on_output, "active")
+        .build();
+    behaviour.add(&scroll_on_output);
+    let scroll_on_keystroke = adw::SwitchRow::builder()
+        .title(gettext("Scroll on Keystroke"))
+        .subtitle(gettext("Go back to the bottom when typing or pasting"))
+        .build();
+    settings
+        .bind("scroll-on-keystroke", &scroll_on_keystroke, "active")
+        .build();
+    behaviour.add(&scroll_on_keystroke);
     let bell = adw::SwitchRow::builder()
         .title(gettext("Terminal Bell"))
         .subtitle(gettext("Sound the bell when a program rings it"))

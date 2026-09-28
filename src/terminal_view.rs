@@ -463,7 +463,7 @@ impl TerminalView {
         }
         if let Some(session) = self.imp().session.borrow().as_ref() {
             let mut term = session.lock();
-            if term.grid().display_offset() != 0 {
+            if term.grid().display_offset() != 0 && settings().boolean("scroll-on-keystroke") {
                 term.scroll_display(Scroll::Bottom);
             }
             drop(term);
@@ -478,7 +478,17 @@ impl TerminalView {
         let imp = self.imp();
         match event {
             // The frame takes the terminal's lock once for all the output since the last one.
-            Event::Wakeup => self.queue_draw(),
+            Event::Wakeup => {
+                if settings().boolean("scroll-on-output")
+                    && let Some(session) = imp.session.borrow().as_ref()
+                {
+                    let mut term = session.lock();
+                    if term.grid().display_offset() != 0 {
+                        term.scroll_display(Scroll::Bottom);
+                    }
+                }
+                self.queue_draw();
+            }
             Event::Title(title) => self.set_title(&title),
             Event::ResetTitle => {
                 let title = imp.default_title.borrow().clone();
