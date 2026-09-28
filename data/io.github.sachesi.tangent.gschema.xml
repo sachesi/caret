@@ -32,6 +32,11 @@
       <summary>Lines of history</summary>
       <description>How many lines that scrolled off the top are kept to scroll back to.</description>
     </key>
+    <key name="custom-command" type="s">
+      <default>''</default>
+      <summary>Custom command</summary>
+      <description>A command line that tabs run instead of the shell, split into words the way the shell does; empty for the shell.</description>
+    </key>
     <key name="scroll-on-output" type="b">
       <default>false</default>
       <summary>Scroll on output</summary>

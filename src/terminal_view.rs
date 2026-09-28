@@ -416,7 +416,18 @@ impl TerminalView {
 
     /// Runs `command` once the widget has a size, so the program starts at the size it
     /// will be shown at.
-    pub fn spawn(&self, command: Command) {
+    pub fn spawn(&self, mut command: Command) {
+        let custom = settings().string("custom-command");
+        if command.argv.is_empty() && !custom.trim().is_empty() {
+            // A line that does not parse is run whole, so that the tab says it failed.
+            command.argv = glib::shell_parse_argv(custom.as_str())
+                .map(|argv| {
+                    argv.iter()
+                        .map(|word| word.to_string_lossy().into_owned())
+                        .collect()
+                })
+                .unwrap_or_else(|_| vec![custom.to_string()]);
+        }
         let program = command.program();
         let name = Path::new(&program)
             .file_name()

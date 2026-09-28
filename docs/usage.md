@@ -8,7 +8,8 @@
     tangent -- ssh host                  # the same, the way GOption spells it
 
 Everything after `-e` or `-x` is the command and its arguments, as launchers such as
-xdg-terminal-exec expect. The shell is `$SHELL`, or the one in your passwd entry. Each
+xdg-terminal-exec expect. The shell is `$SHELL`, or the one in your passwd entry; Custom Command in Preferences
+runs something else in its place. Each
 start opens a window in the Tangent that is already running, and its program gets the
 environment of that start rather than the running Tangent's. Variables that belong to
 another terminal, or to tmux or screen around the command line (`TMUX`, `VTE_VERSION`,

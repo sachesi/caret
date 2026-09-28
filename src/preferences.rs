@@ -163,6 +163,13 @@ pub fn preferences_dialog() -> adw::PreferencesDialog {
     let behaviour = adw::PreferencesGroup::builder()
         .title(gettext("Behaviour"))
         .build();
+    let custom_command = adw::EntryRow::builder()
+        .title(gettext("Custom Command, Instead of the Shell"))
+        .build();
+    settings
+        .bind("custom-command", &custom_command, "text")
+        .build();
+    behaviour.add(&custom_command);
     let scrollback = adw::SpinRow::builder()
         .title(gettext("Lines of History"))
         .subtitle(gettext(

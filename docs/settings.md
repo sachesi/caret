@@ -12,6 +12,7 @@ Changes apply immediately to open windows.
 | `font` | Pango font description, or empty | empty | Use the System Font, Font |
 | `color-scheme` | `system`, `light`, `dark` | `system` | Style |
 | `cursor-shape` | `block`, `beam`, `underline` | `block` | Cursor Shape |
+| `custom-command` | command line, or empty | empty | Custom Command, Instead of the Shell |
 | `scrollback-lines` | 0 to 1000000 | 10000 | Lines of History |
 | `scroll-on-output` | bool | false | Scroll on Output |
 | `scroll-on-keystroke` | bool | true | Scroll on Keystroke |
