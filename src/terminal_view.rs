@@ -32,6 +32,7 @@ use crate::palette::Palette;
 use crate::renderer::{Quads, Renderer};
 use crate::session::{Command, Session};
 use crate::settings::{self, settings};
+use crate::shell::Report;
 use crate::{adw, gdk, gio, glib, gtk};
 
 mod accessible;
@@ -102,6 +103,16 @@ mod imp {
         pub reported_button: Cell<Option<crate::encode::MouseButton>>,
         pub reported_cell: Cell<Option<(usize, usize)>>,
         pub selecting: Cell<bool>,
+        /// Where the shell said it is, which is right where `/proc` is not: in a container
+        /// or on another machine the shell was started from.
+        pub shell_directory: RefCell<Option<PathBuf>>,
+        /// The toolbox or distrobox containers the shell entered, innermost last, by name
+        /// and tool.
+        pub containers: RefCell<Vec<(String, String)>>,
+        /// When the command the shell is running started, from its OSC 133 marks.
+        pub command_started: Cell<Option<Instant>>,
+        /// Tells views apart in notifications, which outlive them.
+        pub serial: Cell<u64>,
         /// Where a selecting drag is, for scrolling on while it stays outside the text.
         pub drag_point: Cell<(f64, f64)>,
         pub autoscroll: RefCell<Option<glib::SourceId>>,
@@ -150,6 +161,14 @@ mod imp {
                 vec![
                     Signal::builder("exited").build(),
                     Signal::builder("bell").build(),
+                    Signal::builder("notification")
+                        .param_types([String::static_type(), String::static_type()])
+                        .build(),
+                    Signal::builder("command-started").build(),
+                    // How long it ran in seconds, and its exit status if the shell said.
+                    Signal::builder("command-finished")
+                        .param_types([u64::static_type(), i32::static_type(), bool::static_type()])
+                        .build(),
                 ]
             });
             SIGNALS.as_ref()
@@ -185,6 +204,8 @@ mod imp {
             obj.set_overflow(gtk::Overflow::Hidden);
             obj.set_cursor_from_name(Some("text"));
             self.cursor_on.set(true);
+            static SERIAL: AtomicU64 = AtomicU64::new(0);
+            self.serial.set(SERIAL.fetch_add(1, Ordering::Relaxed));
             obj.update_palette();
             obj.setup_input();
             obj.watch_settings();
@@ -420,7 +441,97 @@ impl TerminalView {
     }
 
     pub fn directory(&self) -> Option<PathBuf> {
-        self.imp().session.borrow().as_ref()?.directory()
+        let reported = self.imp().shell_directory.borrow().clone();
+        reported
+            .filter(|directory| directory.is_dir())
+            .or_else(|| self.imp().session.borrow().as_ref()?.directory())
+    }
+
+    /// What a new tab from this one runs: the shell, where this one's is, in the same
+    /// container.
+    pub fn next_command(&self) -> Command {
+        let argv = match self.imp().containers.borrow().last() {
+            Some((name, runtime)) if ["toolbox", "distrobox"].contains(&runtime.as_str()) => {
+                vec![runtime.clone(), "enter".to_owned(), name.clone()]
+            }
+            _ => Vec::new(),
+        };
+        Command {
+            argv,
+            directory: self.directory(),
+            ..Command::default()
+        }
+    }
+
+    pub fn serial(&self) -> u64 {
+        self.imp().serial.get()
+    }
+
+    pub fn command_running(&self) -> bool {
+        self.imp().command_started.get().is_some()
+    }
+
+    pub fn connect_notification<F: Fn(&Self, &str, &str) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "notification",
+            false,
+            glib::closure_local!(move |view: &Self, title: &str, body: &str| f(view, title, body)),
+        )
+    }
+
+    pub fn connect_command_started<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "command-started",
+            false,
+            glib::closure_local!(move |view: &Self| f(view)),
+        )
+    }
+
+    pub fn connect_command_finished<F: Fn(&Self, Duration, Option<i32>) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "command-finished",
+            false,
+            glib::closure_local!(move |view: &Self, seconds: u64, status: i32, known: bool| {
+                f(view, Duration::from_secs(seconds), known.then_some(status))
+            }),
+        )
+    }
+
+    fn report(&self, report: Report) {
+        let imp = self.imp();
+        match report {
+            Report::Directory(directory) => {
+                imp.shell_directory.replace(Some(directory));
+            }
+            Report::Notification { title, body } => {
+                self.emit_by_name::<()>("notification", &[&title, &body]);
+            }
+            Report::CommandStarted => {
+                imp.command_started.set(Some(Instant::now()));
+                self.emit_by_name::<()>("command-started", &[]);
+            }
+            Report::CommandFinished(status) => {
+                if let Some(started) = imp.command_started.take() {
+                    let seconds = started.elapsed().as_secs();
+                    self.emit_by_name::<()>(
+                        "command-finished",
+                        &[&seconds, &status.unwrap_or_default(), &status.is_some()],
+                    );
+                }
+            }
+            Report::ContainerEntered { name, runtime } => {
+                imp.containers.borrow_mut().push((name, runtime));
+            }
+            Report::ContainerLeft => {
+                imp.containers.borrow_mut().pop();
+            }
+        }
     }
 
     fn scale(&self) -> f64 {
@@ -814,7 +925,7 @@ impl TerminalView {
     fn start(&self, command: &Command, size: WindowSize) {
         let imp = self.imp();
         match Session::spawn(command, size, self.term_config()) {
-            Ok((session, events)) => {
+            Ok((session, events, reports)) => {
                 session.lock().is_focused = imp.focused.get();
                 imp.session.replace(Some(session));
                 let weak = self.downgrade();
@@ -822,6 +933,13 @@ impl TerminalView {
                     while let Ok(event) = events.recv().await {
                         let Some(view) = weak.upgrade() else { break };
                         view.handle(event);
+                    }
+                });
+                let weak = self.downgrade();
+                glib::spawn_future_local(async move {
+                    while let Ok(report) = reports.recv().await {
+                        let Some(view) = weak.upgrade() else { break };
+                        view.report(report);
                     }
                 });
             }
@@ -881,6 +999,41 @@ impl TerminalView {
     pub(super) fn scroll_lines(&self, lines: i32) {
         if let Some(session) = self.imp().session.borrow().as_ref() {
             session.lock().scroll_display(Scroll::Delta(lines));
+        }
+        self.sync_scroll();
+        self.queue_draw();
+    }
+
+    /// Scrolls to put the previous or next prompt the shell marked at the top; past the
+    /// last one, back to the bottom.
+    pub fn scroll_to_prompt(&self, up: bool) {
+        if let Some(session) = self.imp().session.borrow().as_ref() {
+            let mut term = session.lock();
+            let grid = term.grid();
+            let columns = grid.columns();
+            let marked = |line: i32| {
+                (0..columns).any(|column| {
+                    grid[Line(line)][Column(column)]
+                        .hyperlink()
+                        .is_some_and(|link| link.uri() == crate::shell::PROMPT)
+                })
+            };
+            let starts =
+                |line: i32| marked(line) && (line == term.topmost_line().0 || !marked(line - 1));
+            let top = -(grid.display_offset() as i32);
+            let found = if up {
+                (term.topmost_line().0..top)
+                    .rev()
+                    .find(|&line| starts(line))
+            } else {
+                (top + 1..=term.bottommost_line().0).find(|&line| starts(line))
+            };
+            let scroll = match found {
+                Some(line) => Scroll::Delta(-line - grid.display_offset() as i32),
+                None if up => return,
+                None => Scroll::Bottom,
+            };
+            term.scroll_display(scroll);
         }
         self.sync_scroll();
         self.queue_draw();

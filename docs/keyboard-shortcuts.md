@@ -20,6 +20,7 @@ programs in the terminal.
 | Ctrl+Shift+C, Ctrl+Shift+V | Copy, paste |
 | Ctrl+Shift+F | Find in the history |
 | Shift+Page Up, Shift+Page Down | Scroll a page |
+| Ctrl+Shift+Up, Ctrl+Shift+Down | Scroll to the previous, next prompt, where the shell marks them |
 | Ctrl++, Ctrl+-, Ctrl+0 | Zoom in, out, back to the font's size |
 | Menu | The context menu, at the cursor |
 | Ctrl+, | Preferences |

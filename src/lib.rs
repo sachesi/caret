@@ -10,6 +10,7 @@ pub mod preferences;
 pub mod renderer;
 pub mod session;
 pub mod settings;
+pub mod shell;
 pub mod terminal_view;
 pub mod window;
 

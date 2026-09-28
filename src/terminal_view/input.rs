@@ -69,7 +69,9 @@ fn mouse_button(button: u32) -> Option<MouseButton> {
 /// with `written` also one written out in it.
 fn link_in(term: &Term<Listener>, point: Point<usize>, written: bool) -> Option<String> {
     let point = viewport_to_point(term.grid().display_offset(), point);
-    if let Some(link) = term.grid()[point].hyperlink() {
+    if let Some(link) = term.grid()[point].hyperlink()
+        && link.uri() != crate::shell::PROMPT
+    {
         return Some(link.uri().to_owned());
     }
     if !written {
@@ -230,6 +232,19 @@ impl TerminalView {
                 }
                 gdk::Key::Page_Down | gdk::Key::KP_Page_Down => {
                     self.scroll_page(false);
+                    return glib::Propagation::Stop;
+                }
+                _ => {}
+            }
+        }
+        if modifiers.shift && modifiers.ctrl && !modifiers.alt {
+            match keyval {
+                gdk::Key::Up | gdk::Key::KP_Up => {
+                    self.scroll_to_prompt(true);
+                    return glib::Propagation::Stop;
+                }
+                gdk::Key::Down | gdk::Key::KP_Down => {
+                    self.scroll_to_prompt(false);
                     return glib::Propagation::Stop;
                 }
                 _ => {}

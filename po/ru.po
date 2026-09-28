@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tangent\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/tangent/issues\n"
-"POT-Creation-Date: 2026-09-28 11:58+0300\n"
+"POT-Creation-Date: 2026-09-28 14:37+0300\n"
 "PO-Revision-Date: 2026-09-27 19:00+0300\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Russian\n"
@@ -17,7 +17,7 @@ msgstr ""
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
 #: data/io.github.sachesi.tangent.desktop:2
-#: data/io.github.sachesi.tangent.metainfo.xml:6 src/window.rs:374
+#: data/io.github.sachesi.tangent.metainfo.xml:6 src/window.rs:461
 #: ui/window.ui:44 ui/window.ui:69
 #, no-c-format
 msgid "Tangent"
@@ -80,10 +80,29 @@ msgid "How many lines that scrolled off the top are kept to scroll back to."
 msgstr "Сколько строк, ушедших за верхний край, хранится для прокрутки назад."
 
 #: data/io.github.sachesi.tangent.gschema.xml:37
+msgid "Scroll on output"
+msgstr "Прокрутка при выводе"
+
+#: data/io.github.sachesi.tangent.gschema.xml:38
+msgid ""
+"Whether output brings a view scrolled back into the history to the bottom."
+msgstr "Возвращает ли вывод программы вниз вид, прокрученный в историю."
+
+#: data/io.github.sachesi.tangent.gschema.xml:42
+msgid "Scroll on keystroke"
+msgstr "Прокрутка при нажатии клавиш"
+
+#: data/io.github.sachesi.tangent.gschema.xml:43
+msgid ""
+"Whether typing or pasting brings a view scrolled back into the history to "
+"the bottom."
+msgstr "Возвращает ли ввод или вставка вниз вид, прокрученный в историю."
+
+#: data/io.github.sachesi.tangent.gschema.xml:47
 msgid "Terminal bell"
 msgstr "Звонок терминала"
 
-#: data/io.github.sachesi.tangent.gschema.xml:38
+#: data/io.github.sachesi.tangent.gschema.xml:48
 msgid ""
 "Whether the bell a program rings makes a sound. A tab in the background is "
 "marked either way."
@@ -91,26 +110,26 @@ msgstr ""
 "Звучит ли звонок, поданный программой. Фоновая вкладка отмечается в любом "
 "случае."
 
-#: data/io.github.sachesi.tangent.gschema.xml:42
+#: data/io.github.sachesi.tangent.gschema.xml:52
 msgid "Title bar"
 msgstr "Заголовок окна"
 
-#: data/io.github.sachesi.tangent.gschema.xml:43
+#: data/io.github.sachesi.tangent.gschema.xml:53
 msgid ""
 "Whether windows show the title bar. Without it, the context menu has its "
 "commands."
 msgstr ""
 "Показывать ли заголовок окна. Без него его команды есть в контекстном меню."
 
-#: data/io.github.sachesi.tangent.gschema.xml:47
+#: data/io.github.sachesi.tangent.gschema.xml:57
 msgid "Window size"
 msgstr "Размер окна"
 
-#: data/io.github.sachesi.tangent.gschema.xml:48
+#: data/io.github.sachesi.tangent.gschema.xml:58
 msgid "The size of new windows; 0 fits 80 columns by 24 lines of the font."
 msgstr "Размер новых окон; 0 — 80 столбцов на 24 строки шрифта."
 
-#: data/io.github.sachesi.tangent.gschema.xml:52
+#: data/io.github.sachesi.tangent.gschema.xml:62
 msgid "Window maximized"
 msgstr "Окно развёрнуто"
 
@@ -175,23 +194,23 @@ msgstr "Показать версию и выйти"
 msgid "[-e] [COMMAND [ARGUMENT…]]"
 msgstr "[-e] [КОМАНДА [АРГУМЕНТ…]]"
 
-#: src/application.rs:229
+#: src/application.rs:241
 #, no-c-format
 msgid "A terminal drawn by the GPU"
 msgstr "Терминал, который рисует графический процессор"
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:231
+#: src/application.rs:243
 #, no-c-format
 msgid "translator-credits"
 msgstr "sachesi"
 
-#: src/preferences.rs:15 ui/shortcuts_dialog.ui:146
+#: src/preferences.rs:15 ui/shortcuts_dialog.ui:158
 #, no-c-format
 msgid "Preferences"
 msgstr "Параметры"
 
-#: src/preferences.rs:20 ui/shortcuts_dialog.ui:143
+#: src/preferences.rs:20 ui/shortcuts_dialog.ui:155
 #, no-c-format
 msgid "General"
 msgstr "Общие"
@@ -283,151 +302,181 @@ msgstr "Хранятся для прокрутки назад, когда ухо
 
 #: src/preferences.rs:185
 #, no-c-format
+msgid "Scroll on Output"
+msgstr "Прокрутка при выводе"
+
+#: src/preferences.rs:186
+#, no-c-format
+msgid "Go back to the bottom when a program writes"
+msgstr "Возвращаться вниз, когда программа что-то выводит"
+
+#: src/preferences.rs:193
+#, no-c-format
+msgid "Scroll on Keystroke"
+msgstr "Прокрутка при нажатии клавиш"
+
+#: src/preferences.rs:194
+#, no-c-format
+msgid "Go back to the bottom when typing or pasting"
+msgstr "Возвращаться вниз при вводе или вставке"
+
+#: src/preferences.rs:201
+#, no-c-format
 msgid "Terminal Bell"
 msgstr "Звонок терминала"
 
-#: src/preferences.rs:186
+#: src/preferences.rs:202
 #, no-c-format
 msgid "Sound the bell when a program rings it"
 msgstr "Звук, когда программа подаёт звонок"
 
-#: src/terminal_view.rs:223
+#: src/terminal_view.rs:250
 #, no-c-format
 msgid "The terminal cannot be drawn: %s"
 msgstr "Не удаётся нарисовать терминал: %s"
 
-#: src/terminal_view.rs:537
+#: src/terminal_view.rs:664
 #, no-c-format
 msgid "“%s” exited with status %s"
 msgstr "«%s» завершилась с кодом %s"
 
-#: src/terminal_view.rs:541
+#: src/terminal_view.rs:668
 #, no-c-format
 msgid "“%s” was ended by signal %s"
 msgstr "«%s» завершена сигналом %s"
 
-#: src/terminal_view.rs:544
+#: src/terminal_view.rs:671
 #, no-c-format
 msgid "“%s” ended"
 msgstr "«%s» завершилась"
 
 #. Translators: the program, then why it could not start.
-#: src/terminal_view.rs:817
+#: src/terminal_view.rs:951
 #, no-c-format
 msgid "Could not start “%s”: %s"
 msgstr "Не удалось запустить «%s»: %s"
 
-#: src/terminal_view.rs:820
+#: src/terminal_view.rs:954
 #, no-c-format
 msgid "Could not start the shell: %s"
 msgstr "Не удалось запустить командную оболочку: %s"
 
-#: src/terminal_view/input.rs:589
+#: src/terminal_view/input.rs:652
 #, no-c-format
 msgid "Could not open the link: %s"
 msgstr "Не удалось открыть ссылку: %s"
 
-#: src/terminal_view/input.rs:613
+#: src/terminal_view/input.rs:676
 #, no-c-format
 msgid "_Copy"
 msgstr "_Копировать"
 
-#: src/terminal_view/input.rs:614
+#: src/terminal_view/input.rs:677
 #, no-c-format
 msgid "_Paste"
 msgstr "_Вставить"
 
-#: src/terminal_view/input.rs:623
+#: src/terminal_view/input.rs:686
 #, no-c-format
 msgid "_Open Link"
 msgstr "_Открыть ссылку"
 
-#: src/terminal_view/input.rs:624
+#: src/terminal_view/input.rs:687
 #, no-c-format
 msgid "Copy _Link Address"
 msgstr "Копировать _адрес ссылки"
 
-#: src/terminal_view/input.rs:633 ui/window.ui:12
+#: src/terminal_view/input.rs:696 ui/window.ui:12
 #, no-c-format
 msgid "New _Window"
 msgstr "Новое _окно"
 
-#: src/terminal_view/input.rs:635 ui/window.ui:16
+#: src/terminal_view/input.rs:698 ui/window.ui:16
 #, no-c-format
 msgid "New _Tab"
 msgstr "Новая _вкладка"
 
-#: src/terminal_view/input.rs:636
+#: src/terminal_view/input.rs:699
 #, no-c-format
 msgid "_Find…"
 msgstr "_Найти…"
 
-#: src/terminal_view/input.rs:639
+#: src/terminal_view/input.rs:702
 #, no-c-format
 msgid "Show _All Tabs"
 msgstr "Показать _все вкладки"
 
-#: src/terminal_view/input.rs:644
+#: src/terminal_view/input.rs:707
 #, no-c-format
 msgid "Title _Bar"
 msgstr "_Заголовок окна"
 
-#: src/terminal_view/input.rs:645 ui/window.ui:22
+#: src/terminal_view/input.rs:708 ui/window.ui:22
 #, no-c-format
 msgid "_Full Screen"
 msgstr "_Во весь экран"
 
-#: src/terminal_view/input.rs:646 ui/window.ui:28
+#: src/terminal_view/input.rs:709 ui/window.ui:28
 #, no-c-format
 msgid "_Preferences"
 msgstr "_Параметры"
 
-#: src/terminal_view/input.rs:647 ui/window.ui:32
+#: src/terminal_view/input.rs:710 ui/window.ui:32
 #, no-c-format
 msgid "_Keyboard Shortcuts"
 msgstr "_Комбинации клавиш"
 
-#: src/terminal_view/input.rs:648 ui/window.ui:36
+#: src/terminal_view/input.rs:711 ui/window.ui:36
 #, no-c-format
 msgid "_About Tangent"
 msgstr "_О Tangent"
 
-#: src/terminal_view/input.rs:651
+#: src/terminal_view/input.rs:714
 #, no-c-format
 msgid "_Close Window"
 msgstr "_Закрыть окно"
 
-#: src/window.rs:389
+#: src/window.rs:380
+#, no-c-format
+msgid "Command Finished"
+msgstr "Команда завершена"
+
+#: src/window.rs:381
+#, no-c-format
+msgid "Command Failed"
+msgstr "Команда завершилась с ошибкой"
+
+#: src/window.rs:476
 #, no-c-format
 msgid "A program is still running in this tab and will be stopped."
 msgstr "В этой вкладке ещё работает программа, её работа будет прервана."
 
-#: src/window.rs:391
+#: src/window.rs:478
 #, no-c-format
 msgid "“%s” is still running in this tab and will be stopped."
 msgstr "В этой вкладке ещё работает «%s», и её работа будет прервана."
 
-#: src/window.rs:393
+#: src/window.rs:480
 #, no-c-format
 msgid "Close Tab?"
 msgstr "Закрыть вкладку?"
 
-#: src/window.rs:395 src/window.rs:423
+#: src/window.rs:482 src/window.rs:510
 #, no-c-format
 msgid "_Cancel"
 msgstr "_Отмена"
 
-#: src/window.rs:396 src/window.rs:424
+#: src/window.rs:483 src/window.rs:511
 #, no-c-format
 msgid "C_lose"
 msgstr "_Закрыть"
 
-#: src/window.rs:412
+#: src/window.rs:499
 #, no-c-format
 msgid "Close Window?"
 msgstr "Закрыть окно?"
 
-#: src/window.rs:415
+#: src/window.rs:502
 #, no-c-format
 msgid "A program is still running in %d tab and will be stopped."
 msgid_plural "Programs are still running in %d tabs and will be stopped."
@@ -508,18 +557,26 @@ msgid "Scroll Down a Page"
 msgstr "На страницу вниз"
 
 #: ui/shortcuts_dialog.ui:123
+msgid "Scroll to the Previous Prompt"
+msgstr "Прокрутить к предыдущему приглашению"
+
+#: ui/shortcuts_dialog.ui:129
+msgid "Scroll to the Next Prompt"
+msgstr "Прокрутить к следующему приглашению"
+
+#: ui/shortcuts_dialog.ui:135
 msgid "Zoom In"
 msgstr "Увеличить"
 
-#: ui/shortcuts_dialog.ui:129
+#: ui/shortcuts_dialog.ui:141
 msgid "Zoom Out"
 msgstr "Уменьшить"
 
-#: ui/shortcuts_dialog.ui:135
+#: ui/shortcuts_dialog.ui:147
 msgid "Original Size"
 msgstr "Обычный размер"
 
-#: ui/shortcuts_dialog.ui:152
+#: ui/shortcuts_dialog.ui:164
 msgid "Keyboard Shortcuts"
 msgstr "Комбинации клавиш"
 

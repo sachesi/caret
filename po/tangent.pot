@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tangent 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/tangent/issues\n"
-"POT-Creation-Date: 2026-09-28 11:58+0300\n"
+"POT-Creation-Date: 2026-09-28 14:38+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -19,7 +19,7 @@ msgstr ""
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
 #: data/io.github.sachesi.tangent.desktop:2
-#: data/io.github.sachesi.tangent.metainfo.xml:6 src/window.rs:374
+#: data/io.github.sachesi.tangent.metainfo.xml:6 src/window.rs:461
 #: ui/window.ui:44 ui/window.ui:69
 #, no-c-format
 msgid "Tangent"
@@ -78,34 +78,53 @@ msgid "How many lines that scrolled off the top are kept to scroll back to."
 msgstr ""
 
 #: data/io.github.sachesi.tangent.gschema.xml:37
-msgid "Terminal bell"
+msgid "Scroll on output"
 msgstr ""
 
 #: data/io.github.sachesi.tangent.gschema.xml:38
+msgid ""
+"Whether output brings a view scrolled back into the history to the bottom."
+msgstr ""
+
+#: data/io.github.sachesi.tangent.gschema.xml:42
+msgid "Scroll on keystroke"
+msgstr ""
+
+#: data/io.github.sachesi.tangent.gschema.xml:43
+msgid ""
+"Whether typing or pasting brings a view scrolled back into the history to "
+"the bottom."
+msgstr ""
+
+#: data/io.github.sachesi.tangent.gschema.xml:47
+msgid "Terminal bell"
+msgstr ""
+
+#: data/io.github.sachesi.tangent.gschema.xml:48
 msgid ""
 "Whether the bell a program rings makes a sound. A tab in the background is "
 "marked either way."
 msgstr ""
 
-#: data/io.github.sachesi.tangent.gschema.xml:42
+#: data/io.github.sachesi.tangent.gschema.xml:52
 msgid "Title bar"
 msgstr ""
 
-#: data/io.github.sachesi.tangent.gschema.xml:43
+#: data/io.github.sachesi.tangent.gschema.xml:53
 msgid ""
 "Whether windows show the title bar. Without it, the context menu has its "
 "commands."
 msgstr ""
 
-#: data/io.github.sachesi.tangent.gschema.xml:47
+#: data/io.github.sachesi.tangent.gschema.xml:57
 msgid "Window size"
 msgstr ""
 
-#: data/io.github.sachesi.tangent.gschema.xml:48
+#: data/io.github.sachesi.tangent.gschema.xml:58
 msgid "The size of new windows; 0 fits 80 columns by 24 lines of the font."
 msgstr ""
 
-#: data/io.github.sachesi.tangent.gschema.xml:52
+#: data/io.github.sachesi.tangent.gschema.xml:62
 msgid "Window maximized"
 msgstr ""
 
@@ -163,23 +182,23 @@ msgstr ""
 msgid "[-e] [COMMAND [ARGUMENT…]]"
 msgstr ""
 
-#: src/application.rs:229
+#: src/application.rs:241
 #, no-c-format
 msgid "A terminal drawn by the GPU"
 msgstr ""
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:231
+#: src/application.rs:243
 #, no-c-format
 msgid "translator-credits"
 msgstr ""
 
-#: src/preferences.rs:15 ui/shortcuts_dialog.ui:146
+#: src/preferences.rs:15 ui/shortcuts_dialog.ui:158
 #, no-c-format
 msgid "Preferences"
 msgstr ""
 
-#: src/preferences.rs:20 ui/shortcuts_dialog.ui:143
+#: src/preferences.rs:20 ui/shortcuts_dialog.ui:155
 #, no-c-format
 msgid "General"
 msgstr ""
@@ -271,151 +290,181 @@ msgstr ""
 
 #: src/preferences.rs:185
 #, no-c-format
-msgid "Terminal Bell"
+msgid "Scroll on Output"
 msgstr ""
 
 #: src/preferences.rs:186
 #, no-c-format
+msgid "Go back to the bottom when a program writes"
+msgstr ""
+
+#: src/preferences.rs:193
+#, no-c-format
+msgid "Scroll on Keystroke"
+msgstr ""
+
+#: src/preferences.rs:194
+#, no-c-format
+msgid "Go back to the bottom when typing or pasting"
+msgstr ""
+
+#: src/preferences.rs:201
+#, no-c-format
+msgid "Terminal Bell"
+msgstr ""
+
+#: src/preferences.rs:202
+#, no-c-format
 msgid "Sound the bell when a program rings it"
 msgstr ""
 
-#: src/terminal_view.rs:223
+#: src/terminal_view.rs:250
 #, no-c-format
 msgid "The terminal cannot be drawn: %s"
 msgstr ""
 
-#: src/terminal_view.rs:537
+#: src/terminal_view.rs:664
 #, no-c-format
 msgid "“%s” exited with status %s"
 msgstr ""
 
-#: src/terminal_view.rs:541
+#: src/terminal_view.rs:668
 #, no-c-format
 msgid "“%s” was ended by signal %s"
 msgstr ""
 
-#: src/terminal_view.rs:544
+#: src/terminal_view.rs:671
 #, no-c-format
 msgid "“%s” ended"
 msgstr ""
 
 #. Translators: the program, then why it could not start.
-#: src/terminal_view.rs:817
+#: src/terminal_view.rs:951
 #, no-c-format
 msgid "Could not start “%s”: %s"
 msgstr ""
 
-#: src/terminal_view.rs:820
+#: src/terminal_view.rs:954
 #, no-c-format
 msgid "Could not start the shell: %s"
 msgstr ""
 
-#: src/terminal_view/input.rs:589
+#: src/terminal_view/input.rs:652
 #, no-c-format
 msgid "Could not open the link: %s"
 msgstr ""
 
-#: src/terminal_view/input.rs:613
+#: src/terminal_view/input.rs:676
 #, no-c-format
 msgid "_Copy"
 msgstr ""
 
-#: src/terminal_view/input.rs:614
+#: src/terminal_view/input.rs:677
 #, no-c-format
 msgid "_Paste"
 msgstr ""
 
-#: src/terminal_view/input.rs:623
+#: src/terminal_view/input.rs:686
 #, no-c-format
 msgid "_Open Link"
 msgstr ""
 
-#: src/terminal_view/input.rs:624
+#: src/terminal_view/input.rs:687
 #, no-c-format
 msgid "Copy _Link Address"
 msgstr ""
 
-#: src/terminal_view/input.rs:633 ui/window.ui:12
+#: src/terminal_view/input.rs:696 ui/window.ui:12
 #, no-c-format
 msgid "New _Window"
 msgstr ""
 
-#: src/terminal_view/input.rs:635 ui/window.ui:16
+#: src/terminal_view/input.rs:698 ui/window.ui:16
 #, no-c-format
 msgid "New _Tab"
 msgstr ""
 
-#: src/terminal_view/input.rs:636
+#: src/terminal_view/input.rs:699
 #, no-c-format
 msgid "_Find…"
 msgstr ""
 
-#: src/terminal_view/input.rs:639
+#: src/terminal_view/input.rs:702
 #, no-c-format
 msgid "Show _All Tabs"
 msgstr ""
 
-#: src/terminal_view/input.rs:644
+#: src/terminal_view/input.rs:707
 #, no-c-format
 msgid "Title _Bar"
 msgstr ""
 
-#: src/terminal_view/input.rs:645 ui/window.ui:22
+#: src/terminal_view/input.rs:708 ui/window.ui:22
 #, no-c-format
 msgid "_Full Screen"
 msgstr ""
 
-#: src/terminal_view/input.rs:646 ui/window.ui:28
+#: src/terminal_view/input.rs:709 ui/window.ui:28
 #, no-c-format
 msgid "_Preferences"
 msgstr ""
 
-#: src/terminal_view/input.rs:647 ui/window.ui:32
+#: src/terminal_view/input.rs:710 ui/window.ui:32
 #, no-c-format
 msgid "_Keyboard Shortcuts"
 msgstr ""
 
-#: src/terminal_view/input.rs:648 ui/window.ui:36
+#: src/terminal_view/input.rs:711 ui/window.ui:36
 #, no-c-format
 msgid "_About Tangent"
 msgstr ""
 
-#: src/terminal_view/input.rs:651
+#: src/terminal_view/input.rs:714
 #, no-c-format
 msgid "_Close Window"
 msgstr ""
 
-#: src/window.rs:389
+#: src/window.rs:380
+#, no-c-format
+msgid "Command Finished"
+msgstr ""
+
+#: src/window.rs:381
+#, no-c-format
+msgid "Command Failed"
+msgstr ""
+
+#: src/window.rs:476
 #, no-c-format
 msgid "A program is still running in this tab and will be stopped."
 msgstr ""
 
-#: src/window.rs:391
+#: src/window.rs:478
 #, no-c-format
 msgid "“%s” is still running in this tab and will be stopped."
 msgstr ""
 
-#: src/window.rs:393
+#: src/window.rs:480
 #, no-c-format
 msgid "Close Tab?"
 msgstr ""
 
-#: src/window.rs:395 src/window.rs:423
+#: src/window.rs:482 src/window.rs:510
 #, no-c-format
 msgid "_Cancel"
 msgstr ""
 
-#: src/window.rs:396 src/window.rs:424
+#: src/window.rs:483 src/window.rs:511
 #, no-c-format
 msgid "C_lose"
 msgstr ""
 
-#: src/window.rs:412
+#: src/window.rs:499
 #, no-c-format
 msgid "Close Window?"
 msgstr ""
 
-#: src/window.rs:415
+#: src/window.rs:502
 #, no-c-format
 msgid "A program is still running in %d tab and will be stopped."
 msgid_plural "Programs are still running in %d tabs and will be stopped."
@@ -495,18 +544,26 @@ msgid "Scroll Down a Page"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:123
-msgid "Zoom In"
+msgid "Scroll to the Previous Prompt"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:129
-msgid "Zoom Out"
+msgid "Scroll to the Next Prompt"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:135
+msgid "Zoom In"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:141
+msgid "Zoom Out"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:147
 msgid "Original Size"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:152
+#: ui/shortcuts_dialog.ui:164
 msgid "Keyboard Shortcuts"
 msgstr ""
 

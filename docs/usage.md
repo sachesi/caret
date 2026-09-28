@@ -18,9 +18,12 @@ A tab closes when its program exits, and the window goes with its last tab. A co
 named on the command line that fails stays on screen instead, with its output and how it
 ended under it, until you close the tab.
 
-A new tab or window starts in the folder the current tab's program is in, read from
-`/proc`, so a shell that has changed directory passes it on without needing to tell the
-terminal.
+A new tab or window starts in the folder the current tab's shell is in. A shell that
+reports its folder (OSC 7, which fish does by itself and bash and zsh do with
+`/etc/profile.d/vte.sh` or a line in their prompt) is taken at its word; otherwise it is
+read from `/proc`, which is right unless the shell runs in a container or on another
+machine. A new tab from a shell inside a toolbox or distrobox container, which says so
+when it enters one, enters the same container.
 
 ## Tabs
 
@@ -33,6 +36,14 @@ Ctrl+Shift+H, or Title Bar in Preferences, hides the title bar, and so does full
 (F11, or Full Screen in the main menu). The context menu then
 has what the title bar had: a new window, all tabs, the title bar again, Preferences,
 Keyboard Shortcuts, About, Full Screen and closing the window. Super and a drag moves the window.
+
+A shell that marks its prompts and commands (OSC 133, which fish does by itself) tells
+Tangent when a command starts and ends. A tab whose command is still running after a
+second shows a spinner, and one whose command ends while you look elsewhere is marked;
+if the command took ten seconds or more and the window is not the one you are using, a
+notification says it finished, and clicking it brings the tab back. Programs can also
+send notifications themselves (OSC 9 and OSC 777), which show when their tab is out of
+sight.
 
 Closing a tab, or a window, where something other than the shell is running in the
 foreground asks first.
@@ -64,6 +75,9 @@ window.
 The wheel and Shift+Page Up and Page Down scroll through the history, and Ctrl and the
 wheel zooms. In a program that has the whole screen, a pager or an editor, the wheel sends
 arrow keys instead, unless the program asks for the mouse itself.
+
+Ctrl+Shift+Up and Ctrl+Shift+Down scroll to the previous and next prompt, in a shell that
+marks them.
 
 Ctrl+Shift+F finds text in the history, upwards from the bottom. The search takes the text
 literally, and ignores case unless the text has capitals in it.

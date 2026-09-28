@@ -171,15 +171,12 @@ impl TangentApplication {
     fn setup_actions(&self) {
         let new_window = gio::ActionEntry::builder("new-window")
             .activate(|app: &Self, _, _| {
-                let directory = app
+                let command = app
                     .active_window()
                     .and_downcast::<TangentWindow>()
-                    .and_then(|window| window.current_view())
-                    .and_then(|view| view.directory());
-                app.open_window(Command {
-                    directory,
-                    ..Command::default()
-                });
+                    .map(|window| window.next_command())
+                    .unwrap_or_default();
+                app.open_window(command);
             })
             .build();
         let about = gio::ActionEntry::builder("about")
@@ -190,7 +187,22 @@ impl TangentApplication {
                 crate::preferences::preferences_dialog().present(app.active_window().as_ref());
             })
             .build();
-        self.add_action_entries([new_window, about, preferences]);
+        let show_tab = gio::ActionEntry::builder("show-tab")
+            .parameter_type(Some(glib::VariantTy::UINT64))
+            .activate(|app: &Self, _, serial| {
+                let Some(serial) = serial.and_then(|serial| serial.get::<u64>()) else {
+                    return;
+                };
+                for window in app.windows() {
+                    if let Ok(window) = window.downcast::<TangentWindow>()
+                        && window.show_tab(serial)
+                    {
+                        return;
+                    }
+                }
+            })
+            .build();
+        self.add_action_entries([new_window, about, preferences, show_tab]);
         self.add_action(&settings().create_action("title-bar"));
 
         // Ctrl with Shift: plain Ctrl and a letter belong to the programs in the terminal.

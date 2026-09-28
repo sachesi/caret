@@ -21,6 +21,7 @@ use alacritty_terminal::term::{self, Term};
 use alacritty_terminal::tty;
 
 use crate::config;
+use crate::shell::{FilteredPty, Report};
 
 /// What the widget hears from the terminal. A wakeup is sent once until the widget has
 /// taken it, however much output arrives meanwhile, so the channel holds at most one of
@@ -242,7 +243,11 @@ impl Session {
         command: &Command,
         size: WindowSize,
         config: term::Config,
-    ) -> io::Result<(Self, async_channel::Receiver<Event>)> {
+    ) -> io::Result<(
+        Self,
+        async_channel::Receiver<Event>,
+        async_channel::Receiver<Report>,
+    )> {
         let (events, received) = async_channel::unbounded();
         let woken = Arc::new(AtomicBool::new(false));
         let listener = Listener {
@@ -268,6 +273,10 @@ impl Session {
         let pty = tty::new(&options, size, 0)?;
         let child = pty.child().id();
         let controller = pty.file().try_clone()?;
+        let (reports, reported) = async_channel::unbounded();
+        let pty = FilteredPty::new(pty, move |report| {
+            let _ = reports.try_send(report);
+        })?;
 
         let grid = GridSize {
             columns: usize::from(size.num_cols),
@@ -289,6 +298,7 @@ impl Session {
                 controller,
             },
             received,
+            reported,
         ))
     }
 

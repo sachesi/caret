@@ -23,6 +23,7 @@ libloading = "0.9"
 async-channel = "2"
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 libc = "0.2"
+polling = "3"
 
 [build-dependencies]
 glib-build-tools = "0.22"

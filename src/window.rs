@@ -1,6 +1,7 @@
 //! A window of terminal tabs, with the find bar and the `win.*` actions.
 
 use std::cell::Cell;
+use std::time::Duration;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
@@ -44,11 +45,7 @@ mod imp {
             klass.bind_template();
             klass.bind_template_callbacks();
             klass.install_action("win.new-tab", None, |window, _, _| {
-                let directory = window.current_view().and_then(|view| view.directory());
-                window.add_tab(Command {
-                    directory,
-                    ..Command::default()
-                });
+                window.add_tab(window.next_command());
             });
             klass.install_action("win.close-tab", None, |window, _, _| {
                 let tab_view = &window.imp().tab_view;
@@ -166,11 +163,7 @@ mod imp {
         #[template_callback]
         fn on_create_tab(&self) -> adw::TabPage {
             let obj = self.obj();
-            let directory = obj.current_view().and_then(|view| view.directory());
-            obj.add_tab(Command {
-                directory,
-                ..Command::default()
-            })
+            obj.add_tab(obj.next_command())
         }
 
         #[template_callback]
@@ -284,6 +277,9 @@ glib::wrapper! {
                     gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
 }
 
+/// Commands that take this long tell when they end in a window out of sight.
+const NOTIFY_AFTER: Duration = Duration::from_secs(10);
+
 fn view_of(page: &adw::TabPage) -> Option<TerminalView> {
     page.child()
         .downcast::<gtk::ScrolledWindow>()
@@ -293,6 +289,13 @@ fn view_of(page: &adw::TabPage) -> Option<TerminalView> {
 }
 
 impl TangentWindow {
+    /// What a new tab runs: the shell, where the current tab's is.
+    pub fn next_command(&self) -> Command {
+        self.current_view()
+            .map(|view| view.next_command())
+            .unwrap_or_default()
+    }
+
     pub fn new(application: Option<&TangentApplication>) -> Self {
         glib::Object::builder()
             .property("application", application)
@@ -343,10 +346,94 @@ impl TangentWindow {
                 }
             }
         ));
+        view.connect_command_started(glib::clone!(
+            #[weak]
+            page,
+            move |view| {
+                // Only commands that take a while show it, so the tab does not flicker.
+                glib::timeout_add_local_once(
+                    Duration::from_secs(1),
+                    glib::clone!(
+                        #[weak]
+                        page,
+                        #[weak]
+                        view,
+                        move || page.set_loading(view.command_running())
+                    ),
+                );
+            }
+        ));
+        view.connect_command_finished(glib::clone!(
+            #[weak(rename_to = window)]
+            self,
+            #[weak]
+            page,
+            move |view, took, status| {
+                page.set_loading(false);
+                let seen = page.is_selected() && window.is_active();
+                if seen {
+                    return;
+                }
+                page.set_needs_attention(true);
+                if took >= NOTIFY_AFTER {
+                    let title = match status {
+                        Some(0) | None => gettext("Command Finished"),
+                        Some(_) => gettext("Command Failed"),
+                    };
+                    window.notify(view, &title, &page.title());
+                }
+            }
+        ));
+        view.connect_notification(glib::clone!(
+            #[weak(rename_to = window)]
+            self,
+            #[weak]
+            page,
+            move |view, title, body| {
+                if page.is_selected() && window.is_active() {
+                    return;
+                }
+                page.set_needs_attention(true);
+                let title = if title.is_empty() {
+                    page.title()
+                } else {
+                    title.into()
+                };
+                window.notify(view, &title, body);
+            }
+        ));
         view.spawn(command);
         tab_view.set_selected_page(&page);
         view.grab_focus();
         page
+    }
+
+    /// A desktop notification from a tab, which brings it back when clicked.
+    fn notify(&self, view: &TerminalView, title: &str, body: &str) {
+        let Some(application) = self.application() else {
+            return;
+        };
+        let notification = gio::Notification::new(title);
+        notification.set_body(Some(body));
+        notification
+            .set_default_action_and_target_value("app.show-tab", Some(&view.serial().to_variant()));
+        application.send_notification(Some(&format!("tab-{}", view.serial())), &notification);
+    }
+
+    /// Selects the tab with the view numbered `serial` and brings its window up; false
+    /// when this window has none.
+    pub fn show_tab(&self, serial: u64) -> bool {
+        let tab_view = &self.imp().tab_view;
+        let pages = tab_view.pages();
+        let page = (0..pages.n_items())
+            .filter_map(|index| pages.item(index).and_downcast::<adw::TabPage>())
+            .find(|page| view_of(page).is_some_and(|view| view.serial() == serial));
+        let Some(page) = page else {
+            return false;
+        };
+        tab_view.set_selected_page(&page);
+        self.present();
+        true
     }
 
     /// Whether the title bar is hidden, by the setting or by full screen.
