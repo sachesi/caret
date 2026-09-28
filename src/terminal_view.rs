@@ -102,6 +102,9 @@ mod imp {
         pub reported_button: Cell<Option<crate::encode::MouseButton>>,
         pub reported_cell: Cell<Option<(usize, usize)>>,
         pub selecting: Cell<bool>,
+        /// Where a selecting drag is, for scrolling on while it stays outside the text.
+        pub drag_point: Cell<(f64, f64)>,
+        pub autoscroll: RefCell<Option<glib::SourceId>>,
         /// Scrolling not yet worth a line.
         pub scrolled: Cell<f64>,
         pub popover: RefCell<Option<gtk::PopoverMenu>>,
@@ -195,6 +198,9 @@ mod imp {
             }
             if let Some(blink) = self.blink.take() {
                 blink.remove();
+            }
+            if let Some(autoscroll) = self.autoscroll.take() {
+                autoscroll.remove();
             }
             if let (Some(adjustment), Some(handler)) =
                 (self.vadjustment.take(), self.adjustment_handler.take())
@@ -862,7 +868,7 @@ impl TerminalView {
     }
 
     /// Scrolls by `lines`, towards the history for positive ones.
-    fn scroll_lines(&self, lines: i32) {
+    pub(super) fn scroll_lines(&self, lines: i32) {
         if let Some(session) = self.imp().session.borrow().as_ref() {
             session.lock().scroll_display(Scroll::Delta(lines));
         }

@@ -409,8 +409,53 @@ impl TerminalView {
                 gesture.current_event_state(),
             );
         } else if imp.selecting.get() {
+            imp.drag_point.set((x, y));
             self.select(SelectionType::Simple, x, y, true);
+            if self.autoscroll_lines() != 0 && imp.autoscroll.borrow().is_none() {
+                let source = glib::timeout_add_local(
+                    std::time::Duration::from_millis(50),
+                    glib::clone!(
+                        #[weak(rename_to = view)]
+                        self,
+                        #[upgrade_or]
+                        glib::ControlFlow::Break,
+                        move || view.autoscroll_step()
+                    ),
+                );
+                imp.autoscroll.replace(Some(source));
+            }
         }
+    }
+
+    /// Lines to scroll while a selecting drag is above the text (positive) or below it,
+    /// more the further out it is.
+    fn autoscroll_lines(&self) -> i32 {
+        let Some(cell) = self.imp().fonts.borrow().as_ref().map(|fonts| fonts.cell) else {
+            return 0;
+        };
+        let line = f64::from(cell.height) / self.scale();
+        let y = self.imp().drag_point.get().1;
+        let height = f64::from(self.height());
+        if y < 0.0 {
+            (-y / line).ceil() as i32
+        } else if y > height {
+            -((y - height) / line).ceil() as i32
+        } else {
+            0
+        }
+    }
+
+    fn autoscroll_step(&self) -> glib::ControlFlow {
+        let imp = self.imp();
+        let lines = self.autoscroll_lines();
+        if !imp.selecting.get() || lines == 0 {
+            imp.autoscroll.take();
+            return glib::ControlFlow::Break;
+        }
+        self.scroll_lines(lines);
+        let (x, y) = imp.drag_point.get();
+        self.select(SelectionType::Simple, x, y, true);
+        glib::ControlFlow::Continue
     }
 
     fn released(&self, gesture: &gtk::GestureDrag, x: f64, y: f64) {
@@ -424,6 +469,9 @@ impl TerminalView {
                 gesture.current_event_state(),
             );
             return;
+        }
+        if let Some(autoscroll) = imp.autoscroll.take() {
+            autoscroll.remove();
         }
         if imp.selecting.replace(false)
             && let Some(text) = self.selection_text()
