@@ -65,8 +65,8 @@ their paths, quoted for the shell.
 
 ## Links
 
-Ctrl and a click opens an address: one a program marked as a link, or a web, file, FTP,
-SSH, Gemini or mail address in the text, found wherever it starts and even when it wraps
+Ctrl and a click opens a web, file, FTP, SSH, Gemini or mail address: one a program
+marked as a link, or one in the text, found wherever it starts and even when it wraps
 onto the next line. The pointer turns into a hand over one while Ctrl is held, and the
 address shows as a tooltip. A link a program made shows where it goes on hover without
 Ctrl, since its text may say something else. The context menu of an address has Open

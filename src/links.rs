@@ -13,6 +13,15 @@ const SCHEMES: [&str; 8] = [
     "mailto:",
 ];
 
+/// Whether an address a program gave as a link is one Tangent opens: of the schemes it
+/// finds in text, so that a link cannot hand a file or an arbitrary handler to the desktop.
+pub fn openable(uri: &str) -> bool {
+    SCHEMES.iter().any(|scheme| {
+        uri.get(..scheme.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(scheme))
+    })
+}
+
 /// Characters that end an address even without a space: quotes and brackets around it,
 /// and those no address holds unescaped.
 fn ends_address(c: char) -> bool {
@@ -76,6 +85,15 @@ pub fn address_at(text: &[char], column: usize) -> Option<Range<usize>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn links_open_only_with_known_schemes() {
+        assert!(openable("HTTPS://example.org"));
+        assert!(openable("file:///tmp/x"));
+        assert!(!openable("steam://run/1"));
+        assert!(!openable("javascript:alert(1)"));
+        assert!(!openable("é"));
+    }
 
     fn found(line: &str, column: usize) -> Option<String> {
         let text: Vec<char> = line.chars().collect();

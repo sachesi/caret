@@ -70,7 +70,7 @@ fn mouse_button(button: u32) -> Option<MouseButton> {
 fn link_in(term: &Term<Listener>, point: Point<usize>, written: bool) -> Option<String> {
     let point = viewport_to_point(term.grid().display_offset(), point);
     if let Some(link) = term.grid()[point].hyperlink()
-        && link.uri() != crate::shell::PROMPT
+        && links::openable(link.uri())
     {
         return Some(link.uri().to_owned());
     }
