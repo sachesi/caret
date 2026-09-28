@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tangent\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/tangent/issues\n"
-"POT-Creation-Date: 2026-09-28 11:44+0300\n"
+"POT-Creation-Date: 2026-09-28 11:58+0300\n"
 "PO-Revision-Date: 2026-09-27 19:00+0300\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Russian\n"
@@ -17,8 +17,8 @@ msgstr ""
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
 #: data/io.github.sachesi.tangent.desktop:2
-#: data/io.github.sachesi.tangent.metainfo.xml:6 src/window.rs:360
-#: ui/window.ui:38 ui/window.ui:63
+#: data/io.github.sachesi.tangent.metainfo.xml:6 src/window.rs:374
+#: ui/window.ui:44 ui/window.ui:69
 #, no-c-format
 msgid "Tangent"
 msgstr "Tangent"
@@ -99,7 +99,8 @@ msgstr "Заголовок окна"
 msgid ""
 "Whether windows show the title bar. Without it, the context menu has its "
 "commands."
-msgstr "Показывать ли заголовок окна. Без него его команды есть в контекстном меню."
+msgstr ""
+"Показывать ли заголовок окна. Без него его команды есть в контекстном меню."
 
 #: data/io.github.sachesi.tangent.gschema.xml:47
 msgid "Window size"
@@ -321,107 +322,112 @@ msgstr "Не удалось запустить «%s»: %s"
 msgid "Could not start the shell: %s"
 msgstr "Не удалось запустить командную оболочку: %s"
 
-#: src/terminal_view/input.rs:581
+#: src/terminal_view/input.rs:589
 #, no-c-format
 msgid "Could not open the link: %s"
 msgstr "Не удалось открыть ссылку: %s"
 
-#: src/terminal_view/input.rs:605
+#: src/terminal_view/input.rs:613
 #, no-c-format
 msgid "_Copy"
 msgstr "_Копировать"
 
-#: src/terminal_view/input.rs:606
+#: src/terminal_view/input.rs:614
 #, no-c-format
 msgid "_Paste"
 msgstr "_Вставить"
 
-#: src/terminal_view/input.rs:615
+#: src/terminal_view/input.rs:623
 #, no-c-format
 msgid "_Open Link"
 msgstr "_Открыть ссылку"
 
-#: src/terminal_view/input.rs:616
+#: src/terminal_view/input.rs:624
 #, no-c-format
 msgid "Copy _Link Address"
 msgstr "Копировать _адрес ссылки"
 
-#: src/terminal_view/input.rs:622 ui/window.ui:12
+#: src/terminal_view/input.rs:633 ui/window.ui:12
 #, no-c-format
 msgid "New _Window"
 msgstr "Новое _окно"
 
-#: src/terminal_view/input.rs:624 ui/window.ui:16
+#: src/terminal_view/input.rs:635 ui/window.ui:16
 #, no-c-format
 msgid "New _Tab"
 msgstr "Новая _вкладка"
 
-#: src/terminal_view/input.rs:625
+#: src/terminal_view/input.rs:636
 #, no-c-format
 msgid "_Find…"
 msgstr "_Найти…"
 
-#: src/terminal_view/input.rs:628
+#: src/terminal_view/input.rs:639
 #, no-c-format
 msgid "Show _All Tabs"
 msgstr "Показать _все вкладки"
 
-#: src/terminal_view/input.rs:633
+#: src/terminal_view/input.rs:644
 #, no-c-format
 msgid "Title _Bar"
 msgstr "_Заголовок окна"
 
-#: src/terminal_view/input.rs:634 ui/window.ui:22
+#: src/terminal_view/input.rs:645 ui/window.ui:22
+#, no-c-format
+msgid "_Full Screen"
+msgstr "_Во весь экран"
+
+#: src/terminal_view/input.rs:646 ui/window.ui:28
 #, no-c-format
 msgid "_Preferences"
 msgstr "_Параметры"
 
-#: src/terminal_view/input.rs:635 ui/window.ui:26
+#: src/terminal_view/input.rs:647 ui/window.ui:32
 #, no-c-format
 msgid "_Keyboard Shortcuts"
 msgstr "_Комбинации клавиш"
 
-#: src/terminal_view/input.rs:636 ui/window.ui:30
+#: src/terminal_view/input.rs:648 ui/window.ui:36
 #, no-c-format
 msgid "_About Tangent"
 msgstr "_О Tangent"
 
-#: src/terminal_view/input.rs:639
+#: src/terminal_view/input.rs:651
 #, no-c-format
 msgid "_Close Window"
 msgstr "_Закрыть окно"
 
-#: src/window.rs:375
+#: src/window.rs:389
 #, no-c-format
 msgid "A program is still running in this tab and will be stopped."
 msgstr "В этой вкладке ещё работает программа, её работа будет прервана."
 
-#: src/window.rs:377
+#: src/window.rs:391
 #, no-c-format
 msgid "“%s” is still running in this tab and will be stopped."
 msgstr "В этой вкладке ещё работает «%s», и её работа будет прервана."
 
-#: src/window.rs:379
+#: src/window.rs:393
 #, no-c-format
 msgid "Close Tab?"
 msgstr "Закрыть вкладку?"
 
-#: src/window.rs:381 src/window.rs:409
+#: src/window.rs:395 src/window.rs:423
 #, no-c-format
 msgid "_Cancel"
 msgstr "_Отмена"
 
-#: src/window.rs:382 src/window.rs:410
+#: src/window.rs:396 src/window.rs:424
 #, no-c-format
 msgid "C_lose"
 msgstr "_Закрыть"
 
-#: src/window.rs:398
+#: src/window.rs:412
 #, no-c-format
 msgid "Close Window?"
 msgstr "Закрыть окно?"
 
-#: src/window.rs:401
+#: src/window.rs:415
 #, no-c-format
 msgid "A program is still running in %d tab and will be stopped."
 msgid_plural "Programs are still running in %d tabs and will be stopped."
@@ -433,7 +439,7 @@ msgstr[2] "Работа программ в %d вкладках будет пр�
 msgid "Windows and Tabs"
 msgstr "Окна и вкладки"
 
-#: ui/shortcuts_dialog.ui:21 ui/window.ui:57
+#: ui/shortcuts_dialog.ui:21 ui/window.ui:63
 msgid "New Tab"
 msgstr "Новая вкладка"
 
@@ -489,7 +495,7 @@ msgstr "Копировать"
 msgid "Paste"
 msgstr "Вставить"
 
-#: ui/shortcuts_dialog.ui:105 ui/window.ui:83
+#: ui/shortcuts_dialog.ui:105 ui/window.ui:89
 msgid "Find"
 msgstr "Найти"
 
@@ -517,18 +523,18 @@ msgstr "Обычный размер"
 msgid "Keyboard Shortcuts"
 msgstr "Комбинации клавиш"
 
-#: ui/window.ui:71
+#: ui/window.ui:77
 msgid "Main Menu"
 msgstr "Главное меню"
 
-#: ui/window.ui:107
+#: ui/window.ui:113
 msgid "Find in the history"
 msgstr "Поиск в истории"
 
-#: ui/window.ui:123
+#: ui/window.ui:129
 msgid "Find Upwards"
 msgstr "Найти выше"
 
-#: ui/window.ui:130
+#: ui/window.ui:136
 msgid "Find Downwards"
 msgstr "Найти ниже"

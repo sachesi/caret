@@ -625,7 +625,10 @@ impl TerminalView {
             menu.append_section(None, &links);
         }
         let window = gio::Menu::new();
-        let title_bar = settings().boolean("title-bar");
+        let title_bar = !self
+            .root()
+            .and_downcast::<crate::window::TangentWindow>()
+            .is_some_and(|window| window.header_bar_hidden());
         if !title_bar {
             window.append(Some(&gettext("New _Window")), Some("app.new-window"));
         }
@@ -639,6 +642,7 @@ impl TerminalView {
         if !title_bar {
             let app = gio::Menu::new();
             app.append(Some(&gettext("Title _Bar")), Some("app.title-bar"));
+            app.append(Some(&gettext("_Full Screen")), Some("win.fullscreen"));
             app.append(Some(&gettext("_Preferences")), Some("app.preferences"));
             app.append(Some(&gettext("_Keyboard Shortcuts")), Some("app.shortcuts"));
             app.append(Some(&gettext("_About Tangent")), Some("app.about"));

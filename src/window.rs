@@ -78,9 +78,7 @@ mod imp {
             klass.install_action("win.zoom-in", None, |window, _, _| window.zoom(Some(1)));
             klass.install_action("win.zoom-out", None, |window, _, _| window.zoom(Some(-1)));
             klass.install_action("win.zoom-reset", None, |window, _, _| window.zoom(None));
-            klass.install_action("win.fullscreen", None, |window, _, _| {
-                window.set_fullscreened(!window.is_fullscreen());
-            });
+            klass.install_property_action("win.fullscreen", "fullscreened");
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -101,10 +99,17 @@ mod imp {
                     | adw::TabViewShortcuts::ALT_DIGITS
                     | adw::TabViewShortcuts::ALT_ZERO,
             );
-            settings()
-                .bind("title-bar", &*self.header_bar, "visible")
-                .get()
-                .build();
+            let obj = self.obj();
+            settings().connect_changed(
+                Some("title-bar"),
+                glib::clone!(
+                    #[weak]
+                    obj,
+                    move |_, _| obj.update_header_bar()
+                ),
+            );
+            obj.connect_fullscreened_notify(|window| window.update_header_bar());
+            obj.update_header_bar();
             let (width, height) = settings().get::<(i32, i32)>("window-size");
             if width > 0 && height > 0 {
                 self.obj().set_default_size(width, height);
@@ -342,6 +347,15 @@ impl TangentWindow {
         tab_view.set_selected_page(&page);
         view.grab_focus();
         page
+    }
+
+    /// Whether the title bar is hidden, by the setting or by full screen.
+    pub fn header_bar_hidden(&self) -> bool {
+        !settings().boolean("title-bar") || self.is_fullscreen()
+    }
+
+    fn update_header_bar(&self) {
+        self.imp().header_bar.set_visible(!self.header_bar_hidden());
     }
 
     fn zoom(&self, steps: Option<i32>) {
