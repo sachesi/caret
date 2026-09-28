@@ -536,7 +536,12 @@ impl TerminalView {
 
     fn report(&self, report: Report) {
         let imp = self.imp();
+        // While a command runs, what reaches the terminal is its output, which may be a
+        // file or another machine's: only the shell says where it is.
+        let from_command = imp.command_started.get().is_some();
         match report {
+            Report::Directory(_) | Report::ContainerEntered { .. } | Report::ContainerLeft
+                if from_command => {}
             Report::Directory(directory) => {
                 imp.shell_directory.replace(Some(directory));
             }

@@ -21,7 +21,8 @@ ended under it, until you close the tab.
 
 A new tab or window starts in the folder the current tab's shell is in. A shell that
 reports its folder (OSC 7, which fish does by itself and bash and zsh do with
-`/etc/profile.d/vte.sh` or a line in their prompt) is taken at its word; otherwise it is
+`/etc/profile.d/vte.sh` or a line in their prompt) is taken at its word, except while a command it marked is running, since that output
+may come from a file or another machine; otherwise it is
 read from `/proc`, which is right unless the shell runs in a container or on another
 machine. A new tab from a shell inside a toolbox or distrobox container, which says so
 when it enters one, enters the same container.
