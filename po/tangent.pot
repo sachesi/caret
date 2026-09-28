@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tangent 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/tangent/issues\n"
-"POT-Creation-Date: 2026-09-28 14:38+0300\n"
+"POT-Creation-Date: 2026-09-28 14:43+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -19,8 +19,8 @@ msgstr ""
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
 #: data/io.github.sachesi.tangent.desktop:2
-#: data/io.github.sachesi.tangent.metainfo.xml:6 src/window.rs:461
-#: ui/window.ui:44 ui/window.ui:69
+#: data/io.github.sachesi.tangent.metainfo.xml:6 src/window.rs:511
+#: ui/window.ui:58 ui/window.ui:83
 #, no-c-format
 msgid "Tangent"
 msgstr ""
@@ -78,53 +78,63 @@ msgid "How many lines that scrolled off the top are kept to scroll back to."
 msgstr ""
 
 #: data/io.github.sachesi.tangent.gschema.xml:37
-msgid "Scroll on output"
+msgid "Custom command"
 msgstr ""
 
 #: data/io.github.sachesi.tangent.gschema.xml:38
 msgid ""
-"Whether output brings a view scrolled back into the history to the bottom."
+"A command line that tabs run instead of the shell, split into words the way "
+"the shell does; empty for the shell."
 msgstr ""
 
 #: data/io.github.sachesi.tangent.gschema.xml:42
-msgid "Scroll on keystroke"
+msgid "Scroll on output"
 msgstr ""
 
 #: data/io.github.sachesi.tangent.gschema.xml:43
+msgid ""
+"Whether output brings a view scrolled back into the history to the bottom."
+msgstr ""
+
+#: data/io.github.sachesi.tangent.gschema.xml:47
+msgid "Scroll on keystroke"
+msgstr ""
+
+#: data/io.github.sachesi.tangent.gschema.xml:48
 msgid ""
 "Whether typing or pasting brings a view scrolled back into the history to "
 "the bottom."
 msgstr ""
 
-#: data/io.github.sachesi.tangent.gschema.xml:47
+#: data/io.github.sachesi.tangent.gschema.xml:52
 msgid "Terminal bell"
 msgstr ""
 
-#: data/io.github.sachesi.tangent.gschema.xml:48
+#: data/io.github.sachesi.tangent.gschema.xml:53
 msgid ""
 "Whether the bell a program rings makes a sound. A tab in the background is "
 "marked either way."
 msgstr ""
 
-#: data/io.github.sachesi.tangent.gschema.xml:52
+#: data/io.github.sachesi.tangent.gschema.xml:57
 msgid "Title bar"
 msgstr ""
 
-#: data/io.github.sachesi.tangent.gschema.xml:53
+#: data/io.github.sachesi.tangent.gschema.xml:58
 msgid ""
 "Whether windows show the title bar. Without it, the context menu has its "
 "commands."
 msgstr ""
 
-#: data/io.github.sachesi.tangent.gschema.xml:57
+#: data/io.github.sachesi.tangent.gschema.xml:62
 msgid "Window size"
 msgstr ""
 
-#: data/io.github.sachesi.tangent.gschema.xml:58
+#: data/io.github.sachesi.tangent.gschema.xml:63
 msgid "The size of new windows; 0 fits 80 columns by 24 lines of the font."
 msgstr ""
 
-#: data/io.github.sachesi.tangent.gschema.xml:62
+#: data/io.github.sachesi.tangent.gschema.xml:67
 msgid "Window maximized"
 msgstr ""
 
@@ -280,71 +290,76 @@ msgstr ""
 
 #: src/preferences.rs:167
 #, no-c-format
+msgid "Custom Command, Instead of the Shell"
+msgstr ""
+
+#: src/preferences.rs:174
+#, no-c-format
 msgid "Lines of History"
 msgstr ""
 
-#: src/preferences.rs:169
+#: src/preferences.rs:176
 #, no-c-format
 msgid "Kept for scrolling back after they leave the screen"
 msgstr ""
 
-#: src/preferences.rs:185
+#: src/preferences.rs:192
 #, no-c-format
 msgid "Scroll on Output"
 msgstr ""
 
-#: src/preferences.rs:186
+#: src/preferences.rs:193
 #, no-c-format
 msgid "Go back to the bottom when a program writes"
 msgstr ""
 
-#: src/preferences.rs:193
+#: src/preferences.rs:200
 #, no-c-format
 msgid "Scroll on Keystroke"
 msgstr ""
 
-#: src/preferences.rs:194
+#: src/preferences.rs:201
 #, no-c-format
 msgid "Go back to the bottom when typing or pasting"
 msgstr ""
 
-#: src/preferences.rs:201
+#: src/preferences.rs:208
 #, no-c-format
 msgid "Terminal Bell"
 msgstr ""
 
-#: src/preferences.rs:202
+#: src/preferences.rs:209
 #, no-c-format
 msgid "Sound the bell when a program rings it"
 msgstr ""
 
-#: src/terminal_view.rs:250
+#: src/terminal_view.rs:253
 #, no-c-format
 msgid "The terminal cannot be drawn: %s"
 msgstr ""
 
-#: src/terminal_view.rs:664
+#: src/terminal_view.rs:695
 #, no-c-format
 msgid "“%s” exited with status %s"
 msgstr ""
 
-#: src/terminal_view.rs:668
+#: src/terminal_view.rs:699
 #, no-c-format
 msgid "“%s” was ended by signal %s"
 msgstr ""
 
-#: src/terminal_view.rs:671
+#: src/terminal_view.rs:702
 #, no-c-format
 msgid "“%s” ended"
 msgstr ""
 
 #. Translators: the program, then why it could not start.
-#: src/terminal_view.rs:951
+#: src/terminal_view.rs:982
 #, no-c-format
 msgid "Could not start “%s”: %s"
 msgstr ""
 
-#: src/terminal_view.rs:954
+#: src/terminal_view.rs:985
 #, no-c-format
 msgid "Could not start the shell: %s"
 msgstr ""
@@ -424,47 +439,62 @@ msgstr ""
 msgid "_Close Window"
 msgstr ""
 
-#: src/window.rs:380
+#: src/window.rs:389
 #, no-c-format
 msgid "Command Finished"
 msgstr ""
 
-#: src/window.rs:381
+#: src/window.rs:390
 #, no-c-format
 msgid "Command Failed"
 msgstr ""
 
-#: src/window.rs:476
+#: src/window.rs:429
 #, no-c-format
-msgid "A program is still running in this tab and will be stopped."
+msgid "Rename Tab"
 msgstr ""
 
-#: src/window.rs:478
+#: src/window.rs:431
 #, no-c-format
-msgid "“%s” is still running in this tab and will be stopped."
+msgid "Without a name, the tab shows the program’s title."
 msgstr ""
 
-#: src/window.rs:480
-#, no-c-format
-msgid "Close Tab?"
-msgstr ""
-
-#: src/window.rs:482 src/window.rs:510
+#: src/window.rs:436 src/window.rs:532 src/window.rs:560
 #, no-c-format
 msgid "_Cancel"
 msgstr ""
 
-#: src/window.rs:483 src/window.rs:511
+#: src/window.rs:437
+#, no-c-format
+msgid "_Rename"
+msgstr ""
+
+#: src/window.rs:526
+#, no-c-format
+msgid "A program is still running in this tab and will be stopped."
+msgstr ""
+
+#: src/window.rs:528
+#, no-c-format
+msgid "“%s” is still running in this tab and will be stopped."
+msgstr ""
+
+#: src/window.rs:530
+#, no-c-format
+msgid "Close Tab?"
+msgstr ""
+
+#: src/window.rs:533 src/window.rs:561
 #, no-c-format
 msgid "C_lose"
 msgstr ""
 
-#: src/window.rs:499
+#: src/window.rs:549
 #, no-c-format
 msgid "Close Window?"
 msgstr ""
 
-#: src/window.rs:502
+#: src/window.rs:552
 #, no-c-format
 msgid "A program is still running in %d tab and will be stopped."
 msgid_plural "Programs are still running in %d tabs and will be stopped."
@@ -475,7 +505,7 @@ msgstr[1] ""
 msgid "Windows and Tabs"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:21 ui/window.ui:63
+#: ui/shortcuts_dialog.ui:21 ui/window.ui:77
 msgid "New Tab"
 msgstr ""
 
@@ -531,7 +561,7 @@ msgstr ""
 msgid "Paste"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:105 ui/window.ui:89
+#: ui/shortcuts_dialog.ui:105 ui/window.ui:103
 msgid "Find"
 msgstr ""
 
@@ -567,18 +597,26 @@ msgstr ""
 msgid "Keyboard Shortcuts"
 msgstr ""
 
-#: ui/window.ui:77
+#: ui/window.ui:44
+msgid "_Rename Tab…"
+msgstr ""
+
+#: ui/window.ui:50
+msgid "_Close Tab"
+msgstr ""
+
+#: ui/window.ui:91
 msgid "Main Menu"
 msgstr ""
 
-#: ui/window.ui:113
+#: ui/window.ui:127
 msgid "Find in the history"
 msgstr ""
 
-#: ui/window.ui:129
+#: ui/window.ui:143
 msgid "Find Upwards"
 msgstr ""
 
-#: ui/window.ui:136
+#: ui/window.ui:150
 msgid "Find Downwards"
 msgstr ""

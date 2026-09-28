@@ -54,6 +54,7 @@ mod imp {
                 }
             });
             klass.install_action("win.close", None, |window, _, _| window.close());
+            klass.install_action("win.rename-tab", None, |window, _, _| window.rename_tab());
             klass.install_action("win.copy", None, |window, _, _| {
                 if let Some(view) = window.current_view() {
                     view.copy();
@@ -164,6 +165,14 @@ mod imp {
         fn on_create_tab(&self) -> adw::TabPage {
             let obj = self.obj();
             obj.add_tab(obj.next_command())
+        }
+
+        /// The tab menu acts on the selected tab, so the tab it opens for is selected.
+        #[template_callback]
+        fn on_setup_menu(&self, page: Option<&adw::TabPage>) {
+            if let Some(page) = page {
+                self.tab_view.set_selected_page(page);
+            }
         }
 
         #[template_callback]
@@ -406,6 +415,47 @@ impl TangentWindow {
         tab_view.set_selected_page(&page);
         view.grab_focus();
         page
+    }
+
+    fn rename_tab(&self) {
+        let Some(view) = self.current_view() else {
+            return;
+        };
+        let entry = gtk::Entry::builder()
+            .text(view.title())
+            .activates_default(true)
+            .build();
+        let dialog = adw::AlertDialog::builder()
+            .heading(gettext("Rename Tab"))
+            .body(gettext(
+                "Without a name, the tab shows the program’s title.",
+            ))
+            .extra_child(&entry)
+            .build();
+        dialog.add_responses(&[
+            ("cancel", &gettext("_Cancel")),
+            ("rename", &gettext("_Rename")),
+        ]);
+        dialog.set_response_appearance("rename", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("rename"));
+        dialog.set_close_response("cancel");
+        // The dialog focuses its default response when it maps, after anything set before.
+        entry.connect_map(|entry| {
+            glib::idle_add_local_once(glib::clone!(
+                #[weak]
+                entry,
+                move || {
+                    entry.grab_focus();
+                }
+            ));
+        });
+        dialog.choose(Some(self), gio::Cancellable::NONE, move |response| {
+            if response == "rename" {
+                let name = entry.text().trim().to_owned();
+                view.set_name((!name.is_empty()).then_some(name));
+            }
+            view.grab_focus();
+        });
     }
 
     /// A desktop notification from a tab, which brings it back when clicked.

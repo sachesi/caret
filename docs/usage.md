@@ -30,7 +30,8 @@ when it enters one, enters the same container.
 
 The tab bar shows once there are two tabs. A tab takes its title from the program, which
 sets it with the usual escape sequence; until it does, the tab is named after the
-program. A tab whose program rings the bell while the tab is in the background is marked
+program. Rename Tab in the tab's context menu gives it a name of your own, which stays
+until you clear it. A tab whose program rings the bell while the tab is in the background is marked
 until you look at it, and the bell sounds unless Terminal Bell is off in Preferences.
 
 Ctrl+Shift+H, or Title Bar in Preferences, hides the title bar, and so does full screen

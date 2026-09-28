@@ -52,7 +52,10 @@ mod imp {
 
     #[derive(Default)]
     pub struct TerminalView {
+        /// The one shown: the name the user gave the tab, or else the program's title.
         pub title: RefCell<String>,
+        pub program_title: RefCell<String>,
+        pub name: RefCell<Option<String>>,
         pub default_title: RefCell<String>,
         pub hadjustment: RefCell<Option<gtk::Adjustment>>,
         pub vadjustment: RefCell<Option<gtk::Adjustment>>,
@@ -392,8 +395,25 @@ impl TerminalView {
     }
 
     fn set_title(&self, title: &str) {
-        if *self.imp().title.borrow() != title {
-            self.imp().title.replace(title.to_owned());
+        self.imp().program_title.replace(title.to_owned());
+        self.show_title();
+    }
+
+    /// Names the tab, or with `None` lets it show the program's title again.
+    pub fn set_name(&self, name: Option<String>) {
+        self.imp().name.replace(name);
+        self.show_title();
+    }
+
+    fn show_title(&self) {
+        let imp = self.imp();
+        let shown = imp
+            .name
+            .borrow()
+            .clone()
+            .unwrap_or_else(|| imp.program_title.borrow().clone());
+        if *imp.title.borrow() != shown {
+            imp.title.replace(shown);
             self.notify("title");
         }
     }

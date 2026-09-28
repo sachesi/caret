@@ -39,6 +39,22 @@ menu primary_menu {
   }
 }
 
+menu tab_menu {
+  section {
+    item {
+      label: _("_Rename Tab…");
+      action: "win.rename-tab";
+    }
+  }
+
+  section {
+    item {
+      label: _("_Close Tab");
+      action: "win.close-tab";
+    }
+  }
+}
+
 template $TangentWindow: Adw.ApplicationWindow {
   width-request: 360;
   height-request: 294;
@@ -144,6 +160,8 @@ template $TangentWindow: Adw.ApplicationWindow {
       content: Adw.ToastOverlay {
         child: Adw.TabView tab_view {
           vexpand: true;
+          menu-model: tab_menu;
+          setup-menu => $on_setup_menu() swapped;
           close-page => $on_close_page() swapped;
           create-window => $on_create_window() swapped;
           notify::selected-page => $on_selected_page() swapped;
