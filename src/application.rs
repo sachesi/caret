@@ -191,6 +191,7 @@ impl TangentApplication {
             })
             .build();
         self.add_action_entries([new_window, about, preferences]);
+        self.add_action(&settings().create_action("title-bar"));
 
         // Ctrl with Shift: plain Ctrl and a letter belong to the programs in the terminal.
         for (action, accels) in [
@@ -210,6 +211,7 @@ impl TangentApplication {
             ("win.zoom-reset", &["<Control>0", "<Control>KP_0"]),
             ("win.fullscreen", &["F11"]),
             ("win.tab-overview", &["<Control><Shift>o"]),
+            ("app.title-bar", &["<Control><Shift>h"]),
         ] {
             self.set_accels_for_action(action, accels);
         }

@@ -37,6 +37,11 @@
       <summary>Terminal bell</summary>
       <description>Whether the bell a program rings makes a sound. A tab in the background is marked either way.</description>
     </key>
+    <key name="title-bar" type="b">
+      <default>true</default>
+      <summary>Title bar</summary>
+      <description>Whether windows show the title bar. Without it, the context menu has its commands.</description>
+    </key>
     <key name="window-size" type="(ii)">
       <default>(0, 0)</default>
       <summary>Window size</summary>

@@ -15,6 +15,7 @@ programs in the terminal.
 | Ctrl+Shift+Page Down, Ctrl+Shift+Page Up | Move the tab right, left |
 | Alt+1 … Alt+9, Alt+0 | Go to that tab, Alt+0 to the tenth |
 | Ctrl+Shift+O | Show all tabs |
+| Ctrl+Shift+H | Show or hide the title bar |
 | F11 | Full screen |
 | Ctrl+Shift+C, Ctrl+Shift+V | Copy, paste |
 | Ctrl+Shift+F | Find in the history |

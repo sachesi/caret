@@ -25,6 +25,8 @@ mod imp {
         #[template_child]
         pub window_title: TemplateChild<adw::WindowTitle>,
         #[template_child]
+        pub header_bar: TemplateChild<adw::HeaderBar>,
+        #[template_child]
         pub search_bar: TemplateChild<gtk::SearchBar>,
         #[template_child]
         pub search_entry: TemplateChild<gtk::SearchEntry>,
@@ -99,6 +101,10 @@ mod imp {
                     | adw::TabViewShortcuts::ALT_DIGITS
                     | adw::TabViewShortcuts::ALT_ZERO,
             );
+            settings()
+                .bind("title-bar", &*self.header_bar, "visible")
+                .get()
+                .build();
             let (width, height) = settings().get::<(i32, i32)>("window-size");
             if width > 0 && height > 0 {
                 self.obj().set_default_size(width, height);

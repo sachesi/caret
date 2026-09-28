@@ -14,6 +14,7 @@ Changes apply immediately to open windows.
 | `cursor-shape` | `block`, `beam`, `underline` | `block` | Cursor Shape |
 | `scrollback-lines` | 0 to 1000000 | 10000 | Lines of History |
 | `audible-bell` | bool | true | Terminal Bell |
+| `title-bar` | bool | true | Title Bar |
 | `window-size` | (width, height) | (0, 0) | |
 | `window-maximized` | bool | false | |
 

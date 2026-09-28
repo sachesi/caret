@@ -625,9 +625,28 @@ impl TerminalView {
             menu.append_section(None, &links);
         }
         let window = gio::Menu::new();
+        let title_bar = settings().boolean("title-bar");
+        if !title_bar {
+            window.append(Some(&gettext("New _Window")), Some("app.new-window"));
+        }
         window.append(Some(&gettext("New _Tab")), Some("win.new-tab"));
         window.append(Some(&gettext("_Find…")), Some("win.find"));
+        // What the title bar holds, for when it is hidden.
+        if !title_bar {
+            window.append(Some(&gettext("Show _All Tabs")), Some("win.tab-overview"));
+        }
         menu.append_section(None, &window);
+        if !title_bar {
+            let app = gio::Menu::new();
+            app.append(Some(&gettext("Title _Bar")), Some("app.title-bar"));
+            app.append(Some(&gettext("_Preferences")), Some("app.preferences"));
+            app.append(Some(&gettext("_Keyboard Shortcuts")), Some("app.shortcuts"));
+            app.append(Some(&gettext("_About Tangent")), Some("app.about"));
+            menu.append_section(None, &app);
+            let close = gio::Menu::new();
+            close.append(Some(&gettext("_Close Window")), Some("win.close"));
+            menu.append_section(None, &close);
+        }
         imp.menu_link.replace(link);
         self.action_set_enabled("term.copy", self.has_selection());
 

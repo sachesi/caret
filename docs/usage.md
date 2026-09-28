@@ -29,6 +29,10 @@ sets it with the usual escape sequence; until it does, the tab is named after th
 program. A tab whose program rings the bell while the tab is in the background is marked
 until you look at it, and the bell sounds unless Terminal Bell is off in Preferences.
 
+Ctrl+Shift+H, or Title Bar in Preferences, hides the title bar. The context menu then
+has what the title bar had: a new window, all tabs, the title bar again, Preferences,
+Keyboard Shortcuts, About and closing the window. Super and a drag moves the window.
+
 Closing a tab, or a window, where something other than the shell is running in the
 foreground asks first.
 

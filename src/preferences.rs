@@ -152,6 +152,12 @@ pub fn preferences_dialog() -> adw::PreferencesDialog {
             ("underline", gettext("Underline")),
         ],
     ));
+    let title_bar = adw::SwitchRow::builder()
+        .title(gettext("Title Bar"))
+        .subtitle(gettext("Without it, the context menu has its commands"))
+        .build();
+    settings.bind("title-bar", &title_bar, "active").build();
+    appearance.add(&title_bar);
     page.add(&appearance);
 
     let behaviour = adw::PreferencesGroup::builder()
