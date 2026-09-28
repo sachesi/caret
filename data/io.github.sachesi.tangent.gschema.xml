@@ -47,6 +47,16 @@
       <summary>Scroll on keystroke</summary>
       <description>Whether typing or pasting brings a view scrolled back into the history to the bottom.</description>
     </key>
+    <key name="program-notifications" type="b">
+      <default>true</default>
+      <summary>Notifications from programs</summary>
+      <description>Whether programs can show desktop notifications (OSC 9 and 777) while their tab is out of sight. Their text can say anything.</description>
+    </key>
+    <key name="program-clipboard" type="b">
+      <default>true</default>
+      <summary>Copying by programs</summary>
+      <description>Whether programs can put text on the clipboard (OSC 52), which then pastes into any program. They can never read it.</description>
+    </key>
     <key name="audible-bell" type="b">
       <default>true</default>
       <summary>Terminal bell</summary>

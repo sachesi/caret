@@ -16,6 +16,8 @@ Changes apply immediately to open windows.
 | `scrollback-lines` | 0 to 1000000 | 10000 | Lines of History |
 | `scroll-on-output` | bool | false | Scroll on Output |
 | `scroll-on-keystroke` | bool | true | Scroll on Keystroke |
+| `program-notifications` | bool | true | Notifications |
+| `program-clipboard` | bool | true | Copying |
 | `audible-bell` | bool | true | Terminal Bell |
 | `title-bar` | bool | true | Title Bar |
 | `window-size` | (width, height) | (0, 0) | |

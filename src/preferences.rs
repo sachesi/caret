@@ -212,6 +212,34 @@ pub fn preferences_dialog() -> adw::PreferencesDialog {
     behaviour.add(&bell);
     page.add(&behaviour);
 
+    let programs = adw::PreferencesGroup::builder()
+        .title(gettext("Programs"))
+        .description(gettext(
+            "What programs in the terminal may do, including ones on other machines and files that are shown",
+        ))
+        .build();
+    let notifications = adw::SwitchRow::builder()
+        .title(gettext("Notifications"))
+        .subtitle(gettext(
+            "Programs can notify you while their tab is out of sight",
+        ))
+        .build();
+    settings
+        .bind("program-notifications", &notifications, "active")
+        .build();
+    programs.add(&notifications);
+    let clipboard = adw::SwitchRow::builder()
+        .title(gettext("Copying"))
+        .subtitle(gettext(
+            "Programs can put text on the clipboard, but never read it",
+        ))
+        .build();
+    settings
+        .bind("program-clipboard", &clipboard, "active")
+        .build();
+    programs.add(&clipboard);
+    page.add(&programs);
+
     dialog.add(&page);
     dialog
 }

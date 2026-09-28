@@ -46,7 +46,8 @@ second shows a spinner, and one whose command ends while you look elsewhere is m
 if the command took ten seconds or more and the window is not the one you are using, a
 notification says it finished, and clicking it brings the tab back. Programs can also
 send notifications themselves (OSC 9 and OSC 777), which show when their tab is out of
-sight.
+sight, and put text on the clipboard (OSC 52), though never read it; both can be turned
+off under Programs in Preferences.
 
 Closing a tab, or a window, where something other than the shell is running in the
 foreground asks first.
@@ -60,7 +61,8 @@ and the context menu has both. A program that asks for mouse events gets them; h
 to select anyway.
 
 Pasting into a program that asks for bracketed paste marks the text as pasted, so a
-shell does not run the lines as they arrive. Files dropped on the terminal are typed as
+shell does not run the lines as they arrive. Pasting several lines into one that does not asks first,
+since each line would run as it arrives. Files dropped on the terminal are typed as
 their paths, quoted for the shell.
 
 ## Links

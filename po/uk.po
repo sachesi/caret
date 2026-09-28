@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tangent\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/tangent/issues\n"
-"POT-Creation-Date: 2026-09-28 14:43+0300\n"
+"POT-Creation-Date: 2026-09-28 15:00+0300\n"
 "PO-Revision-Date: 2026-09-27 19:00+0300\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Ukrainian\n"
@@ -97,30 +97,46 @@ msgid "Whether typing or pasting brings a view scrolled back into the history to
 msgstr "Чи повертає введення або вставлення вниз вигляд, прокручений в історію."
 
 #: data/io.github.sachesi.tangent.gschema.xml:52
+msgid "Notifications from programs"
+msgstr "Сповіщення від програм"
+
+#: data/io.github.sachesi.tangent.gschema.xml:53
+msgid "Whether programs can show desktop notifications (OSC 9 and 777) while their tab is out of sight. Their text can say anything."
+msgstr "Чи можуть програми показувати сповіщення на стільниці (OSC 9 і 777), поки їхню вкладку не видно. Їхній текст може бути будь-яким."
+
+#: data/io.github.sachesi.tangent.gschema.xml:57
+msgid "Copying by programs"
+msgstr "Копіювання програмами"
+
+#: data/io.github.sachesi.tangent.gschema.xml:58
+msgid "Whether programs can put text on the clipboard (OSC 52), which then pastes into any program. They can never read it."
+msgstr "Чи можуть програми додавати текст до буфера обміну (OSC 52), звідки він вставляється в будь-яку програму. Читати його вони не можуть ніколи."
+
+#: data/io.github.sachesi.tangent.gschema.xml:62
 msgid "Terminal bell"
 msgstr "Дзвінок термінала"
 
-#: data/io.github.sachesi.tangent.gschema.xml:53
+#: data/io.github.sachesi.tangent.gschema.xml:63
 msgid "Whether the bell a program rings makes a sound. A tab in the background is marked either way."
 msgstr "Чи звучить дзвінок, поданий програмою. Фонова вкладка позначається в будь-якому разі."
 
-#: data/io.github.sachesi.tangent.gschema.xml:57
+#: data/io.github.sachesi.tangent.gschema.xml:67
 msgid "Title bar"
 msgstr "Заголовок вікна"
 
-#: data/io.github.sachesi.tangent.gschema.xml:58
+#: data/io.github.sachesi.tangent.gschema.xml:68
 msgid "Whether windows show the title bar. Without it, the context menu has its commands."
 msgstr "Чи показувати заголовок вікна. Без нього його команди є в контекстному меню."
 
-#: data/io.github.sachesi.tangent.gschema.xml:62
+#: data/io.github.sachesi.tangent.gschema.xml:72
 msgid "Window size"
 msgstr "Розмір вікна"
 
-#: data/io.github.sachesi.tangent.gschema.xml:63
+#: data/io.github.sachesi.tangent.gschema.xml:73
 msgid "The size of new windows; 0 fits 80 columns by 24 lines of the font."
 msgstr "Розмір нових вікон; 0 — 80 стовпців на 24 рядки шрифту."
 
-#: data/io.github.sachesi.tangent.gschema.xml:67
+#: data/io.github.sachesi.tangent.gschema.xml:77
 msgid "Window maximized"
 msgstr "Вікно розгорнуте"
 
@@ -313,36 +329,87 @@ msgstr "Дзвінок термінала"
 msgid "Sound the bell when a program rings it"
 msgstr "Звук, коли програма подає дзвінок"
 
+#: src/preferences.rs:216
+#, no-c-format
+msgid "Programs"
+msgstr "Програми"
+
+#: src/preferences.rs:218
+#, no-c-format
+msgid "What programs in the terminal may do, including ones on other machines and files that are shown"
+msgstr "Що можуть робити програми в терміналі, зокрема на інших машинах і в показаних файлах"
+
+#: src/preferences.rs:222
+#, no-c-format
+msgid "Notifications"
+msgstr "Сповіщення"
+
+#: src/preferences.rs:224
+#, no-c-format
+msgid "Programs can notify you while their tab is out of sight"
+msgstr "Програми можуть сповіщати, поки їхню вкладку не видно"
+
+#: src/preferences.rs:232
+#, no-c-format
+msgid "Copying"
+msgstr "Копіювання"
+
+#: src/preferences.rs:234
+#, no-c-format
+msgid "Programs can put text on the clipboard, but never read it"
+msgstr "Програми можуть додавати текст до буфера обміну, але не читати його"
+
 #: src/terminal_view.rs:253
 #, no-c-format
 msgid "The terminal cannot be drawn: %s"
 msgstr "Не вдається намалювати термінал: %s"
 
-#: src/terminal_view.rs:695
+#: src/terminal_view.rs:701
 #, no-c-format
 msgid "“%s” exited with status %s"
 msgstr "«%s» завершилася з кодом %s"
 
-#: src/terminal_view.rs:699
+#: src/terminal_view.rs:705
 #, no-c-format
 msgid "“%s” was ended by signal %s"
 msgstr "«%s» завершено сигналом %s"
 
-#: src/terminal_view.rs:702
+#: src/terminal_view.rs:708
 #, no-c-format
 msgid "“%s” ended"
 msgstr "«%s» завершилася"
 
 #. Translators: the program, then why it could not start.
-#: src/terminal_view.rs:982
+#: src/terminal_view.rs:992
 #, no-c-format
 msgid "Could not start “%s”: %s"
 msgstr "Не вдалося запустити «%s»: %s"
 
-#: src/terminal_view.rs:985
+#: src/terminal_view.rs:995
 #, no-c-format
 msgid "Could not start the shell: %s"
 msgstr "Не вдалося запустити командну оболонку: %s"
+
+#: src/terminal_view.rs:1374
+#, no-c-format
+msgid "Paste Several Lines?"
+msgstr "Вставити кілька рядків?"
+
+#: src/terminal_view.rs:1376
+#, no-c-format
+msgid "The program here does not mark pasted text, so each line runs as if typed and entered."
+msgstr "Ця програма не позначає вставлений текст, тому кожен рядок виконається, наче його набрали й натиснули Enter."
+
+#: src/terminal_view.rs:1380 src/window.rs:436 src/window.rs:532
+#: src/window.rs:560
+#, no-c-format
+msgid "_Cancel"
+msgstr "_Скасувати"
+
+#: src/terminal_view.rs:1381 src/terminal_view/input.rs:677
+#, no-c-format
+msgid "_Paste"
+msgstr "_Вставити"
 
 #: src/terminal_view/input.rs:652
 #, no-c-format
@@ -353,11 +420,6 @@ msgstr "Не вдалося відкрити посилання: %s"
 #, no-c-format
 msgid "_Copy"
 msgstr "_Копіювати"
-
-#: src/terminal_view/input.rs:677
-#, no-c-format
-msgid "_Paste"
-msgstr "_Вставити"
 
 #: src/terminal_view/input.rs:686
 #, no-c-format
@@ -438,11 +500,6 @@ msgstr "Перейменувати вкладку"
 #, no-c-format
 msgid "Without a name, the tab shows the program’s title."
 msgstr "Без назви вкладка показує заголовок програми."
-
-#: src/window.rs:436 src/window.rs:532 src/window.rs:560
-#, no-c-format
-msgid "_Cancel"
-msgstr "_Скасувати"
 
 #: src/window.rs:437
 #, no-c-format

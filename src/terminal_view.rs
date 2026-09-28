@@ -545,6 +545,7 @@ impl TerminalView {
             Report::Directory(directory) => {
                 imp.shell_directory.replace(Some(directory));
             }
+            Report::Notification { .. } if !settings().boolean("program-notifications") => {}
             Report::Notification { title, body } => {
                 self.emit_by_name::<()>("notification", &[&title, &body]);
             }
@@ -734,7 +735,11 @@ impl TerminalView {
         term::Config {
             scrolling_history: settings.uint("scrollback-lines") as usize,
             default_cursor_style: CursorStyle { shape, blinking },
-            osc52: term::Osc52::OnlyCopy,
+            osc52: if settings.boolean("program-clipboard") {
+                term::Osc52::OnlyCopy
+            } else {
+                term::Osc52::Disabled
+            },
             ..term::Config::default()
         }
     }
@@ -749,7 +754,7 @@ impl TerminalView {
             let Some(view) = weak.upgrade() else { return };
             match key {
                 "font" => view.font_changed(),
-                "cursor-shape" | "scrollback-lines" => {
+                "cursor-shape" | "scrollback-lines" | "program-clipboard" => {
                     let config = view.term_config();
                     if let Some(session) = view.imp().session.borrow().as_ref() {
                         session.lock().set_options(config);
@@ -1359,7 +1364,40 @@ impl TerminalView {
                 .mode()
                 .contains(term::TermMode::BRACKETED_PASTE)
         });
-        self.input(crate::encode::paste(text, bracketed));
+        let lines = text.iter().any(|&byte| byte == b'\n' || byte == b'\r');
+        if bracketed || !lines {
+            self.input(crate::encode::paste(text, bracketed));
+            return;
+        }
+        // Without brackets every line is entered as it arrives, a command run for each.
+        let dialog = adw::AlertDialog::new(
+            Some(&gettext("Paste Several Lines?")),
+            Some(&gettext(
+                "The program here does not mark pasted text, so each line runs as if typed and entered.",
+            )),
+        );
+        dialog.add_responses(&[
+            ("cancel", &gettext("_Cancel")),
+            ("paste", &gettext("_Paste")),
+        ]);
+        dialog.set_response_appearance("paste", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let text = text.to_vec();
+        dialog.choose(
+            Some(self),
+            gio::Cancellable::NONE,
+            glib::clone!(
+                #[weak(rename_to = view)]
+                self,
+                move |response| {
+                    if response == "paste" {
+                        view.input(crate::encode::paste(&text, false));
+                    }
+                    view.grab_focus();
+                }
+            ),
+        );
     }
 
     pub fn clear_selection(&self) {
