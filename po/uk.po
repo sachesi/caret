@@ -182,6 +182,46 @@ msgid "sachesi"
 msgstr "sachesi"
 
 #: data/io.github.sachesi.caret.metainfo.xml:36
+msgid "Tangent is now called Caret. Its settings start from the defaults."
+msgstr "Tangent тепер називається Caret. Параметри починаються з типових значень."
+
+#: data/io.github.sachesi.caret.metainfo.xml:38
+msgid "New tabs open in the folder of the current one, and in its Toolbox or Distrobox container, where the shell reports them"
+msgstr "Нові вкладки відкриваються в теці поточної та в її контейнері Toolbox або Distrobox, якщо оболонка про них повідомляє"
+
+#: data/io.github.sachesi.caret.metainfo.xml:39
+msgid "Tabs show a running command, and a finished one or a notification in a tab that is not in view; Ctrl+Shift+Up and Down scroll between prompts"
+msgstr "Вкладки показують команду, що виконується, а також її завершення або сповіщення у вкладці, якої не видно; Ctrl+Shift+Вгору та Вниз гортають між запрошеннями"
+
+#: data/io.github.sachesi.caret.metainfo.xml:40
+msgid "Tabs can be renamed from their context menu"
+msgstr "Вкладку можна перейменувати з її контекстного меню"
+
+#: data/io.github.sachesi.caret.metainfo.xml:41
+msgid "The title bar can be hidden, and is in full screen"
+msgstr "Заголовок вікна можна сховати, а в повноекранному режимі його сховано"
+
+#: data/io.github.sachesi.caret.metainfo.xml:42
+msgid "Selecting with the mouse scrolls past the edge; Select All and Deselect"
+msgstr "Виділення мишею гортає текст за краєм; «Виділити все» та «Зняти виділення»"
+
+#: data/io.github.sachesi.caret.metainfo.xml:43
+msgid "The link under the pointer is underlined, and one a program broke into lines is followed"
+msgstr "Посилання під вказівником підкреслюється, а посилання, яке програма розбила на рядки, простежується повністю"
+
+#: data/io.github.sachesi.caret.metainfo.xml:44
+msgid "Symbols the font joins, such as -> and !=, are drawn joined, and a setting turns features of the font on and off"
+msgstr "Символи, які шрифт з’єднує, наприклад -> та !=, малюються разом, а параметр вмикає й вимикає можливості шрифту"
+
+#: data/io.github.sachesi.caret.metainfo.xml:45
+msgid "Settings for a command to run instead of the shell and for scrolling on output and on keystroke"
+msgstr "Параметри для команди, що запускається замість оболонки, і для гортання під час виведення та натискання клавіш"
+
+#: data/io.github.sachesi.caret.metainfo.xml:46
+msgid "Pasting several lines asks first where they would run, and programs can be kept from notifying and from copying"
+msgstr "Перед вставленням кількох рядків, які були б виконані, ставиться запитання, а програмам можна заборонити сповіщення та копіювання"
+
+#: data/io.github.sachesi.caret.metainfo.xml:52
 msgid "The first release."
 msgstr "Перший випуск."
 

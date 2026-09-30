@@ -31,6 +31,22 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.2.0" date="2026-09-30">
+      <description>
+        <p>Tangent is now called Caret. Its settings start from the defaults.</p>
+        <ul>
+          <li>New tabs open in the folder of the current one, and in its Toolbox or Distrobox container, where the shell reports them</li>
+          <li>Tabs show a running command, and a finished one or a notification in a tab that is not in view; Ctrl+Shift+Up and Down scroll between prompts</li>
+          <li>Tabs can be renamed from their context menu</li>
+          <li>The title bar can be hidden, and is in full screen</li>
+          <li>Selecting with the mouse scrolls past the edge; Select All and Deselect</li>
+          <li>The link under the pointer is underlined, and one a program broke into lines is followed</li>
+          <li>Symbols the font joins, such as -&gt; and !=, are drawn joined, and a setting turns features of the font on and off</li>
+          <li>Settings for a command to run instead of the shell and for scrolling on output and on keystroke</li>
+          <li>Pasting several lines asks first where they would run, and programs can be kept from notifying and from copying</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-09-27">
       <description>
         <p>The first release.</p>

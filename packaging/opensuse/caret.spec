@@ -5,7 +5,7 @@
 
 Name:           caret
 # The OBS workflow sets Version to the tag it builds; OBS counts the Release.
-Version:        0.1.0
+Version:        0.2.0
 Release:        0
 Summary:        GPU-rendered terminal for GTK 4 and libadwaita
 

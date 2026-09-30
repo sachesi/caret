@@ -5,7 +5,7 @@
 
 Name:           caret
 # Copr's script for the package sets Version to the tag it builds.
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        GPU-rendered terminal for GTK 4 and libadwaita
 

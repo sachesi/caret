@@ -2,7 +2,7 @@
 
 # pkgver and sha256sums are filled in by .github/workflows/aur.yml for each release.
 pkgname=caret
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc='GPU-rendered terminal for GTK 4 and libadwaita'
 arch=('x86_64' 'aarch64')
