@@ -8,25 +8,25 @@ use gettextrs::gettext;
 
 use crate::session::Command;
 use crate::settings::{self, settings};
-use crate::window::TangentWindow;
+use crate::window::CaretWindow;
 use crate::{adw, config, gio, glib, gtk};
 
 mod imp {
     use super::*;
 
     #[derive(Default)]
-    pub struct TangentApplication {}
+    pub struct CaretApplication {}
 
     #[glib::object_subclass]
-    impl ObjectSubclass for TangentApplication {
-        const NAME: &'static str = "TangentApplication";
-        type Type = super::TangentApplication;
+    impl ObjectSubclass for CaretApplication {
+        const NAME: &'static str = "CaretApplication";
+        type Type = super::CaretApplication;
         type ParentType = adw::Application;
     }
 
-    impl ObjectImpl for TangentApplication {}
+    impl ObjectImpl for CaretApplication {}
 
-    impl ApplicationImpl for TangentApplication {
+    impl ApplicationImpl for CaretApplication {
         fn startup(&self) {
             self.parent_startup();
             settings::apply_color_scheme();
@@ -44,7 +44,7 @@ mod imp {
 
         fn handle_local_options(&self, options: &glib::VariantDict) -> ControlFlow<glib::ExitCode> {
             if options.contains("version") {
-                println!("tangent {}", config::VERSION);
+                println!("caret {}", config::VERSION);
                 return ControlFlow::Break(glib::ExitCode::SUCCESS);
             }
             ControlFlow::Continue(())
@@ -91,17 +91,17 @@ mod imp {
         }
     }
 
-    impl GtkApplicationImpl for TangentApplication {}
-    impl AdwApplicationImpl for TangentApplication {}
+    impl GtkApplicationImpl for CaretApplication {}
+    impl AdwApplicationImpl for CaretApplication {}
 }
 
 glib::wrapper! {
-    pub struct TangentApplication(ObjectSubclass<imp::TangentApplication>)
+    pub struct CaretApplication(ObjectSubclass<imp::CaretApplication>)
         @extends adw::Application, gtk::Application, gio::Application,
         @implements gio::ActionGroup, gio::ActionMap;
 }
 
-impl Default for TangentApplication {
+impl Default for CaretApplication {
     fn default() -> Self {
         Self::new()
     }
@@ -124,7 +124,7 @@ pub fn arguments() -> Vec<String> {
     arguments
 }
 
-impl TangentApplication {
+impl CaretApplication {
     pub fn new() -> Self {
         let app: Self = glib::Object::builder()
             .property("application-id", config::APP_ID)
@@ -163,7 +163,7 @@ impl TangentApplication {
     }
 
     fn open_window(&self, command: Command) {
-        let window = TangentWindow::new(Some(self));
+        let window = CaretWindow::new(Some(self));
         window.add_tab(command);
         window.present();
     }
@@ -173,7 +173,7 @@ impl TangentApplication {
             .activate(|app: &Self, _, _| {
                 let command = app
                     .active_window()
-                    .and_downcast::<TangentWindow>()
+                    .and_downcast::<CaretWindow>()
                     .map(|window| window.next_command())
                     .unwrap_or_default();
                 app.open_window(command);
@@ -194,7 +194,7 @@ impl TangentApplication {
                     return;
                 };
                 for window in app.windows() {
-                    if let Ok(window) = window.downcast::<TangentWindow>()
+                    if let Ok(window) = window.downcast::<CaretWindow>()
                         && window.show_tab(serial)
                     {
                         return;
@@ -233,12 +233,12 @@ impl TangentApplication {
 
     fn show_about(&self) {
         let about = adw::AboutDialog::builder()
-            .application_name("Tangent")
+            .application_name("Caret")
             .application_icon(config::APP_ID)
             .developer_name("sachesi")
             .version(config::VERSION)
-            .website("https://github.com/sachesi/tangent")
-            .issue_url("https://github.com/sachesi/tangent/issues")
+            .website("https://github.com/sachesi/caret")
+            .issue_url("https://github.com/sachesi/caret/issues")
             .license_type(gtk::License::Gpl30)
             .comments(gettext("A terminal drawn by the GPU"))
             // Translators: put your name here, one per line, optionally with an email address.

@@ -1,7 +1,7 @@
 # Security
 
 Please report a vulnerability privately rather than in a public issue: through
-[a private advisory](https://github.com/sachesi/tangent/security/advisories/new) on GitHub,
+[a private advisory](https://github.com/sachesi/caret/security/advisories/new) on GitHub,
 or by mail to sachesi <xsachesi@pm.me>. Say what you found, how to reproduce it and which
 version you ran; a fix is worked out with you before anything is published.
 

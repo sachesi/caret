@@ -1,7 +1,7 @@
-# Tangent
+# Caret
 
-Tangent is a terminal written in Rust with GTK 4 and libadwaita. Programs' output is
-parsed by [alacritty_terminal](https://crates.io/crates/alacritty_terminal), and Tangent
+Caret is a terminal written in Rust with GTK 4 and libadwaita. Programs' output is
+parsed by [alacritty_terminal](https://crates.io/crates/alacritty_terminal), and Caret
 draws the text itself with OpenGL, one texel to each pixel of the screen, so it stays
 sharp at fractional scales.
 
@@ -22,14 +22,14 @@ Fedora 44, 45 and Rawhide, from the Copr project
 [sachesi/software](https://copr.fedorainfracloud.org/coprs/sachesi/software/):
 
     sudo dnf copr enable sachesi/software
-    sudo dnf install tangent
+    sudo dnf install caret
 
 openSUSE Tumbleweed and Slowroll, from the OBS project
 [home:sachesi:software](https://build.opensuse.org/project/show/home:sachesi:software); for
 Slowroll the address has `openSUSE_Slowroll` in it, and on aarch64 `openSUSE_Factory_ARM`:
 
     sudo zypper addrepo https://download.opensuse.org/repositories/home:sachesi:software/openSUSE_Tumbleweed/home:sachesi:software.repo
-    sudo zypper install tangent
+    sudo zypper install caret
 
 Debian testing and Ubuntu 26.04, from the same OBS project; for Ubuntu the addresses
 have `xUbuntu_26.04` in place of `Debian_Testing`:
@@ -38,14 +38,14 @@ have `xUbuntu_26.04` in place of `Debian_Testing`:
     curl -fsSL https://download.opensuse.org/repositories/home:sachesi:software/Debian_Testing/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/sachesi-software.gpg
     echo 'deb [signed-by=/etc/apt/keyrings/sachesi-software.gpg] https://download.opensuse.org/repositories/home:sachesi:software/Debian_Testing/ /' | sudo tee /etc/apt/sources.list.d/sachesi-software.list
     sudo apt update
-    sudo apt install tangent
+    sudo apt install caret
 
-Debian 13 and Ubuntu 24.04 ship a GTK and libadwaita older than Tangent needs.
+Debian 13 and Ubuntu 24.04 ship a GTK and libadwaita older than Caret needs.
 
-Arch Linux: the AUR package [tangent](https://aur.archlinux.org/packages/tangent), built
+Arch Linux: the AUR package [caret](https://aur.archlinux.org/packages/caret), built
 from [packaging/aur/PKGBUILD](packaging/aur/PKGBUILD), which each release tag updates.
 
-The same packages are attached to each [release](https://github.com/sachesi/tangent/releases).
+The same packages are attached to each [release](https://github.com/sachesi/caret/releases).
 
 ## Building and installing
 
@@ -58,17 +58,17 @@ and libadwaita. Details, other prefixes and removal are in
 
 ## Starting it
 
-    tangent                  # your shell, in the current folder
-    tangent -w ~/src         # in another folder
-    tangent -e htop          # a command instead of the shell
+    caret                  # your shell, in the current folder
+    caret -w ~/src         # in another folder
+    caret -e htop          # a command instead of the shell
 
-Launchers that go through xdg-terminal-exec open Tangent once
-`io.github.sachesi.tangent.desktop` is the first line of `~/.config/xdg-terminals.list`.
+Launchers that go through xdg-terminal-exec open Caret once
+`io.github.sachesi.caret.desktop` is the first line of `~/.config/xdg-terminals.list`.
 
 ## Documentation
 
 - [Installing](docs/installing.md)
-- [Using Tangent](docs/usage.md), including [keyboard shortcuts](docs/keyboard-shortcuts.md) and [settings](docs/settings.md)
+- [Using Caret](docs/usage.md), including [keyboard shortcuts](docs/keyboard-shortcuts.md) and [settings](docs/settings.md)
 - [Contributing](CONTRIBUTING.md), including where things are in the code, and [reporting a vulnerability](SECURITY.md)
 
 Tabs are not restored between runs. The interface is available in English, Russian and

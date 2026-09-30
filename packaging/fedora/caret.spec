@@ -1,16 +1,16 @@
 %define _debugsource_template %{nil}
 %define debug_package %{nil}
 
-%global app_id io.github.sachesi.tangent
+%global app_id io.github.sachesi.caret
 
-Name:           tangent
+Name:           caret
 # Copr's script for the package sets Version to the tag it builds.
 Version:        0.1.0
 Release:        1%{?dist}
 Summary:        GPU-rendered terminal for GTK 4 and libadwaita
 
 License:        GPL-3.0-or-later
-URL:            https://github.com/sachesi/tangent
+URL:            https://github.com/sachesi/caret
 Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/%{name}-%{version}.tar.gz
 # The crates the build needs, from the release, so that it runs without a network.
 Source1:        %{url}/releases/download/v%{version}/%{name}-%{version}-vendor.tar.xz
@@ -32,10 +32,13 @@ Requires:       hicolor-icon-theme
 # The renderer opens libEGL.so.1 itself, which the automatic dependencies do not see.
 Requires:       libglvnd-egl%{?_isa}
 Suggests:       xdg-terminal-exec
+# The name before 0.2.0.
+Obsoletes:      tangent < 0.2.0
+Provides:       tangent = %{version}-%{release}
 
 %description
-Tangent is a terminal built with GTK 4 and libadwaita. Programs' output is
-parsed by alacritty_terminal, and Tangent draws the text itself with OpenGL,
+Caret is a terminal built with GTK 4 and libadwaita. Programs' output is
+parsed by alacritty_terminal, and Caret draws the text itself with OpenGL,
 one texel to each pixel of the screen, so it stays sharp at fractional scales.
 It has tabs, search through the history, links opened with Ctrl and a click,
 and follows the desktop's font and style.
@@ -46,7 +49,7 @@ and follows the desktop's font and style.
 %build
 export CARGO_HOME="$PWD/.cargo-home"
 export RUSTFLAGS="%{?build_rustflags}"
-export TANGENT_LOCALEDIR="%{_datadir}/locale"
+export CARET_LOCALEDIR="%{_datadir}/locale"
 %if 0%{?_cargo_target_dir:1}
 export CARGO_TARGET_DIR="%{_cargo_target_dir}"
 %endif
@@ -58,7 +61,7 @@ target="%{_cargo_target_dir}/release"
 %else
 target="target/release"
 %endif
-install -Dpm 0755 "$target/tangent" %{buildroot}%{_bindir}/tangent
+install -Dpm 0755 "$target/caret" %{buildroot}%{_bindir}/caret
 
 install -d %{buildroot}%{_datadir}/applications %{buildroot}%{_metainfodir}
 msgfmt --desktop --template=data/%{app_id}.desktop -d po \
@@ -80,12 +83,12 @@ done
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/%{app_id}.desktop
 appstreamcli validate --no-net %{buildroot}%{_metainfodir}/%{app_id}.metainfo.xml
-test -x %{buildroot}%{_bindir}/tangent
+test -x %{buildroot}%{_bindir}/caret
 
 %files -f %{name}.lang
 %license LICENSE
 %doc README.md docs
-%{_bindir}/tangent
+%{_bindir}/caret
 %{_datadir}/applications/%{app_id}.desktop
 %{_metainfodir}/%{app_id}.metainfo.xml
 %{_datadir}/glib-2.0/schemas/%{app_id}.gschema.xml

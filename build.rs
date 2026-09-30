@@ -26,20 +26,20 @@ fn main() {
     copy_dir("data/icons", &resource_dir.join("icons"));
     copy_dir(ui_out, &resource_dir.join("ui"));
     fs::copy(
-        "data/tangent.gresource.xml",
-        resource_dir.join("tangent.gresource.xml"),
+        "data/caret.gresource.xml",
+        resource_dir.join("caret.gresource.xml"),
     )
     .unwrap();
 
     glib_build_tools::compile_resources(
         &[resource_dir.to_str().unwrap()],
-        resource_dir.join("tangent.gresource.xml").to_str().unwrap(),
-        "tangent.gresource",
+        resource_dir.join("caret.gresource.xml").to_str().unwrap(),
+        "caret.gresource",
     );
 
     println!("cargo:rerun-if-changed=data/ui");
     println!("cargo:rerun-if-changed=data/icons");
-    println!("cargo:rerun-if-changed=data/tangent.gresource.xml");
+    println!("cargo:rerun-if-changed=data/caret.gresource.xml");
 }
 
 fn copy_dir(src: impl AsRef<std::path::Path>, dst: &std::path::Path) {

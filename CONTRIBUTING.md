@@ -1,6 +1,6 @@
 # Contributing
 
-Bugs and ideas go to the [issue tracker](https://github.com/sachesi/tangent/issues);
+Bugs and ideas go to the [issue tracker](https://github.com/sachesi/caret/issues);
 security problems do not, see [SECURITY.md](SECURITY.md).
 
 Before a change goes in:
@@ -9,7 +9,7 @@ Before a change goes in:
   every push and pull request.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
   `fix:`, `feat:`, `perf:`, `docs:` and so on, with a subject that says what changed for
-  someone using Tangent.
+  someone using Caret.
 - Every string the user sees goes through `gettext`. `just po` updates the catalogues in
   `po/`, and a change that adds strings brings their translations along where it can.
 - Behaviour described in `docs/` changes with the code that implements it.
@@ -18,7 +18,7 @@ Before a change goes in:
 
     build.rs                  runs blueprint-compiler and bundles the GResource
     data/ui/*.blp             the window and the shortcuts dialog
-    src/bin/tangent.rs        the executable, a thin main
+    src/bin/caret.rs        the executable, a thin main
     src/application.rs        GtkApplication subclass, command line, app actions, accels
     src/window.rs             the window: tabs, find bar, win.* actions, closing
     src/preferences.rs        the preferences dialog
@@ -53,7 +53,7 @@ from the atlas, and lines for underlines and strikeout. It goes into a texture t
 owns, as large as the widget in the screen's pixels, and GTK composites that texture one
 texel to a pixel, placed on the pixel grid. The widget makes its own `GdkGLContext` rather
 than being a `GtkGLArea`, whose buffer is sized by the integer scale and would be
-resampled on a fractional one. Tangent asks GTK for its GL renderer, which takes that
+resampled on a fractional one. Caret asks GTK for its GL renderer, which takes that
 texture as it is, unless `GSK_RENDERER` already names one: the Vulkan renderer has to
 import it as a dmabuf, and where the driver refuses Mesa's implicit modifier it copies
 every frame through the CPU instead.

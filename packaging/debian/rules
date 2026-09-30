@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 
 export CARGO_HOME = $(CURDIR)/debian/cargo-home
-export TANGENT_LOCALEDIR = /usr/share/locale
+export CARET_LOCALEDIR = /usr/share/locale
 
 %:
 	dh $@
@@ -22,4 +22,4 @@ override_dh_auto_build:
 override_dh_auto_test:
 
 override_dh_auto_install:
-	DESTDIR=$(CURDIR)/debian/tangent JUST_TEMPDIR=$(CURDIR)/debian just prefix=/usr install
+	DESTDIR=$(CURDIR)/debian/caret JUST_TEMPDIR=$(CURDIR)/debian just prefix=/usr install

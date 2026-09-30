@@ -1,9 +1,9 @@
 # Settings
 
-Everything is in the GSettings schema `io.github.sachesi.tangent`. Preferences (Ctrl+,)
+Everything is in the GSettings schema `io.github.sachesi.caret`. Preferences (Ctrl+,)
 exposes all but the window's size and state, which the window writes when it closes:
 
-    gsettings set io.github.sachesi.tangent font 'JetBrains Mono 12'
+    gsettings set io.github.sachesi.caret font 'JetBrains Mono 12'
 
 Changes apply immediately to open windows.
 

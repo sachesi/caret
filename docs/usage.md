@@ -1,17 +1,17 @@
-# Using Tangent
+# Using Caret
 
 ## Starting it
 
-    tangent                              # a window with your shell, in the current folder
-    tangent --working-directory ~/src    # in another folder; -w for short
-    tangent -e htop                      # running a command instead of the shell
-    tangent -- ssh host                  # the same, the way GOption spells it
+    caret                              # a window with your shell, in the current folder
+    caret --working-directory ~/src    # in another folder; -w for short
+    caret -e htop                      # running a command instead of the shell
+    caret -- ssh host                  # the same, the way GOption spells it
 
 Everything after `-e` or `-x` is the command and its arguments, as launchers such as
 xdg-terminal-exec expect. The shell is `$SHELL`, or the one in your passwd entry; Custom Command in Preferences
 runs something else in its place. Each
-start opens a window in the Tangent that is already running, and its program gets the
-environment of that start rather than the running Tangent's. Variables that belong to
+start opens a window in the Caret that is already running, and its program gets the
+environment of that start rather than the running Caret's. Variables that belong to
 another terminal, or to tmux or screen around the command line (`TMUX`, `VTE_VERSION`,
 `KITTY_WINDOW_ID` and the like), are left out.
 
@@ -41,7 +41,7 @@ has what the title bar had: a new window, all tabs, the title bar again, Prefere
 Keyboard Shortcuts, About, Full Screen and closing the window. Super and a drag moves the window.
 
 A shell that marks its prompts and commands (OSC 133, which fish does by itself) tells
-Tangent when a command starts and ends. A tab whose command is still running after a
+Caret when a command starts and ends. A tab whose command is still running after a
 second shows a spinner, and one whose command ends while you look elsewhere is marked;
 if the command took ten seconds or more and the window is not the one you are using, a
 notification says it finished, and clicking it brings the tab back. Programs can also

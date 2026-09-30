@@ -38,8 +38,8 @@ jobs:
           with open("Cargo.toml", "rb") as f:
               cargo = tomllib.load(f)["package"]["version"]
           with open("Cargo.lock", "rb") as f:
-              lock = next(p["version"] for p in tomllib.load(f)["package"] if p["name"] == "tangent")
-          release = ET.parse("data/io.github.sachesi.tangent.metainfo.xml").find("releases/release")
+              lock = next(p["version"] for p in tomllib.load(f)["package"] if p["name"] == "caret")
+          release = ET.parse("data/io.github.sachesi.caret.metainfo.xml").find("releases/release")
           found = {"Cargo.toml": cargo, "Cargo.lock": lock, "the metainfo": release.get("version")}
           wrong = [f"{where} says {v}" for where, v in found.items() if v != tag]
           if wrong:
@@ -59,7 +59,7 @@ jobs:
           EOF
       - name: Vendor the crates
         run: |
-          dir="tangent-${TAG#v}"
+          dir="caret-${TAG#v}"
           mkdir -p "$dir/.cargo" dist
           cargo vendor --locked --versioned-dirs "$dir/vendor" > "$dir/.cargo/config.toml"
           # Paths relative to the source tree, so the tarball unpacks over it.
@@ -92,7 +92,7 @@ jobs:
           path: rpmbuild/SOURCES
       - name: Build
         run: |
-          spec=packaging/fedora/tangent.spec
+          spec=packaging/fedora/caret.spec
           sed -i "s/^Version:.*/Version:        ${TAG#v}/; s/^Release:.*/Release:        1%{?dist}/" "$spec"
           dnf builddep -y --setopt=install_weak_deps=False "$spec"
           # rpmbuild fetches Source0 from the tag into a directory it does not create itself.
@@ -114,7 +114,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Testing: stable's GTK and libadwaita are older than Tangent needs.
+          # Testing: stable's GTK and libadwaita are older than Caret needs.
           - name: Debian
             image: debian:forky
             artifact: debian
@@ -141,41 +141,43 @@ jobs:
           ref: ${{ env.TAG }}
       - name: Build
         run: |
-          export TANGENT_LOCALEDIR=/usr/share/locale
+          export CARET_LOCALEDIR=/usr/share/locale
           cargo build --locked --release
           DESTDIR="$PWD/stage" just prefix=/usr install
-          install -Dm644 LICENSE stage/usr/share/doc/tangent/copyright
+          install -Dm644 LICENSE stage/usr/share/doc/caret/copyright
       - name: Package
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          bins="stage/usr/bin/tangent"
+          bins="stage/usr/bin/caret"
           strip --strip-unneeded $bins
           # dpkg-shlibdeps wants a source package to belong to.
           mkdir debian
-          printf 'Source: tangent\n\nPackage: tangent\nArchitecture: any\n' > debian/control
+          printf 'Source: caret\n\nPackage: caret\nArchitecture: any\n' > debian/control
           shlibs=$(dpkg-shlibdeps -O $(printf -- '-e %s ' $bins) | sed -n 's/^shlibs:Depends=//p')
           mkdir stage/DEBIAN
           cat > stage/DEBIAN/control <<EOF
-          Package: tangent
+          Package: caret
           Version: ${TAG#v}-$REVISION
           Architecture: $(dpkg --print-architecture)
           Maintainer: sachesi <xsachesi@pm.me>
           Installed-Size: $(du -sk stage | cut -f1)
           Depends: $shlibs, libgtk-4-1 (>= 4.22), libadwaita-1-0 (>= 1.9), hicolor-icon-theme, libegl1
           Suggests: xdg-terminal-exec
+          Conflicts: tangent
+          Replaces: tangent
           Section: x11
           Priority: optional
-          Homepage: https://github.com/sachesi/tangent
+          Homepage: https://github.com/sachesi/caret
           Description: GPU-rendered terminal for GTK 4 and libadwaita
-           Tangent is a terminal built with GTK 4 and libadwaita. Programs' output is
-           parsed by alacritty_terminal, and Tangent draws the text itself with OpenGL,
+           Caret is a terminal built with GTK 4 and libadwaita. Programs' output is
+           parsed by alacritty_terminal, and Caret draws the text itself with OpenGL,
            one texel to each pixel of the screen, so it stays sharp at fractional scales.
            It has tabs, search through the history, links opened with Ctrl and a click,
            and follows the desktop's font and style.
           EOF
           mkdir dist
-          deb="dist/tangent_${TAG#v}-${REVISION}_$(dpkg --print-architecture).deb"
+          deb="dist/caret_${TAG#v}-${REVISION}_$(dpkg --print-architecture).deb"
           dpkg-deb --root-owner-group -Zxz --build stage "$deb"
           # The dependencies resolve on the release it was built for.
           apt-get install -y "./$deb"
@@ -201,7 +203,7 @@ jobs:
           sed -i "s/^pkgver=.*/pkgver=${TAG#v}/; s/^pkgrel=.*/pkgrel=1/" pkg/PKGBUILD
           (source pkg/PKGBUILD && pacman -S --noconfirm --needed --asdeps "${depends[@]}" "${makedepends[@]}")
           su builder -c 'cd pkg && makepkg --noconfirm'
-          mkdir dist && mv pkg/tangent-"${TAG#v}"-1-*.pkg.tar.zst dist/
+          mkdir dist && mv pkg/caret-"${TAG#v}"-1-*.pkg.tar.zst dist/
           # The dependencies resolve on Arch as it is today.
           pacman -U --noconfirm dist/*.pkg.tar.zst
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -240,6 +242,6 @@ jobs:
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" -R "$GITHUB_REPOSITORY" --clobber *
           else
-            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --title "Tangent ${TAG#v}" \
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --title "Caret ${TAG#v}" \
               --notes-file ../notes/notes.md *
           fi

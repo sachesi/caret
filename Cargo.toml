@@ -1,16 +1,16 @@
 [package]
-name = "tangent"
+name = "caret"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.92"
 license = "GPL-3.0-or-later"
 description = "A GPU-rendered terminal for GTK 4 and libadwaita"
-repository = "https://github.com/sachesi/tangent"
+repository = "https://github.com/sachesi/caret"
 readme = "README.md"
 
 [[bin]]
-name = "tangent"
-path = "src/bin/tangent.rs"
+name = "caret"
+path = "src/bin/caret.rs"
 
 [dependencies]
 gtk4 = { version = "0.11", features = ["v4_22"] }

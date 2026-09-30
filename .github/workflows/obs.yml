@@ -23,12 +23,12 @@ jobs:
     # Listed with the repository's deployments, linking to the package on OBS.
     environment:
       name: obs
-      url: https://build.opensuse.org/package/show/home:sachesi:software/tangent
+      url: https://build.opensuse.org/package/show/home:sachesi:software/caret
     permissions:
       # For the obs branch.
       contents: write
     env:
-      NAME: tangent
+      NAME: caret
       TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       # The packaging of this workflow's revision, which builds the tag's sources.
@@ -70,7 +70,7 @@ jobs:
           git push -f "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" obs
       - name: Start the build
         env:
-          # A runservice token of home:sachesi:software/tangent.
+          # A runservice token of home:sachesi:software/caret.
           OBS_TOKEN: ${{ secrets.OBS_TOKEN }}
         run: |
           [ -n "$OBS_TOKEN" ] || { echo "OBS_TOKEN is not set" >&2; exit 1; }

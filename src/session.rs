@@ -82,7 +82,7 @@ pub struct Command {
     pub argv: Vec<String>,
     pub directory: Option<PathBuf>,
     /// The environment of the command line that asked for the program, which may not be
-    /// the one Tangent was started from; Tangent's own when empty.
+    /// the one Caret was started from; Caret's own when empty.
     pub env: HashMap<String, String>,
 }
 
@@ -185,7 +185,7 @@ impl Command {
             [
                 ("TERM", "xterm-256color"),
                 ("COLORTERM", "truecolor"),
-                ("TERM_PROGRAM", "tangent"),
+                ("TERM_PROGRAM", "caret"),
                 ("TERM_PROGRAM_VERSION", config::VERSION),
             ]
             .map(|(name, value)| (name.to_owned(), value.to_owned())),
@@ -387,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn the_renderer_tangent_chose_is_not_passed_on() {
+    fn the_renderer_caret_chose_is_not_passed_on() {
         let chosen = command(&[("GSK_RENDERER", "gl"), (crate::CHOSE_RENDERER, "1")]);
         let env = chosen.environment();
         assert!(!env.contains_key("GSK_RENDERER"));

@@ -1,27 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<schemalist gettext-domain="tangent">
-  <enum id="io.github.sachesi.tangent.ColorScheme">
+<schemalist gettext-domain="caret">
+  <enum id="io.github.sachesi.caret.ColorScheme">
     <value nick="system" value="0"/>
     <value nick="light" value="1"/>
     <value nick="dark" value="2"/>
   </enum>
-  <enum id="io.github.sachesi.tangent.CursorShape">
+  <enum id="io.github.sachesi.caret.CursorShape">
     <value nick="block" value="0"/>
     <value nick="beam" value="1"/>
     <value nick="underline" value="2"/>
   </enum>
-  <schema id="io.github.sachesi.tangent" path="/io/github/sachesi/tangent/">
+  <schema id="io.github.sachesi.caret" path="/io/github/sachesi/caret/">
     <key name="font" type="s">
       <default>''</default>
       <summary>Font</summary>
       <description>A Pango font description such as “Monospace 11”; empty for the desktop's monospace font.</description>
     </key>
-    <key name="color-scheme" enum="io.github.sachesi.tangent.ColorScheme">
+    <key name="color-scheme" enum="io.github.sachesi.caret.ColorScheme">
       <default>'system'</default>
       <summary>Light or dark</summary>
       <description>“system” follows the desktop's preference.</description>
     </key>
-    <key name="cursor-shape" enum="io.github.sachesi.tangent.CursorShape">
+    <key name="cursor-shape" enum="io.github.sachesi.caret.CursorShape">
       <default>'block'</default>
       <summary>Cursor shape</summary>
       <description>The shape of the cursor until a program asks for another.</description>

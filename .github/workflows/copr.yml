@@ -20,7 +20,7 @@ jobs:
     # Listed with the repository's deployments, linking to the package in Copr.
     environment:
       name: copr
-      url: https://copr.fedorainfracloud.org/coprs/sachesi/software/package/tangent/
+      url: https://copr.fedorainfracloud.org/coprs/sachesi/software/package/caret/
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
     steps:
@@ -31,4 +31,4 @@ jobs:
         run: |
           [ -n "$COPR_WEBHOOK" ] || { echo "COPR_WEBHOOK is not set" >&2; exit 1; }
           # Copr's script for the package builds the tag it is sent, with the spec on main.
-          curl -fsS -X POST --data "$TAG" "${COPR_WEBHOOK%/}/tangent/"
+          curl -fsS -X POST --data "$TAG" "${COPR_WEBHOOK%/}/caret/"

@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name=Tangent
+Name=Caret
 GenericName=Terminal
 Comment=Use the command line
-Exec=tangent
-Icon=io.github.sachesi.tangent
+Exec=caret
+Icon=io.github.sachesi.caret
 Terminal=false
 Type=Application
 Categories=GTK;System;TerminalEmulator;
@@ -15,4 +15,4 @@ X-TerminalArgDir=--working-directory
 
 [Desktop Action new-window]
 Name=New Window
-Exec=tangent
+Exec=caret

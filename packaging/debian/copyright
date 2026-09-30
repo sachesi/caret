@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: tangent
+Upstream-Name: caret
 Upstream-Contact: sachesi <xsachesi@pm.me>
-Source: https://github.com/sachesi/tangent
+Source: https://github.com/sachesi/caret
 
 Files: *
 Copyright: sachesi <xsachesi@pm.me>

@@ -134,7 +134,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for TerminalView {
-        const NAME: &'static str = "TangentTerminalView";
+        const NAME: &'static str = "CaretTerminalView";
         type Type = super::TerminalView;
         type ParentType = gtk::Widget;
         type Interfaces = (gtk::Scrollable, gtk::AccessibleText);
@@ -254,7 +254,7 @@ mod imp {
                         self.glyphs_stale.set(false);
                     }
                     Err(error) => {
-                        glib::g_warning!("tangent", "drawing with OpenGL: {error}");
+                        glib::g_warning!("caret", "drawing with OpenGL: {error}");
                         self.failure.replace(Some(
                             gettext("The terminal cannot be drawn: %s").replace("%s", &error),
                         ));
@@ -1319,7 +1319,7 @@ impl TerminalView {
                 snapshot.pop();
             }
             Err(error) => {
-                glib::g_warning!("tangent", "drawing a frame: {error}");
+                glib::g_warning!("caret", "drawing a frame: {error}");
                 snapshot.append_color(&rgba(background), &bounds);
             }
         }

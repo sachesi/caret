@@ -15,9 +15,9 @@ use polling::{Event, PollMode, Poller};
 
 /// The address prompts are marked with, as a hyperlink over their text, so that the grid
 /// keeps where each one is through scrolling and resizing.
-pub const PROMPT: &str = "tangent:prompt";
+pub const PROMPT: &str = "caret:prompt";
 
-const PROMPT_START: &[u8] = b"\x1b]8;;tangent:prompt\x07";
+const PROMPT_START: &[u8] = b"\x1b]8;;caret:prompt\x07";
 const PROMPT_END: &[u8] = b"\x1b]8;;\x07";
 
 /// The commands whose bodies are held back to be looked at; any other passes through as
@@ -360,7 +360,7 @@ mod tests {
     fn prompts_are_marked_and_commands_reported() {
         let (out, reports) =
             filtered(&[b"\x1b]133;A\x07$ \x1b]133;B\x07ls\r\n\x1b]133;C\x07out\x1b]133;D;2\x07"]);
-        assert_eq!(out, b"\x1b]8;;tangent:prompt\x07$ \x1b]8;;\x07ls\r\nout");
+        assert_eq!(out, b"\x1b]8;;caret:prompt\x07$ \x1b]8;;\x07ls\r\nout");
         assert_eq!(
             reports,
             [Report::CommandStarted, Report::CommandFinished(Some(2))]

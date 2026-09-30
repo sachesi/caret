@@ -7,7 +7,7 @@ use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gettextrs::{gettext, ngettext};
 
-use crate::application::TangentApplication;
+use crate::application::CaretApplication;
 use crate::session::Command;
 use crate::settings::settings;
 use crate::terminal_view::TerminalView;
@@ -17,8 +17,8 @@ mod imp {
     use super::*;
 
     #[derive(Default, gtk::CompositeTemplate)]
-    #[template(resource = "/io/github/sachesi/tangent/ui/window.ui")]
-    pub struct TangentWindow {
+    #[template(resource = "/io/github/sachesi/caret/ui/window.ui")]
+    pub struct CaretWindow {
         #[template_child]
         pub tab_overview: TemplateChild<adw::TabOverview>,
         #[template_child]
@@ -36,9 +36,9 @@ mod imp {
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for TangentWindow {
-        const NAME: &'static str = "TangentWindow";
-        type Type = super::TangentWindow;
+    impl ObjectSubclass for CaretWindow {
+        const NAME: &'static str = "CaretWindow";
+        type Type = super::CaretWindow;
         type ParentType = adw::ApplicationWindow;
 
         fn class_init(klass: &mut Self::Class) {
@@ -94,7 +94,7 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for TangentWindow {
+    impl ObjectImpl for CaretWindow {
         fn constructed(&self) {
             self.parent_constructed();
             // Only the tab shortcuts few programs want for themselves: Ctrl+Home and
@@ -149,9 +149,9 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for TangentWindow {}
+    impl WidgetImpl for CaretWindow {}
 
-    impl WindowImpl for TangentWindow {
+    impl WindowImpl for CaretWindow {
         fn close_request(&self) -> glib::Propagation {
             let obj = self.obj();
             if !self.closing.get() {
@@ -166,11 +166,11 @@ mod imp {
         }
     }
 
-    impl ApplicationWindowImpl for TangentWindow {}
-    impl AdwApplicationWindowImpl for TangentWindow {}
+    impl ApplicationWindowImpl for CaretWindow {}
+    impl AdwApplicationWindowImpl for CaretWindow {}
 
     #[gtk::template_callbacks]
-    impl TangentWindow {
+    impl CaretWindow {
         #[template_callback]
         fn on_create_tab(&self) -> adw::TabPage {
             let obj = self.obj();
@@ -187,11 +187,8 @@ mod imp {
 
         #[template_callback]
         fn on_create_window(&self) -> adw::TabView {
-            let application = self
-                .obj()
-                .application()
-                .and_downcast::<TangentApplication>();
-            let window = super::TangentWindow::new(application.as_ref());
+            let application = self.obj().application().and_downcast::<CaretApplication>();
+            let window = super::CaretWindow::new(application.as_ref());
             window.present();
             window.imp().tab_view.clone()
         }
@@ -267,7 +264,7 @@ mod imp {
         }
     }
 
-    impl TangentWindow {
+    impl CaretWindow {
         fn search(&self, upwards: bool) {
             if let Some(view) = self.obj().current_view() {
                 let window = self.obj().downgrade();
@@ -290,7 +287,7 @@ mod imp {
 }
 
 glib::wrapper! {
-    pub struct TangentWindow(ObjectSubclass<imp::TangentWindow>)
+    pub struct CaretWindow(ObjectSubclass<imp::CaretWindow>)
         @extends adw::ApplicationWindow, gtk::ApplicationWindow, gtk::Window, gtk::Widget,
         @implements gio::ActionGroup, gio::ActionMap, gtk::Accessible, gtk::Buildable,
                     gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
@@ -307,7 +304,7 @@ fn view_of(page: &adw::TabPage) -> Option<TerminalView> {
         .and_downcast::<TerminalView>()
 }
 
-impl TangentWindow {
+impl CaretWindow {
     /// What a new tab runs: the shell, where the current tab's is.
     pub fn next_command(&self) -> Command {
         self.current_view()
@@ -315,7 +312,7 @@ impl TangentWindow {
             .unwrap_or_default()
     }
 
-    pub fn new(application: Option<&TangentApplication>) -> Self {
+    pub fn new(application: Option<&CaretApplication>) -> Self {
         glib::Object::builder()
             .property("application", application)
             .build()
@@ -518,7 +515,7 @@ impl TangentWindow {
             .selected_page()
             .map(|page| page.title().to_string())
             .filter(|title| !title.is_empty())
-            .unwrap_or_else(|| gettext("Tangent"));
+            .unwrap_or_else(|| gettext("Caret"));
         self.imp().window_title.set_title(&title);
         self.set_title(Some(&title));
     }

@@ -1,11 +1,11 @@
-# Russian translation for Tangent.
-# This file is distributed under the same license as the tangent package.
+# Russian translation for Caret.
+# This file is distributed under the same license as the caret package.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: tangent\n"
-"Report-Msgid-Bugs-To: https://github.com/sachesi/tangent/issues\n"
-"POT-Creation-Date: 2026-09-28 23:10+0300\n"
+"Project-Id-Version: caret\n"
+"Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
+"POT-Creation-Date: 2026-09-30 09:24+0300\n"
 "PO-Revision-Date: 2026-09-27 19:00+0300\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Russian\n"
@@ -16,38 +16,38 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
-#: data/io.github.sachesi.tangent.desktop:2
-#: data/io.github.sachesi.tangent.metainfo.xml:6 src/window.rs:521
+#: data/io.github.sachesi.caret.desktop:2
+#: data/io.github.sachesi.caret.metainfo.xml:6 src/window.rs:518
 #: ui/window.ui:58 ui/window.ui:83
 #, no-c-format
-msgid "Tangent"
-msgstr "Tangent"
+msgid "Caret"
+msgstr "Caret"
 
-#: data/io.github.sachesi.tangent.desktop:3 ui/shortcuts_dialog.ui:90
+#: data/io.github.sachesi.caret.desktop:3 ui/shortcuts_dialog.ui:90
 msgid "Terminal"
 msgstr "Терминал"
 
-#: data/io.github.sachesi.tangent.desktop:4
-#: data/io.github.sachesi.tangent.metainfo.xml:7
+#: data/io.github.sachesi.caret.desktop:4
+#: data/io.github.sachesi.caret.metainfo.xml:7
 msgid "Use the command line"
 msgstr "Работа с командной строкой"
 
-#: data/io.github.sachesi.tangent.desktop:11
+#: data/io.github.sachesi.caret.desktop:11
 msgid "shell;prompt;command;commandline;console;"
 msgstr ""
 "оболочка;приглашение;команда;командная "
 "строка;консоль;shell;prompt;command;commandline;console;"
 
-#: data/io.github.sachesi.tangent.desktop:17 ui/shortcuts_dialog.ui:15
+#: data/io.github.sachesi.caret.desktop:17 ui/shortcuts_dialog.ui:15
 msgid "New Window"
 msgstr "Новое окно"
 
-#: data/io.github.sachesi.tangent.gschema.xml:16 src/preferences.rs:52
+#: data/io.github.sachesi.caret.gschema.xml:16 src/preferences.rs:52
 #, no-c-format
 msgid "Font"
 msgstr "Шрифт"
 
-#: data/io.github.sachesi.tangent.gschema.xml:17
+#: data/io.github.sachesi.caret.gschema.xml:17
 msgid ""
 "A Pango font description such as “Monospace 11”; empty for the desktop's "
 "monospace font."
@@ -55,35 +55,35 @@ msgstr ""
 "Описание шрифта Pango, например «Monospace 11»; пустое значение — "
 "моноширинный шрифт рабочего стола."
 
-#: data/io.github.sachesi.tangent.gschema.xml:21
+#: data/io.github.sachesi.caret.gschema.xml:21
 msgid "Light or dark"
 msgstr "Светлый или тёмный"
 
-#: data/io.github.sachesi.tangent.gschema.xml:22
+#: data/io.github.sachesi.caret.gschema.xml:22
 msgid "“system” follows the desktop's preference."
 msgstr "«system» следует настройке рабочего стола."
 
-#: data/io.github.sachesi.tangent.gschema.xml:26
+#: data/io.github.sachesi.caret.gschema.xml:26
 msgid "Cursor shape"
 msgstr "Форма курсора"
 
-#: data/io.github.sachesi.tangent.gschema.xml:27
+#: data/io.github.sachesi.caret.gschema.xml:27
 msgid "The shape of the cursor until a program asks for another."
 msgstr "Форма курсора, пока программа не запросит другую."
 
-#: data/io.github.sachesi.tangent.gschema.xml:32
+#: data/io.github.sachesi.caret.gschema.xml:32
 msgid "Lines of history"
 msgstr "Строк истории"
 
-#: data/io.github.sachesi.tangent.gschema.xml:33
+#: data/io.github.sachesi.caret.gschema.xml:33
 msgid "How many lines that scrolled off the top are kept to scroll back to."
 msgstr "Сколько строк, ушедших за верхний край, хранится для прокрутки назад."
 
-#: data/io.github.sachesi.tangent.gschema.xml:37
+#: data/io.github.sachesi.caret.gschema.xml:37
 msgid "Custom command"
 msgstr "Своя команда"
 
-#: data/io.github.sachesi.tangent.gschema.xml:38
+#: data/io.github.sachesi.caret.gschema.xml:38
 msgid ""
 "A command line that tabs run instead of the shell, split into words the way "
 "the shell does; empty for the shell."
@@ -91,30 +91,30 @@ msgstr ""
 "Командная строка, которую вкладки запускают вместо оболочки, разбитая на "
 "слова так же, как это делает оболочка; пустая строка означает оболочку."
 
-#: data/io.github.sachesi.tangent.gschema.xml:42
+#: data/io.github.sachesi.caret.gschema.xml:42
 msgid "Scroll on output"
 msgstr "Прокрутка при выводе"
 
-#: data/io.github.sachesi.tangent.gschema.xml:43
+#: data/io.github.sachesi.caret.gschema.xml:43
 msgid ""
 "Whether output brings a view scrolled back into the history to the bottom."
 msgstr "Возвращает ли вывод программы вниз вид, прокрученный в историю."
 
-#: data/io.github.sachesi.tangent.gschema.xml:47
+#: data/io.github.sachesi.caret.gschema.xml:47
 msgid "Scroll on keystroke"
 msgstr "Прокрутка при нажатии клавиш"
 
-#: data/io.github.sachesi.tangent.gschema.xml:48
+#: data/io.github.sachesi.caret.gschema.xml:48
 msgid ""
 "Whether typing or pasting brings a view scrolled back into the history to "
 "the bottom."
 msgstr "Возвращает ли ввод или вставка вниз вид, прокрученный в историю."
 
-#: data/io.github.sachesi.tangent.gschema.xml:52
+#: data/io.github.sachesi.caret.gschema.xml:52
 msgid "Notifications from programs"
 msgstr "Уведомления от программ"
 
-#: data/io.github.sachesi.tangent.gschema.xml:53
+#: data/io.github.sachesi.caret.gschema.xml:53
 msgid ""
 "Whether programs can show desktop notifications (OSC 9 and 777) while their "
 "tab is out of sight. Their text can say anything."
@@ -122,11 +122,11 @@ msgstr ""
 "Могут ли программы показывать уведомления на рабочем столе (OSC 9 и 777), "
 "пока их вкладка не видна. Их текст может быть любым."
 
-#: data/io.github.sachesi.tangent.gschema.xml:57
+#: data/io.github.sachesi.caret.gschema.xml:57
 msgid "Copying by programs"
 msgstr "Копирование программами"
 
-#: data/io.github.sachesi.tangent.gschema.xml:58
+#: data/io.github.sachesi.caret.gschema.xml:58
 msgid ""
 "Whether programs can put text on the clipboard (OSC 52), which then pastes "
 "into any program. They can never read it."
@@ -134,11 +134,11 @@ msgstr ""
 "Могут ли программы помещать текст в буфер обмена (OSC 52), откуда он "
 "вставляется в любую программу. Читать его они не могут никогда."
 
-#: data/io.github.sachesi.tangent.gschema.xml:62
+#: data/io.github.sachesi.caret.gschema.xml:62
 msgid "Terminal bell"
 msgstr "Звонок терминала"
 
-#: data/io.github.sachesi.tangent.gschema.xml:63
+#: data/io.github.sachesi.caret.gschema.xml:63
 msgid ""
 "Whether the bell a program rings makes a sound. A tab in the background is "
 "marked either way."
@@ -146,44 +146,44 @@ msgstr ""
 "Звучит ли звонок, поданный программой. Фоновая вкладка отмечается в любом "
 "случае."
 
-#: data/io.github.sachesi.tangent.gschema.xml:67
+#: data/io.github.sachesi.caret.gschema.xml:67
 msgid "Title bar"
 msgstr "Заголовок окна"
 
-#: data/io.github.sachesi.tangent.gschema.xml:68
+#: data/io.github.sachesi.caret.gschema.xml:68
 msgid ""
 "Whether windows show the title bar. Without it, the context menu has its "
 "commands."
 msgstr ""
 "Показывать ли заголовок окна. Без него его команды есть в контекстном меню."
 
-#: data/io.github.sachesi.tangent.gschema.xml:72
+#: data/io.github.sachesi.caret.gschema.xml:72
 msgid "Window size"
 msgstr "Размер окна"
 
-#: data/io.github.sachesi.tangent.gschema.xml:73
+#: data/io.github.sachesi.caret.gschema.xml:73
 msgid "The size of new windows; 0 fits 80 columns by 24 lines of the font."
 msgstr "Размер новых окон; 0 — 80 столбцов на 24 строки шрифта."
 
-#: data/io.github.sachesi.tangent.gschema.xml:77
+#: data/io.github.sachesi.caret.gschema.xml:77
 msgid "Window maximized"
 msgstr "Окно развёрнуто"
 
-#: data/io.github.sachesi.tangent.metainfo.xml:9
+#: data/io.github.sachesi.caret.metainfo.xml:9
 msgid ""
-"Tangent is a terminal built with GTK 4 and libadwaita. Its text is drawn by "
+"Caret is a terminal built with GTK 4 and libadwaita. Its text is drawn by "
 "the GPU, pixel for pixel at any display scale."
 msgstr ""
-"Tangent — терминал на GTK 4 и libadwaita. Его текст рисует графический "
+"Caret — терминал на GTK 4 и libadwaita. Его текст рисует графический "
 "процессор, пиксель в пиксель при любом масштабе экрана."
 
-#: data/io.github.sachesi.tangent.metainfo.xml:11
+#: data/io.github.sachesi.caret.metainfo.xml:11
 msgid ""
 "Tabs with an overview, and new tabs and windows in the folder of the current "
 "one"
 msgstr "Вкладки с обзором; новые вкладки и окна открываются в папке текущей"
 
-#: data/io.github.sachesi.tangent.metainfo.xml:12
+#: data/io.github.sachesi.caret.metainfo.xml:12
 msgid ""
 "Search through the history, selection by word or line, and addresses opened "
 "with Ctrl and a click"
@@ -191,22 +191,22 @@ msgstr ""
 "Поиск по истории, выделение словами и строками, адреса открываются щелчком с "
 "Ctrl"
 
-#: data/io.github.sachesi.tangent.metainfo.xml:13
+#: data/io.github.sachesi.caret.metainfo.xml:13
 msgid "Mouse reporting, bracketed paste, true colour, and underline styles"
 msgstr ""
 "Передача событий мыши, вставка в скобках, полноцветный режим и стили "
 "подчёркивания"
 
-#: data/io.github.sachesi.tangent.metainfo.xml:14
+#: data/io.github.sachesi.caret.metainfo.xml:14
 msgid "The desktop's monospace font and colour scheme, or ones of its own"
 msgstr ""
 "Моноширинный шрифт и цветовая схема рабочего стола или свои собственные"
 
-#: data/io.github.sachesi.tangent.metainfo.xml:21
+#: data/io.github.sachesi.caret.metainfo.xml:21
 msgid "sachesi"
 msgstr "sachesi"
 
-#: data/io.github.sachesi.tangent.metainfo.xml:33
+#: data/io.github.sachesi.caret.metainfo.xml:36
 msgid "The first release."
 msgstr "Первый выпуск."
 
@@ -405,43 +405,43 @@ msgstr "Копирование"
 msgid "Programs can put text on the clipboard, but never read it"
 msgstr "Программы могут помещать текст в буфер обмена, но не читать его"
 
-#: src/terminal_view.rs:255
+#: src/terminal_view.rs:259
 #, no-c-format
 msgid "The terminal cannot be drawn: %s"
 msgstr "Не удаётся нарисовать терминал: %s"
 
-#: src/terminal_view.rs:703
+#: src/terminal_view.rs:707
 #, no-c-format
 msgid "“%s” exited with status %s"
 msgstr "«%s» завершилась с кодом %s"
 
-#: src/terminal_view.rs:707
+#: src/terminal_view.rs:711
 #, no-c-format
 msgid "“%s” was ended by signal %s"
 msgstr "«%s» завершена сигналом %s"
 
-#: src/terminal_view.rs:710
+#: src/terminal_view.rs:714
 #, no-c-format
 msgid "“%s” ended"
 msgstr "«%s» завершилась"
 
 #. Translators: the program, then why it could not start.
-#: src/terminal_view.rs:994
+#: src/terminal_view.rs:998
 #, no-c-format
 msgid "Could not start “%s”: %s"
 msgstr "Не удалось запустить «%s»: %s"
 
-#: src/terminal_view.rs:997
+#: src/terminal_view.rs:1001
 #, no-c-format
 msgid "Could not start the shell: %s"
 msgstr "Не удалось запустить командную оболочку: %s"
 
-#: src/terminal_view.rs:1393
+#: src/terminal_view.rs:1410
 #, no-c-format
 msgid "Paste Several Lines?"
 msgstr "Вставить несколько строк?"
 
-#: src/terminal_view.rs:1395
+#: src/terminal_view.rs:1412
 #, no-c-format
 msgid ""
 "The program here does not mark pasted text, so each line runs as if typed "
@@ -450,148 +450,148 @@ msgstr ""
 "Эта программа не отмечает вставленный текст, поэтому каждая строка "
 "выполнится, как если бы её набрали и нажали Enter."
 
-#: src/terminal_view.rs:1399 src/window.rs:446 src/window.rs:542
-#: src/window.rs:570
+#: src/terminal_view.rs:1416 src/window.rs:443 src/window.rs:539
+#: src/window.rs:567
 #, no-c-format
 msgid "_Cancel"
 msgstr "_Отмена"
 
-#: src/terminal_view.rs:1400 src/terminal_view/input.rs:677
+#: src/terminal_view.rs:1417 src/terminal_view/input.rs:716
 #, no-c-format
 msgid "_Paste"
 msgstr "_Вставить"
 
-#: src/terminal_view/input.rs:652
+#: src/terminal_view/input.rs:691
 #, no-c-format
 msgid "Could not open the link: %s"
 msgstr "Не удалось открыть ссылку: %s"
 
-#: src/terminal_view/input.rs:676
+#: src/terminal_view/input.rs:715
 #, no-c-format
 msgid "_Copy"
 msgstr "_Копировать"
 
-#: src/terminal_view/input.rs:679
+#: src/terminal_view/input.rs:718
 #, no-c-format
 msgid "Select _All"
 msgstr "Выделить _всё"
 
-#: src/terminal_view/input.rs:683
+#: src/terminal_view/input.rs:722
 #, no-c-format
 msgid "_Deselect"
 msgstr "_Снять выделение"
 
-#: src/terminal_view/input.rs:692
+#: src/terminal_view/input.rs:731
 #, no-c-format
 msgid "_Open Link"
 msgstr "_Открыть ссылку"
 
-#: src/terminal_view/input.rs:693
+#: src/terminal_view/input.rs:732
 #, no-c-format
 msgid "Copy _Link Address"
 msgstr "Копировать _адрес ссылки"
 
-#: src/terminal_view/input.rs:702 ui/window.ui:12
+#: src/terminal_view/input.rs:741 ui/window.ui:12
 #, no-c-format
 msgid "New _Window"
 msgstr "Новое _окно"
 
-#: src/terminal_view/input.rs:704 ui/window.ui:16
+#: src/terminal_view/input.rs:743 ui/window.ui:16
 #, no-c-format
 msgid "New _Tab"
 msgstr "Новая _вкладка"
 
-#: src/terminal_view/input.rs:705
+#: src/terminal_view/input.rs:744
 #, no-c-format
 msgid "_Find…"
 msgstr "_Найти…"
 
-#: src/terminal_view/input.rs:708
+#: src/terminal_view/input.rs:747
 #, no-c-format
 msgid "Show _All Tabs"
 msgstr "Показать _все вкладки"
 
-#: src/terminal_view/input.rs:713
+#: src/terminal_view/input.rs:752
 #, no-c-format
 msgid "Title _Bar"
 msgstr "_Заголовок окна"
 
-#: src/terminal_view/input.rs:714 ui/window.ui:22
+#: src/terminal_view/input.rs:753 ui/window.ui:22
 #, no-c-format
 msgid "_Full Screen"
 msgstr "_Во весь экран"
 
-#: src/terminal_view/input.rs:715 ui/window.ui:28
+#: src/terminal_view/input.rs:754 ui/window.ui:28
 #, no-c-format
 msgid "_Preferences"
 msgstr "_Параметры"
 
-#: src/terminal_view/input.rs:716 ui/window.ui:32
+#: src/terminal_view/input.rs:755 ui/window.ui:32
 #, no-c-format
 msgid "_Keyboard Shortcuts"
 msgstr "_Комбинации клавиш"
 
-#: src/terminal_view/input.rs:717 ui/window.ui:36
+#: src/terminal_view/input.rs:756 ui/window.ui:36
 #, no-c-format
-msgid "_About Tangent"
-msgstr "_О Tangent"
+msgid "_About Caret"
+msgstr "_О Caret"
 
-#: src/terminal_view/input.rs:720
+#: src/terminal_view/input.rs:759
 #, no-c-format
 msgid "_Close Window"
 msgstr "_Закрыть окно"
 
-#: src/window.rs:399
+#: src/window.rs:396
 #, no-c-format
 msgid "Command Finished"
 msgstr "Команда завершена"
 
-#: src/window.rs:400
+#: src/window.rs:397
 #, no-c-format
 msgid "Command Failed"
 msgstr "Команда завершилась с ошибкой"
 
-#: src/window.rs:439
+#: src/window.rs:436
 #, no-c-format
 msgid "Rename Tab"
 msgstr "Переименовать вкладку"
 
-#: src/window.rs:441
+#: src/window.rs:438
 #, no-c-format
 msgid "Without a name, the tab shows the program’s title."
 msgstr "Без имени вкладка показывает заголовок программы."
 
-#: src/window.rs:447
+#: src/window.rs:444
 #, no-c-format
 msgid "_Rename"
 msgstr "_Переименовать"
 
-#: src/window.rs:536
+#: src/window.rs:533
 #, no-c-format
 msgid "A program is still running in this tab and will be stopped."
 msgstr "В этой вкладке ещё работает программа, её работа будет прервана."
 
-#: src/window.rs:538
+#: src/window.rs:535
 #, no-c-format
 msgid "“%s” is still running in this tab and will be stopped."
 msgstr "В этой вкладке ещё работает «%s», и её работа будет прервана."
 
-#: src/window.rs:540
+#: src/window.rs:537
 #, no-c-format
 msgid "Close Tab?"
 msgstr "Закрыть вкладку?"
 
-#: src/window.rs:543 src/window.rs:571
+#: src/window.rs:540 src/window.rs:568
 #, no-c-format
 msgid "C_lose"
 msgstr "_Закрыть"
 
-#: src/window.rs:559
+#: src/window.rs:556
 #, no-c-format
 msgid "Close Window?"
 msgstr "Закрыть окно?"
 
-#: src/window.rs:562
+#: src/window.rs:559
 #, no-c-format
 msgid "A program is still running in %d tab and will be stopped."
 msgid_plural "Programs are still running in %d tabs and will be stopped."
@@ -726,3 +726,56 @@ msgstr "Найти выше"
 #: ui/window.ui:150
 msgid "Find Downwards"
 msgstr "Найти ниже"
+
+#~ msgid "Tangent is now called Caret. Its settings start from the defaults."
+#~ msgstr ""
+#~ "Tangent теперь называется Caret. Параметры начинаются со значений по "
+#~ "умолчанию."
+
+#~ msgid ""
+#~ "New tabs open in the folder of the current one, and in its Toolbox or "
+#~ "Distrobox container, where the shell reports them"
+#~ msgstr ""
+#~ "Новые вкладки открываются в папке текущей и в её контейнере Toolbox или "
+#~ "Distrobox, если оболочка о них сообщает"
+
+#~ msgid ""
+#~ "Tabs show a running command, and a finished one or a notification in a "
+#~ "tab that is not in view; Ctrl+Shift+Up and Down scroll between prompts"
+#~ msgstr ""
+#~ "Вкладки показывают выполняющуюся команду, а также её завершение или "
+#~ "уведомление во вкладке, которая не на виду; Ctrl+Shift+Вверх и Вниз "
+#~ "прокручивают между приглашениями"
+
+#~ msgid "Tabs can be renamed from their context menu"
+#~ msgstr "Вкладку можно переименовать из её контекстного меню"
+
+#~ msgid "The title bar can be hidden, and is in full screen"
+#~ msgstr "Заголовок окна можно скрыть, а в полноэкранном режиме он скрыт"
+
+#~ msgid ""
+#~ "Selecting with the mouse scrolls past the edge; Select All and Deselect"
+#~ msgstr ""
+#~ "Выделение мышью прокручивает текст за краем; «Выделить всё» и «Снять "
+#~ "выделение»"
+
+#~ msgid ""
+#~ "The link under the pointer is underlined, and one a program broke into "
+#~ "lines is followed"
+#~ msgstr ""
+#~ "Ссылка под указателем подчёркивается, а ссылка, которую программа разбила "
+#~ "на строки, прослеживается целиком"
+
+#~ msgid ""
+#~ "Settings for a command to run instead of the shell and for scrolling on "
+#~ "output and on keystroke"
+#~ msgstr ""
+#~ "Параметры для команды, запускаемой вместо оболочки, и для прокрутки при "
+#~ "выводе и при нажатии клавиш"
+
+#~ msgid ""
+#~ "Pasting several lines asks first where they would run, and programs can "
+#~ "be kept from notifying and from copying"
+#~ msgstr ""
+#~ "Перед вставкой нескольких строк, которые были бы выполнены, задаётся "
+#~ "вопрос, а программам можно запретить уведомления и копирование"

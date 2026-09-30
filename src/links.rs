@@ -16,7 +16,7 @@ const SCHEMES: [&str; 8] = [
     "mailto:",
 ];
 
-/// Whether an address a program gave as a link is one Tangent opens: of the schemes it
+/// Whether an address a program gave as a link is one Caret opens: of the schemes it
 /// finds in text, so that a link cannot hand a file or an arbitrary handler to the desktop.
 pub fn openable(uri: &str) -> bool {
     SCHEMES.iter().any(|scheme| {

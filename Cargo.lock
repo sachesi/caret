@@ -117,6 +117,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "caret"
+version = "0.1.0"
+dependencies = [
+ "alacritty_terminal",
+ "async-channel",
+ "gettext-rs",
+ "gio",
+ "glib-build-tools",
+ "glow",
+ "gtk4",
+ "libadwaita",
+ "libc",
+ "libloading",
+ "pangocairo",
+ "polling",
+]
+
+[[package]]
 name = "cc"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1119,24 +1137,6 @@ dependencies = [
  "pkg-config",
  "toml",
  "version-compare",
-]
-
-[[package]]
-name = "tangent"
-version = "0.1.0"
-dependencies = [
- "alacritty_terminal",
- "async-channel",
- "gettext-rs",
- "gio",
- "glib-build-tools",
- "glow",
- "gtk4",
- "libadwaita",
- "libc",
- "libloading",
- "pangocairo",
- "polling",
 ]
 
 [[package]]

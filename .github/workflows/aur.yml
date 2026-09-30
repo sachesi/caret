@@ -1,6 +1,6 @@
 name: AUR
 
-# A release tag updates the tangent package on the AUR from packaging/aur/PKGBUILD, once
+# A release tag updates the caret package on the AUR from packaging/aur/PKGBUILD, once
 # CI has passed (ci.yml calls this). The release has already built and installed that
 # PKGBUILD, so this only fills in its checksums and .SRCINFO. Run by hand, it does the
 # same for the given version and pushes it only when asked to.
@@ -31,7 +31,7 @@ jobs:
     # is only visible with `secrets: inherit` there.
     environment: aur
     env:
-      PKGNAME: tangent
+      PKGNAME: caret
       VERSION: ${{ inputs.version || github.ref_name }}
       PKGREL: ${{ inputs.pkgrel || '1' }}
       # ssh takes its directory from root's passwd entry, not from the job's HOME.

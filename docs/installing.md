@@ -9,7 +9,7 @@ just`. `just check` also wants `desktop-file-validate`, `appstreamcli` and gette
 
 To run: GTK 4.22, libadwaita 1.9, `libEGL.so.1` with a driver for OpenGL 3.3 or OpenGL ES
 3.0, and a session bus. Without a GL context the tab says why and starts no
-program. Tangent runs GTK's GL renderer unless `GSK_RENDERER` names another; the
+program. Caret runs GTK's GL renderer unless `GSK_RENDERER` names another; the
 programs in the terminal do not inherit that choice.
 
 ## Build
@@ -20,7 +20,7 @@ programs in the terminal do not inherit that choice.
     just run            # debug build, uninstalled
     just run -e htop    # the same, running a command instead of the shell
 
-The locale directory is compiled in (`TANGENT_LOCALEDIR`, default
+The locale directory is compiled in (`CARET_LOCALEDIR`, default
 `/usr/local/share/locale`). Set it in the environment of `cargo build` if you install
 somewhere else.
 
@@ -41,4 +41,4 @@ manager.
     sudo just uninstall
     just prefix=$HOME/.local uninstall
 
-Settings stay in dconf; `dconf reset -f /io/github/sachesi/tangent/` clears them.
+Settings stay in dconf; `dconf reset -f /io/github/sachesi/caret/` clears them.

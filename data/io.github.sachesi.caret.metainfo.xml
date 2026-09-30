@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.sachesi.tangent</id>
+  <id>io.github.sachesi.caret</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
-  <name>Tangent</name>
+  <name>Caret</name>
   <summary>Use the command line</summary>
   <description>
-    <p>Tangent is a terminal built with GTK 4 and libadwaita. Its text is drawn by the GPU, pixel for pixel at any display scale.</p>
+    <p>Caret is a terminal built with GTK 4 and libadwaita. Its text is drawn by the GPU, pixel for pixel at any display scale.</p>
     <ul>
       <li>Tabs with an overview, and new tabs and windows in the folder of the current one</li>
       <li>Search through the history, selection by word or line, and addresses opened with Ctrl and a click</li>
@@ -14,15 +14,18 @@
       <li>The desktop's monospace font and colour scheme, or ones of its own</li>
     </ul>
   </description>
-  <launchable type="desktop-id">io.github.sachesi.tangent.desktop</launchable>
-  <url type="homepage">https://github.com/sachesi/tangent</url>
-  <url type="bugtracker">https://github.com/sachesi/tangent/issues</url>
-  <url type="vcs-browser">https://github.com/sachesi/tangent</url>
+  <launchable type="desktop-id">io.github.sachesi.caret.desktop</launchable>
+  <url type="homepage">https://github.com/sachesi/caret</url>
+  <url type="bugtracker">https://github.com/sachesi/caret/issues</url>
+  <url type="vcs-browser">https://github.com/sachesi/caret</url>
   <developer id="io.github.sachesi"><name>sachesi</name></developer>
   <content_rating type="oars-1.1"/>
   <provides>
-    <binary>tangent</binary>
+    <binary>caret</binary>
   </provides>
+  <replaces>
+    <id>io.github.sachesi.tangent</id>
+  </replaces>
   <supports>
     <control>keyboard</control>
     <control>pointing</control>

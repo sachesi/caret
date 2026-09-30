@@ -17,9 +17,9 @@ pub mod window;
 pub use adw::{gdk, gio, glib, gtk};
 pub use libadwaita as adw;
 
-/// Set beside `GSK_RENDERER` when Tangent chose GTK's renderer itself, so that the
+/// Set beside `GSK_RENDERER` when Caret chose GTK's renderer itself, so that the
 /// programs it starts get neither.
-pub const CHOSE_RENDERER: &str = "TANGENT_CHOSE_GSK_RENDERER";
+pub const CHOSE_RENDERER: &str = "CARET_CHOSE_GSK_RENDERER";
 
 /// Translations, resources, the application name, GTK's renderer: everything that is
 /// settled before GTK starts.
@@ -46,6 +46,6 @@ pub unsafe fn init_early() {
     gettextrs::bind_textdomain_codeset(config::GETTEXT_PACKAGE, "UTF-8").ok();
     gettextrs::textdomain(config::GETTEXT_PACKAGE).ok();
 
-    gio::resources_register_include!("tangent.gresource").expect("register resources");
-    glib::set_application_name("Tangent");
+    gio::resources_register_include!("caret.gresource").expect("register resources");
+    glib::set_application_name("Caret");
 }

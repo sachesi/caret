@@ -33,7 +33,7 @@ menu primary_menu {
     }
 
     item {
-      label: _("_About Tangent");
+      label: _("_About Caret");
       action: "app.about";
     }
   }
@@ -55,10 +55,10 @@ menu tab_menu {
   }
 }
 
-template $TangentWindow: Adw.ApplicationWindow {
+template $CaretWindow: Adw.ApplicationWindow {
   width-request: 360;
   height-request: 294;
-  title: _("Tangent");
+  title: _("Caret");
 
   // The tab button and the overview are enough where the bar would be cramped.
   Adw.Breakpoint {
@@ -85,7 +85,7 @@ template $TangentWindow: Adw.ApplicationWindow {
         }
 
         title-widget: Adw.WindowTitle window_title {
-          title: _("Tangent");
+          title: _("Caret");
         };
 
         [end]
