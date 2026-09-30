@@ -9,6 +9,7 @@ use alacritty_terminal::term::{Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor, Rgb};
 
 use crate::fonts::{self, Bitmap, CellMetrics, GlyphKey, GlyphText};
+use crate::links::Span;
 use crate::palette::Palette;
 use crate::renderer::{AtlasFull, Kind, Quads, Renderer};
 
@@ -54,7 +55,13 @@ pub struct Screen {
 }
 
 impl Screen {
-    pub fn capture<T: EventListener>(&mut self, term: &Term<T>, palette: &Palette) {
+    /// `link` is underlined, as the one a click would open.
+    pub fn capture<T: EventListener>(
+        &mut self,
+        term: &Term<T>,
+        palette: &Palette,
+        link: Option<&Span>,
+    ) {
         let content = term.renderable_content();
         let colors = content.colors;
         let offset = content.display_offset as i32;
@@ -117,7 +124,12 @@ impl Screen {
             let cell = indexed.cell;
             let line = (indexed.point.line.0 + offset) as usize;
             let column = indexed.point.column.0;
-            let flags = cell.flags;
+            let mut flags = cell.flags;
+            if !flags.intersects(Flags::ALL_UNDERLINES)
+                && link.is_some_and(|link| link.covers(indexed.point, cell))
+            {
+                flags |= Flags::UNDERLINE;
+            }
 
             let mut fg = palette.resolve(cell.fg, colors);
             let mut bg = palette.resolve(cell.bg, colors);

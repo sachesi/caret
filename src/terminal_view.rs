@@ -20,7 +20,7 @@ use alacritty_terminal::index::{Boundary, Column, Direction, Line, Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::search::RegexSearch;
-use alacritty_terminal::term::{self, ClipboardType, Term};
+use alacritty_terminal::term::{self, ClipboardType, Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color, CursorShape, CursorStyle, NamedColor, Processor, Rgb};
 use gettextrs::gettext;
 use glib::subclass::Signal;
@@ -102,6 +102,10 @@ mod imp {
         pub blink: RefCell<Option<glib::SourceId>>,
 
         pub pointer: Cell<(f64, f64)>,
+        /// The cell of the screen the pointer is over.
+        pub hovered_cell: Cell<Option<Point<usize>>>,
+        /// The last frame underlined a link there.
+        pub link_underlined: Cell<bool>,
         /// The button whose press went to the program, whose release must follow it.
         pub reported_button: Cell<Option<crate::encode::MouseButton>>,
         pub reported_cell: Cell<Option<(usize, usize)>>,
@@ -1222,7 +1226,14 @@ impl TerminalView {
         let term = session.lock();
         // Rearmed under the lock: output after the capture wakes the widget again.
         session.rearm();
-        screen.capture(&term, &palette);
+        // A click on a link goes to a program that reports the mouse, so it is not marked.
+        let link = imp
+            .hovered_cell
+            .get()
+            .filter(|_| !term.mode().intersects(TermMode::MOUSE_MODE))
+            .and_then(|point| input::link_in(&term, point));
+        imp.link_underlined.set(link.is_some());
+        screen.capture(&term, &palette, link.as_ref().map(|link| &link.span));
         let scroll = (
             term.history_size(),
             term.screen_lines(),

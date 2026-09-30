@@ -70,8 +70,9 @@ their paths, quoted for the shell.
 
 Ctrl and a click opens a web, file, FTP, SSH, Gemini or mail address: one a program
 marked as a link, or one in the text, found wherever it starts and even when it wraps
-onto the next line. The pointer turns into a hand over one while Ctrl is held, and the
-address shows as a tooltip. A link a program made shows where it goes on hover without
+onto the next line, or when a program broke it into lines that each fill the width. The
+address under the pointer is underlined. The pointer turns into a hand over one while
+Ctrl is held, and the address shows as a tooltip. A link a program made shows where it goes on hover without
 Ctrl, since its text may say something else. The context menu of an address has Open
 Link and Copy Link Address; a link that cannot be opened says why at the bottom of the
 window.

@@ -12,7 +12,7 @@ use gettextrs::gettext;
 use super::*;
 use crate::encode::{self, Key, Modifiers, MouseAction, MouseButton};
 use crate::gio;
-use crate::links;
+use crate::links::{self, Link, Span};
 use crate::session::Listener;
 
 fn modifiers(state: gdk::ModifierType) -> Modifiers {
@@ -65,28 +65,40 @@ fn mouse_button(button: u32) -> Option<MouseButton> {
     }
 }
 
-/// The address at a point of the view: the hyperlink a program gave the text there, and
-/// with `written` also one written out in it.
-fn link_in(term: &Term<Listener>, point: Point<usize>, written: bool) -> Option<String> {
+/// Lines an address is followed through, up and down from the point.
+const LONGEST_ADDRESS: i32 = 64;
+
+/// The address at a point of the view: the hyperlink a program gave the text there, or
+/// one written out in it.
+pub(super) fn link_in(term: &Term<Listener>, point: Point<usize>) -> Option<Link> {
     let point = viewport_to_point(term.grid().display_offset(), point);
     if let Some(link) = term.grid()[point].hyperlink()
         && links::openable(link.uri())
     {
-        return Some(link.uri().to_owned());
-    }
-    if !written {
-        return None;
+        return Some(Link {
+            uri: link.uri().to_owned(),
+            span: Span::Program(link),
+        });
     }
     let grid = term.grid();
 
     let last = term.last_column();
-    let wraps = |line: i32| grid[Line(line)][last].flags.contains(Flags::WRAPLINE);
+    // A line goes on in the next where the terminal wrapped it, and where a program that
+    // breaks lines itself filled it to the last column with an address.
+    let goes_on = |line: i32| {
+        let end = &grid[Line(line)][last];
+        end.flags.contains(Flags::WRAPLINE)
+            || (links::continues_address(end.c)
+                && links::continues_address(grid[Line(line + 1)][Column(0)].c))
+    };
+    let top = term.topmost_line().0.max(point.line.0 - LONGEST_ADDRESS);
+    let bottom = term.bottommost_line().0.min(point.line.0 + LONGEST_ADDRESS);
     let mut first = point.line.0;
-    while first > term.topmost_line().0 && wraps(first - 1) {
+    while first > top && goes_on(first - 1) {
         first -= 1;
     }
     let mut end = point.line.0;
-    while end < term.bottommost_line().0 && wraps(end) {
+    while end < bottom && goes_on(end) {
         end += 1;
     }
     let columns = term.columns();
@@ -102,7 +114,16 @@ fn link_in(term: &Term<Listener>, point: Point<usize>, written: bool) -> Option<
     }
     let index = (point.line.0 - first) as usize * columns + point.column.0;
     let range = links::address_at(&text, index)?;
-    Some(text[range].iter().filter(|&&c| c != '\0').collect())
+    let cell = |index: usize| {
+        Point::new(
+            Line(first + (index / columns) as i32),
+            Column(index % columns),
+        )
+    };
+    Some(Link {
+        span: Span::Written(cell(range.start)..=cell(range.end - 1)),
+        uri: text[range].iter().filter(|&&c| c != '\0').collect(),
+    })
 }
 
 impl TerminalView {
@@ -179,6 +200,17 @@ impl TerminalView {
             #[weak(rename_to = view)]
             self,
             move |controller, x, y| view.hovered(controller, x, y)
+        ));
+        motion.connect_leave(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            move |_| {
+                let imp = view.imp();
+                imp.hovered_cell.set(None);
+                if imp.link_underlined.get() {
+                    view.queue_draw();
+                }
+            }
         ));
         self.add_controller(motion);
 
@@ -509,8 +541,8 @@ impl TerminalView {
         {
             self.report_mouse(MouseButton::None, MouseAction::Motion, x, y, state);
         }
-        // With Ctrl, any address opens; without, a program's link still shows where it goes,
-        // since its text may say otherwise.
+        let cell = self.cell_at(x, y).map(|(point, _)| point);
+        let moved = imp.hovered_cell.replace(cell) != cell;
         let ctrl = state.contains(gdk::ModifierType::CONTROL_MASK);
         let link = {
             let session = imp.session.borrow();
@@ -522,9 +554,16 @@ impl TerminalView {
             let Some(term) = session.term.try_lock_unfair() else {
                 return;
             };
-            self.cell_at(x, y)
-                .and_then(|(point, _)| link_in(&term, point, ctrl))
+            cell.and_then(|point| link_in(&term, point))
         };
+        if moved && (link.is_some() || imp.link_underlined.get()) {
+            self.queue_draw();
+        }
+        // With Ctrl, any address opens; without, a program's link still shows where it goes,
+        // since its text may say otherwise.
+        let link = link
+            .filter(|link| ctrl || matches!(link.span, Span::Program(_)))
+            .map(|link| link.uri);
         let reporting = self.mode().intersects(TermMode::MOUSE_MODE)
             && !state.contains(gdk::ModifierType::SHIFT_MASK);
         let cursor = if ctrl && link.is_some() {
@@ -636,7 +675,7 @@ impl TerminalView {
     fn link_at(&self, x: f64, y: f64) -> Option<String> {
         let (point, _) = self.cell_at(x, y)?;
         let session = self.imp().session.borrow();
-        link_in(&session.as_ref()?.lock(), point, true)
+        link_in(&session.as_ref()?.lock(), point).map(|link| link.uri)
     }
 
     fn open(&self, uri: &str) {

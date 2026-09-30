@@ -1,6 +1,9 @@
 //! Addresses in the text on screen, for Ctrl and a click to open.
 
-use std::ops::Range;
+use std::ops::{Range, RangeInclusive};
+
+use alacritty_terminal::index::Point;
+use alacritty_terminal::term::cell::{Cell, Hyperlink};
 
 const SCHEMES: [&str; 8] = [
     "https://",
@@ -20,6 +23,34 @@ pub fn openable(uri: &str) -> bool {
         uri.get(..scheme.len())
             .is_some_and(|start| start.eq_ignore_ascii_case(scheme))
     })
+}
+
+/// An address and the cells it is in.
+pub struct Link {
+    pub uri: String,
+    pub span: Span,
+}
+
+pub enum Span {
+    /// Every cell a program gave this hyperlink.
+    Program(Hyperlink),
+    /// From the first cell to the last, through the lines between.
+    Written(RangeInclusive<Point>),
+}
+
+impl Span {
+    pub fn covers(&self, point: Point, cell: &Cell) -> bool {
+        match self {
+            Span::Program(link) => cell.hyperlink().as_ref() == Some(link),
+            Span::Written(cells) => cells.contains(&point),
+        }
+    }
+}
+
+/// Whether an address can go on from the end of one line to the start of the next with
+/// this character, where a program broke the line itself rather than let it wrap.
+pub fn continues_address(c: char) -> bool {
+    c.is_ascii_graphic() && !ends_address(c)
 }
 
 /// Characters that end an address even without a space: quotes and brackets around it,
