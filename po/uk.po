@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-09-30 09:24+0300\n"
+"POT-Creation-Date: 2026-09-30 09:49+0300\n"
 "PO-Revision-Date: 2026-09-27 19:00+0300\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Ukrainian\n"
@@ -13,8 +13,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
-"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
 #: data/io.github.sachesi.caret.desktop:2
 #: data/io.github.sachesi.caret.metainfo.xml:6 src/window.rs:518
@@ -34,9 +33,7 @@ msgstr "Робота з командним рядком"
 
 #: data/io.github.sachesi.caret.desktop:11
 msgid "shell;prompt;command;commandline;console;"
-msgstr ""
-"оболонка;запрошення;команда;командний "
-"рядок;консоль;shell;prompt;command;commandline;console;"
+msgstr "оболонка;запрошення;команда;командний рядок;консоль;shell;prompt;command;commandline;console;"
 
 #: data/io.github.sachesi.caret.desktop:17 ui/shortcuts_dialog.ui:15
 msgid "New Window"
@@ -48,157 +45,133 @@ msgid "Font"
 msgstr "Шрифт"
 
 #: data/io.github.sachesi.caret.gschema.xml:17
-msgid ""
-"A Pango font description such as “Monospace 11”; empty for the desktop's "
-"monospace font."
-msgstr ""
-"Опис шрифту Pango, наприклад «Monospace 11»; порожнє значення — моноширинний "
-"шрифт стільниці."
+msgid "A Pango font description such as “Monospace 11”; empty for the desktop's monospace font."
+msgstr "Опис шрифту Pango, наприклад «Monospace 11»; порожнє значення — моноширинний шрифт стільниці."
 
 #: data/io.github.sachesi.caret.gschema.xml:21
+msgid "Font features"
+msgstr "Можливості шрифту"
+
+#: data/io.github.sachesi.caret.gschema.xml:22
+msgid "OpenType features of the font to turn on or off, as in CSS: “zero, ss01, calt=0”."
+msgstr "Можливості OpenType, які слід увімкнути або вимкнути, як у CSS: «zero, ss01, calt=0»."
+
+#: data/io.github.sachesi.caret.gschema.xml:26 src/preferences.rs:137
+#, no-c-format
+msgid "Ligatures"
+msgstr "Лігатури"
+
+#: data/io.github.sachesi.caret.gschema.xml:27
+msgid "Whether symbols the font joins, such as -> and !=, are drawn joined."
+msgstr "Чи малювати разом символи, які шрифт з’єднує, наприклад -> та !=."
+
+#: data/io.github.sachesi.caret.gschema.xml:31
 msgid "Light or dark"
 msgstr "Світлий чи темний"
 
-#: data/io.github.sachesi.caret.gschema.xml:22
+#: data/io.github.sachesi.caret.gschema.xml:32
 msgid "“system” follows the desktop's preference."
 msgstr "«system» слідує налаштуванню стільниці."
 
-#: data/io.github.sachesi.caret.gschema.xml:26
+#: data/io.github.sachesi.caret.gschema.xml:36
 msgid "Cursor shape"
 msgstr "Форма курсора"
 
-#: data/io.github.sachesi.caret.gschema.xml:27
+#: data/io.github.sachesi.caret.gschema.xml:37
 msgid "The shape of the cursor until a program asks for another."
 msgstr "Форма курсора, доки програма не попросить іншу."
 
-#: data/io.github.sachesi.caret.gschema.xml:32
+#: data/io.github.sachesi.caret.gschema.xml:42
 msgid "Lines of history"
 msgstr "Рядків історії"
 
-#: data/io.github.sachesi.caret.gschema.xml:33
+#: data/io.github.sachesi.caret.gschema.xml:43
 msgid "How many lines that scrolled off the top are kept to scroll back to."
-msgstr ""
-"Скільки рядків, що пішли за верхній край, зберігається для прокручування "
-"назад."
+msgstr "Скільки рядків, що пішли за верхній край, зберігається для прокручування назад."
 
-#: data/io.github.sachesi.caret.gschema.xml:37
+#: data/io.github.sachesi.caret.gschema.xml:47
 msgid "Custom command"
 msgstr "Власна команда"
 
-#: data/io.github.sachesi.caret.gschema.xml:38
-msgid ""
-"A command line that tabs run instead of the shell, split into words the way "
-"the shell does; empty for the shell."
-msgstr ""
-"Командний рядок, який вкладки запускають замість оболонки, поділений на "
-"слова так само, як це робить оболонка; порожній рядок означає оболонку."
+#: data/io.github.sachesi.caret.gschema.xml:48
+msgid "A command line that tabs run instead of the shell, split into words the way the shell does; empty for the shell."
+msgstr "Командний рядок, який вкладки запускають замість оболонки, поділений на слова так само, як це робить оболонка; порожній рядок означає оболонку."
 
-#: data/io.github.sachesi.caret.gschema.xml:42
+#: data/io.github.sachesi.caret.gschema.xml:52
 msgid "Scroll on output"
 msgstr "Прокручування під час виведення"
 
-#: data/io.github.sachesi.caret.gschema.xml:43
-msgid ""
-"Whether output brings a view scrolled back into the history to the bottom."
+#: data/io.github.sachesi.caret.gschema.xml:53
+msgid "Whether output brings a view scrolled back into the history to the bottom."
 msgstr "Чи повертає виведення програми вниз вигляд, прокручений в історію."
 
-#: data/io.github.sachesi.caret.gschema.xml:47
+#: data/io.github.sachesi.caret.gschema.xml:57
 msgid "Scroll on keystroke"
 msgstr "Прокручування під час натискання клавіш"
 
-#: data/io.github.sachesi.caret.gschema.xml:48
-msgid ""
-"Whether typing or pasting brings a view scrolled back into the history to "
-"the bottom."
-msgstr ""
-"Чи повертає введення або вставлення вниз вигляд, прокручений в історію."
+#: data/io.github.sachesi.caret.gschema.xml:58
+msgid "Whether typing or pasting brings a view scrolled back into the history to the bottom."
+msgstr "Чи повертає введення або вставлення вниз вигляд, прокручений в історію."
 
-#: data/io.github.sachesi.caret.gschema.xml:52
+#: data/io.github.sachesi.caret.gschema.xml:62
 msgid "Notifications from programs"
 msgstr "Сповіщення від програм"
 
-#: data/io.github.sachesi.caret.gschema.xml:53
-msgid ""
-"Whether programs can show desktop notifications (OSC 9 and 777) while their "
-"tab is out of sight. Their text can say anything."
-msgstr ""
-"Чи можуть програми показувати сповіщення на стільниці (OSC 9 і 777), поки "
-"їхню вкладку не видно. Їхній текст може бути будь-яким."
+#: data/io.github.sachesi.caret.gschema.xml:63
+msgid "Whether programs can show desktop notifications (OSC 9 and 777) while their tab is out of sight. Their text can say anything."
+msgstr "Чи можуть програми показувати сповіщення на стільниці (OSC 9 і 777), поки їхню вкладку не видно. Їхній текст може бути будь-яким."
 
-#: data/io.github.sachesi.caret.gschema.xml:57
+#: data/io.github.sachesi.caret.gschema.xml:67
 msgid "Copying by programs"
 msgstr "Копіювання програмами"
 
-#: data/io.github.sachesi.caret.gschema.xml:58
-msgid ""
-"Whether programs can put text on the clipboard (OSC 52), which then pastes "
-"into any program. They can never read it."
-msgstr ""
-"Чи можуть програми додавати текст до буфера обміну (OSC 52), звідки він "
-"вставляється в будь-яку програму. Читати його вони не можуть ніколи."
+#: data/io.github.sachesi.caret.gschema.xml:68
+msgid "Whether programs can put text on the clipboard (OSC 52), which then pastes into any program. They can never read it."
+msgstr "Чи можуть програми додавати текст до буфера обміну (OSC 52), звідки він вставляється в будь-яку програму. Читати його вони не можуть ніколи."
 
-#: data/io.github.sachesi.caret.gschema.xml:62
+#: data/io.github.sachesi.caret.gschema.xml:72
 msgid "Terminal bell"
 msgstr "Дзвінок термінала"
 
-#: data/io.github.sachesi.caret.gschema.xml:63
-msgid ""
-"Whether the bell a program rings makes a sound. A tab in the background is "
-"marked either way."
-msgstr ""
-"Чи звучить дзвінок, поданий програмою. Фонова вкладка позначається в будь-"
-"якому разі."
+#: data/io.github.sachesi.caret.gschema.xml:73
+msgid "Whether the bell a program rings makes a sound. A tab in the background is marked either way."
+msgstr "Чи звучить дзвінок, поданий програмою. Фонова вкладка позначається в будь-якому разі."
 
-#: data/io.github.sachesi.caret.gschema.xml:67
+#: data/io.github.sachesi.caret.gschema.xml:77
 msgid "Title bar"
 msgstr "Заголовок вікна"
 
-#: data/io.github.sachesi.caret.gschema.xml:68
-msgid ""
-"Whether windows show the title bar. Without it, the context menu has its "
-"commands."
-msgstr ""
-"Чи показувати заголовок вікна. Без нього його команди є в контекстному меню."
+#: data/io.github.sachesi.caret.gschema.xml:78
+msgid "Whether windows show the title bar. Without it, the context menu has its commands."
+msgstr "Чи показувати заголовок вікна. Без нього його команди є в контекстному меню."
 
-#: data/io.github.sachesi.caret.gschema.xml:72
+#: data/io.github.sachesi.caret.gschema.xml:82
 msgid "Window size"
 msgstr "Розмір вікна"
 
-#: data/io.github.sachesi.caret.gschema.xml:73
+#: data/io.github.sachesi.caret.gschema.xml:83
 msgid "The size of new windows; 0 fits 80 columns by 24 lines of the font."
 msgstr "Розмір нових вікон; 0 — 80 стовпців на 24 рядки шрифту."
 
-#: data/io.github.sachesi.caret.gschema.xml:77
+#: data/io.github.sachesi.caret.gschema.xml:87
 msgid "Window maximized"
 msgstr "Вікно розгорнуте"
 
 #: data/io.github.sachesi.caret.metainfo.xml:9
-msgid ""
-"Caret is a terminal built with GTK 4 and libadwaita. Its text is drawn by "
-"the GPU, pixel for pixel at any display scale."
-msgstr ""
-"Caret — термінал на GTK 4 і libadwaita. Його текст малює графічний процесор, "
-"піксель у піксель за будь-якого масштабу екрана."
+msgid "Caret is a terminal built with GTK 4 and libadwaita. Its text is drawn by the GPU, pixel for pixel at any display scale."
+msgstr "Caret — термінал на GTK 4 і libadwaita. Його текст малює графічний процесор, піксель у піксель за будь-якого масштабу екрана."
 
 #: data/io.github.sachesi.caret.metainfo.xml:11
-msgid ""
-"Tabs with an overview, and new tabs and windows in the folder of the current "
-"one"
+msgid "Tabs with an overview, and new tabs and windows in the folder of the current one"
 msgstr "Вкладки з оглядом; нові вкладки й вікна відкриваються в теці поточної"
 
 #: data/io.github.sachesi.caret.metainfo.xml:12
-msgid ""
-"Search through the history, selection by word or line, and addresses opened "
-"with Ctrl and a click"
-msgstr ""
-"Пошук в історії, виділення словами й рядками, адреси відкриваються клацанням "
-"із Ctrl"
+msgid "Search through the history, selection by word or line, and addresses opened with Ctrl and a click"
+msgstr "Пошук в історії, виділення словами й рядками, адреси відкриваються клацанням із Ctrl"
 
 #: data/io.github.sachesi.caret.metainfo.xml:13
 msgid "Mouse reporting, bracketed paste, true colour, and underline styles"
-msgstr ""
-"Передавання подій миші, вставлення в дужках, повнокольоровий режим і стилі "
-"підкреслення"
+msgstr "Передавання подій миші, вставлення в дужках, повнокольоровий режим і стилі підкреслення"
 
 #: data/io.github.sachesi.caret.metainfo.xml:14
 msgid "The desktop's monospace font and colour scheme, or ones of its own"
@@ -268,141 +241,147 @@ msgstr "Системний шрифт"
 msgid "Terminal Font"
 msgstr "Шрифт термінала"
 
-#: src/preferences.rs:133
+#: src/preferences.rs:131
+#, no-c-format
+msgid "Font Features, Such as zero, ss01"
+msgstr "Можливості шрифту, наприклад zero, ss01"
+
+#: src/preferences.rs:139
+#, no-c-format
+msgid "Join symbols such as -> and != where the font does"
+msgstr "З’єднувати символи на кшталт -> та != там, де це робить шрифт"
+
+#: src/preferences.rs:147
 #, no-c-format
 msgid "Appearance"
 msgstr "Вигляд"
 
-#: src/preferences.rs:138
+#: src/preferences.rs:152
 #, no-c-format
 msgid "Style"
 msgstr "Стиль"
 
-#: src/preferences.rs:140
+#: src/preferences.rs:154
 #, no-c-format
 msgid "Follow System"
 msgstr "Як у системі"
 
-#: src/preferences.rs:141
+#: src/preferences.rs:155
 #, no-c-format
 msgid "Light"
 msgstr "Світлий"
 
-#: src/preferences.rs:142
+#: src/preferences.rs:156
 #, no-c-format
 msgid "Dark"
 msgstr "Темний"
 
-#: src/preferences.rs:148
+#: src/preferences.rs:162
 #, no-c-format
 msgid "Cursor Shape"
 msgstr "Форма курсора"
 
-#: src/preferences.rs:150
+#: src/preferences.rs:164
 #, no-c-format
 msgid "Block"
 msgstr "Блок"
 
-#: src/preferences.rs:151
+#: src/preferences.rs:165
 #, no-c-format
 msgid "I-Beam"
 msgstr "Риска"
 
-#: src/preferences.rs:152
+#: src/preferences.rs:166
 #, no-c-format
 msgid "Underline"
 msgstr "Підкреслення"
 
-#: src/preferences.rs:156
+#: src/preferences.rs:170
 #, no-c-format
 msgid "Title Bar"
 msgstr "Заголовок вікна"
 
-#: src/preferences.rs:157
+#: src/preferences.rs:171
 #, no-c-format
 msgid "Without it, the context menu has its commands"
 msgstr "Без нього його команди є в контекстному меню"
 
-#: src/preferences.rs:164
+#: src/preferences.rs:178
 #, no-c-format
 msgid "Behaviour"
 msgstr "Поведінка"
 
-#: src/preferences.rs:167
+#: src/preferences.rs:181
 #, no-c-format
 msgid "Custom Command, Instead of the Shell"
 msgstr "Власна команда замість оболонки"
 
-#: src/preferences.rs:174
+#: src/preferences.rs:188
 #, no-c-format
 msgid "Lines of History"
 msgstr "Рядків історії"
 
-#: src/preferences.rs:176
+#: src/preferences.rs:190
 #, no-c-format
 msgid "Kept for scrolling back after they leave the screen"
 msgstr "Зберігаються для прокручування назад, коли зникають з екрана"
 
-#: src/preferences.rs:192
+#: src/preferences.rs:206
 #, no-c-format
 msgid "Scroll on Output"
 msgstr "Прокручування під час виведення"
 
-#: src/preferences.rs:193
+#: src/preferences.rs:207
 #, no-c-format
 msgid "Go back to the bottom when a program writes"
 msgstr "Повертатися вниз, коли програма щось виводить"
 
-#: src/preferences.rs:200
+#: src/preferences.rs:214
 #, no-c-format
 msgid "Scroll on Keystroke"
 msgstr "Прокручування під час натискання клавіш"
 
-#: src/preferences.rs:201
+#: src/preferences.rs:215
 #, no-c-format
 msgid "Go back to the bottom when typing or pasting"
 msgstr "Повертатися вниз під час введення або вставлення"
 
-#: src/preferences.rs:208
+#: src/preferences.rs:222
 #, no-c-format
 msgid "Terminal Bell"
 msgstr "Дзвінок термінала"
 
-#: src/preferences.rs:209
+#: src/preferences.rs:223
 #, no-c-format
 msgid "Sound the bell when a program rings it"
 msgstr "Звук, коли програма подає дзвінок"
 
-#: src/preferences.rs:216
+#: src/preferences.rs:230
 #, no-c-format
 msgid "Programs"
 msgstr "Програми"
 
-#: src/preferences.rs:218
+#: src/preferences.rs:232
 #, no-c-format
-msgid ""
-"What programs in the terminal may do, including ones on other machines and "
-"files that are shown"
-msgstr ""
-"Що можуть робити програми в терміналі, зокрема на інших машинах і в "
-"показаних файлах"
+msgid "What programs in the terminal may do, including ones on other machines and files that are shown"
+msgstr "Що можуть робити програми в терміналі, зокрема на інших машинах і в показаних файлах"
 
-#: src/preferences.rs:222
+#: src/preferences.rs:236
 #, no-c-format
 msgid "Notifications"
 msgstr "Сповіщення"
 
-#: src/preferences.rs:224
+#: src/preferences.rs:238
 #, no-c-format
 msgid "Programs can notify you while their tab is out of sight"
 msgstr "Програми можуть сповіщати, поки їхню вкладку не видно"
 
-#: src/preferences.rs:232
+#: src/preferences.rs:246
 #, no-c-format
 msgid "Copying"
 msgstr "Копіювання"
 
-#: src/preferences.rs:234
+#: src/preferences.rs:248
 #, no-c-format
 msgid "Programs can put text on the clipboard, but never read it"
 msgstr "Програми можуть додавати текст до буфера обміну, але не читати його"
@@ -428,37 +407,33 @@ msgid "“%s” ended"
 msgstr "«%s» завершилася"
 
 #. Translators: the program, then why it could not start.
-#: src/terminal_view.rs:998
+#: src/terminal_view.rs:1000
 #, no-c-format
 msgid "Could not start “%s”: %s"
 msgstr "Не вдалося запустити «%s»: %s"
 
-#: src/terminal_view.rs:1001
+#: src/terminal_view.rs:1003
 #, no-c-format
 msgid "Could not start the shell: %s"
 msgstr "Не вдалося запустити командну оболонку: %s"
 
-#: src/terminal_view.rs:1410
+#: src/terminal_view.rs:1414
 #, no-c-format
 msgid "Paste Several Lines?"
 msgstr "Вставити кілька рядків?"
 
-#: src/terminal_view.rs:1412
+#: src/terminal_view.rs:1416
 #, no-c-format
-msgid ""
-"The program here does not mark pasted text, so each line runs as if typed "
-"and entered."
-msgstr ""
-"Ця програма не позначає вставлений текст, тому кожен рядок виконається, наче "
-"його набрали й натиснули Enter."
+msgid "The program here does not mark pasted text, so each line runs as if typed and entered."
+msgstr "Ця програма не позначає вставлений текст, тому кожен рядок виконається, наче його набрали й натиснули Enter."
 
-#: src/terminal_view.rs:1416 src/window.rs:443 src/window.rs:539
+#: src/terminal_view.rs:1420 src/window.rs:443 src/window.rs:539
 #: src/window.rs:567
 #, no-c-format
 msgid "_Cancel"
 msgstr "_Скасувати"
 
-#: src/terminal_view.rs:1417 src/terminal_view/input.rs:716
+#: src/terminal_view.rs:1421 src/terminal_view/input.rs:716
 #, no-c-format
 msgid "_Paste"
 msgstr "_Вставити"
@@ -728,55 +703,3 @@ msgstr "Знайти вище"
 #: ui/window.ui:150
 msgid "Find Downwards"
 msgstr "Знайти нижче"
-
-#~ msgid "Tangent is now called Caret. Its settings start from the defaults."
-#~ msgstr ""
-#~ "Tangent тепер називається Caret. Параметри починаються з типових значень."
-
-#~ msgid ""
-#~ "New tabs open in the folder of the current one, and in its Toolbox or "
-#~ "Distrobox container, where the shell reports them"
-#~ msgstr ""
-#~ "Нові вкладки відкриваються в теці поточної та в її контейнері Toolbox або "
-#~ "Distrobox, якщо оболонка про них повідомляє"
-
-#~ msgid ""
-#~ "Tabs show a running command, and a finished one or a notification in a "
-#~ "tab that is not in view; Ctrl+Shift+Up and Down scroll between prompts"
-#~ msgstr ""
-#~ "Вкладки показують команду, що виконується, а також її завершення або "
-#~ "сповіщення у вкладці, якої не видно; Ctrl+Shift+Вгору та Вниз гортають "
-#~ "між запрошеннями"
-
-#~ msgid "Tabs can be renamed from their context menu"
-#~ msgstr "Вкладку можна перейменувати з її контекстного меню"
-
-#~ msgid "The title bar can be hidden, and is in full screen"
-#~ msgstr ""
-#~ "Заголовок вікна можна сховати, а в повноекранному режимі його сховано"
-
-#~ msgid ""
-#~ "Selecting with the mouse scrolls past the edge; Select All and Deselect"
-#~ msgstr ""
-#~ "Виділення мишею гортає текст за краєм; «Виділити все» та «Зняти виділення»"
-
-#~ msgid ""
-#~ "The link under the pointer is underlined, and one a program broke into "
-#~ "lines is followed"
-#~ msgstr ""
-#~ "Посилання під вказівником підкреслюється, а посилання, яке програма "
-#~ "розбила на рядки, простежується повністю"
-
-#~ msgid ""
-#~ "Settings for a command to run instead of the shell and for scrolling on "
-#~ "output and on keystroke"
-#~ msgstr ""
-#~ "Параметри для команди, що запускається замість оболонки, і для гортання "
-#~ "під час виведення та натискання клавіш"
-
-#~ msgid ""
-#~ "Pasting several lines asks first where they would run, and programs can "
-#~ "be kept from notifying and from copying"
-#~ msgstr ""
-#~ "Перед вставленням кількох рядків, які були б виконані, ставиться "
-#~ "запитання, а програмам можна заборонити сповіщення та копіювання"

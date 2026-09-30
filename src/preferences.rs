@@ -127,6 +127,20 @@ pub fn preferences_dialog() -> adw::PreferencesDialog {
     ));
     text.add(&system_font);
     text.add(&font_row);
+    let features = adw::EntryRow::builder()
+        .title(gettext("Font Features, Such as zero, ss01"))
+        .show_apply_button(true)
+        .build();
+    settings.bind("font-features", &features, "text").build();
+    text.add(&features);
+    let ligatures = adw::SwitchRow::builder()
+        .title(gettext("Ligatures"))
+        .subtitle(gettext(
+            "Join symbols such as -> and != where the font does",
+        ))
+        .build();
+    settings.bind("ligatures", &ligatures, "active").build();
+    text.add(&ligatures);
     page.add(&text);
 
     let appearance = adw::PreferencesGroup::builder()

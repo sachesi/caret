@@ -759,7 +759,8 @@ impl TerminalView {
         let handler = settings.connect_changed(None, move |_, key| {
             let Some(view) = weak.upgrade() else { return };
             match key {
-                "font" => view.font_changed(),
+                "font" | "font-features" => view.font_changed(),
+                "ligatures" => view.queue_draw(),
                 "cursor-shape" | "scrollback-lines" | "program-clipboard" => {
                     let config = view.term_config();
                     if let Some(session) = view.imp().session.borrow().as_ref() {
@@ -856,7 +857,8 @@ impl TerminalView {
         } else {
             font.set_size((f64::from(font.size()) * factor).round() as i32);
         }
-        let made_for = (font.to_str().to_string(), scale.to_bits(), dpi);
+        let features = settings().string("font-features");
+        let made_for = (format!("{font} {features}"), scale.to_bits(), dpi);
         if imp.fonts_made_for.borrow().as_ref() == Some(&made_for) {
             return;
         }
@@ -879,7 +881,7 @@ impl TerminalView {
         });
         let resolution = f64::from(dpi) / 1024.0 * scale;
         imp.fonts
-            .replace(Some(Fonts::new(&font, resolution, &options)));
+            .replace(Some(Fonts::new(&font, resolution, &options, &features)));
         imp.glyph_thread.take();
         imp.finished_glyphs.borrow_mut().clear();
         imp.fonts_made_for.replace(Some(made_for));
@@ -1249,6 +1251,7 @@ impl TerminalView {
             cursor_on: imp.cursor_on.get() || !screen.cursor_blinks,
             padding: padding(scale),
             scale,
+            ligatures: settings().boolean("ligatures"),
         };
 
         context.make_current();
@@ -1275,6 +1278,7 @@ impl TerminalView {
                 &screen,
                 &look,
                 fonts.cell,
+                &|run, style| fonts.ligatures(run, style),
                 &mut rasterize,
                 renderer,
                 quads,

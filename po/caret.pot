@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-09-30 09:24+0300\n"
+"POT-Creation-Date: 2026-09-30 09:49+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -54,107 +54,126 @@ msgid ""
 msgstr ""
 
 #: data/io.github.sachesi.caret.gschema.xml:21
-msgid "Light or dark"
+msgid "Font features"
 msgstr ""
 
 #: data/io.github.sachesi.caret.gschema.xml:22
-msgid "“system” follows the desktop's preference."
+msgid ""
+"OpenType features of the font to turn on or off, as in CSS: “zero, ss01, "
+"calt=0”."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:26
-msgid "Cursor shape"
+#: data/io.github.sachesi.caret.gschema.xml:26 src/preferences.rs:137
+#, no-c-format
+msgid "Ligatures"
 msgstr ""
 
 #: data/io.github.sachesi.caret.gschema.xml:27
-msgid "The shape of the cursor until a program asks for another."
+msgid "Whether symbols the font joins, such as -> and !=, are drawn joined."
+msgstr ""
+
+#: data/io.github.sachesi.caret.gschema.xml:31
+msgid "Light or dark"
 msgstr ""
 
 #: data/io.github.sachesi.caret.gschema.xml:32
-msgid "Lines of history"
+msgid "“system” follows the desktop's preference."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:33
-msgid "How many lines that scrolled off the top are kept to scroll back to."
+#: data/io.github.sachesi.caret.gschema.xml:36
+msgid "Cursor shape"
 msgstr ""
 
 #: data/io.github.sachesi.caret.gschema.xml:37
+msgid "The shape of the cursor until a program asks for another."
+msgstr ""
+
+#: data/io.github.sachesi.caret.gschema.xml:42
+msgid "Lines of history"
+msgstr ""
+
+#: data/io.github.sachesi.caret.gschema.xml:43
+msgid "How many lines that scrolled off the top are kept to scroll back to."
+msgstr ""
+
+#: data/io.github.sachesi.caret.gschema.xml:47
 msgid "Custom command"
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:38
+#: data/io.github.sachesi.caret.gschema.xml:48
 msgid ""
 "A command line that tabs run instead of the shell, split into words the way "
 "the shell does; empty for the shell."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:42
+#: data/io.github.sachesi.caret.gschema.xml:52
 msgid "Scroll on output"
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:43
+#: data/io.github.sachesi.caret.gschema.xml:53
 msgid ""
 "Whether output brings a view scrolled back into the history to the bottom."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:47
+#: data/io.github.sachesi.caret.gschema.xml:57
 msgid "Scroll on keystroke"
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:48
+#: data/io.github.sachesi.caret.gschema.xml:58
 msgid ""
 "Whether typing or pasting brings a view scrolled back into the history to "
 "the bottom."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:52
+#: data/io.github.sachesi.caret.gschema.xml:62
 msgid "Notifications from programs"
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:53
+#: data/io.github.sachesi.caret.gschema.xml:63
 msgid ""
 "Whether programs can show desktop notifications (OSC 9 and 777) while their "
 "tab is out of sight. Their text can say anything."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:57
+#: data/io.github.sachesi.caret.gschema.xml:67
 msgid "Copying by programs"
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:58
+#: data/io.github.sachesi.caret.gschema.xml:68
 msgid ""
 "Whether programs can put text on the clipboard (OSC 52), which then pastes "
 "into any program. They can never read it."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:62
+#: data/io.github.sachesi.caret.gschema.xml:72
 msgid "Terminal bell"
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:63
+#: data/io.github.sachesi.caret.gschema.xml:73
 msgid ""
 "Whether the bell a program rings makes a sound. A tab in the background is "
 "marked either way."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:67
+#: data/io.github.sachesi.caret.gschema.xml:77
 msgid "Title bar"
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:68
+#: data/io.github.sachesi.caret.gschema.xml:78
 msgid ""
 "Whether windows show the title bar. Without it, the context menu has its "
 "commands."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:72
+#: data/io.github.sachesi.caret.gschema.xml:82
 msgid "Window size"
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:73
+#: data/io.github.sachesi.caret.gschema.xml:83
 msgid "The size of new windows; 0 fits 80 columns by 24 lines of the font."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:77
+#: data/io.github.sachesi.caret.gschema.xml:87
 msgid "Window maximized"
 msgstr ""
 
@@ -248,139 +267,149 @@ msgstr ""
 msgid "Terminal Font"
 msgstr ""
 
-#: src/preferences.rs:133
+#: src/preferences.rs:131
+#, no-c-format
+msgid "Font Features, Such as zero, ss01"
+msgstr ""
+
+#: src/preferences.rs:139
+#, no-c-format
+msgid "Join symbols such as -> and != where the font does"
+msgstr ""
+
+#: src/preferences.rs:147
 #, no-c-format
 msgid "Appearance"
 msgstr ""
 
-#: src/preferences.rs:138
+#: src/preferences.rs:152
 #, no-c-format
 msgid "Style"
 msgstr ""
 
-#: src/preferences.rs:140
+#: src/preferences.rs:154
 #, no-c-format
 msgid "Follow System"
 msgstr ""
 
-#: src/preferences.rs:141
+#: src/preferences.rs:155
 #, no-c-format
 msgid "Light"
 msgstr ""
 
-#: src/preferences.rs:142
+#: src/preferences.rs:156
 #, no-c-format
 msgid "Dark"
 msgstr ""
 
-#: src/preferences.rs:148
+#: src/preferences.rs:162
 #, no-c-format
 msgid "Cursor Shape"
 msgstr ""
 
-#: src/preferences.rs:150
+#: src/preferences.rs:164
 #, no-c-format
 msgid "Block"
 msgstr ""
 
-#: src/preferences.rs:151
+#: src/preferences.rs:165
 #, no-c-format
 msgid "I-Beam"
 msgstr ""
 
-#: src/preferences.rs:152
+#: src/preferences.rs:166
 #, no-c-format
 msgid "Underline"
 msgstr ""
 
-#: src/preferences.rs:156
+#: src/preferences.rs:170
 #, no-c-format
 msgid "Title Bar"
 msgstr ""
 
-#: src/preferences.rs:157
+#: src/preferences.rs:171
 #, no-c-format
 msgid "Without it, the context menu has its commands"
 msgstr ""
 
-#: src/preferences.rs:164
+#: src/preferences.rs:178
 #, no-c-format
 msgid "Behaviour"
 msgstr ""
 
-#: src/preferences.rs:167
+#: src/preferences.rs:181
 #, no-c-format
 msgid "Custom Command, Instead of the Shell"
 msgstr ""
 
-#: src/preferences.rs:174
+#: src/preferences.rs:188
 #, no-c-format
 msgid "Lines of History"
 msgstr ""
 
-#: src/preferences.rs:176
+#: src/preferences.rs:190
 #, no-c-format
 msgid "Kept for scrolling back after they leave the screen"
 msgstr ""
 
-#: src/preferences.rs:192
+#: src/preferences.rs:206
 #, no-c-format
 msgid "Scroll on Output"
 msgstr ""
 
-#: src/preferences.rs:193
+#: src/preferences.rs:207
 #, no-c-format
 msgid "Go back to the bottom when a program writes"
 msgstr ""
 
-#: src/preferences.rs:200
+#: src/preferences.rs:214
 #, no-c-format
 msgid "Scroll on Keystroke"
 msgstr ""
 
-#: src/preferences.rs:201
+#: src/preferences.rs:215
 #, no-c-format
 msgid "Go back to the bottom when typing or pasting"
 msgstr ""
 
-#: src/preferences.rs:208
+#: src/preferences.rs:222
 #, no-c-format
 msgid "Terminal Bell"
 msgstr ""
 
-#: src/preferences.rs:209
+#: src/preferences.rs:223
 #, no-c-format
 msgid "Sound the bell when a program rings it"
 msgstr ""
 
-#: src/preferences.rs:216
+#: src/preferences.rs:230
 #, no-c-format
 msgid "Programs"
 msgstr ""
 
-#: src/preferences.rs:218
+#: src/preferences.rs:232
 #, no-c-format
 msgid ""
 "What programs in the terminal may do, including ones on other machines and "
 "files that are shown"
 msgstr ""
 
-#: src/preferences.rs:222
+#: src/preferences.rs:236
 #, no-c-format
 msgid "Notifications"
 msgstr ""
 
-#: src/preferences.rs:224
+#: src/preferences.rs:238
 #, no-c-format
 msgid "Programs can notify you while their tab is out of sight"
 msgstr ""
 
-#: src/preferences.rs:232
+#: src/preferences.rs:246
 #, no-c-format
 msgid "Copying"
 msgstr ""
 
-#: src/preferences.rs:234
+#: src/preferences.rs:248
 #, no-c-format
 msgid "Programs can put text on the clipboard, but never read it"
 msgstr ""
@@ -406,35 +435,35 @@ msgid "“%s” ended"
 msgstr ""
 
 #. Translators: the program, then why it could not start.
-#: src/terminal_view.rs:998
+#: src/terminal_view.rs:1000
 #, no-c-format
 msgid "Could not start “%s”: %s"
 msgstr ""
 
-#: src/terminal_view.rs:1001
+#: src/terminal_view.rs:1003
 #, no-c-format
 msgid "Could not start the shell: %s"
 msgstr ""
 
-#: src/terminal_view.rs:1410
+#: src/terminal_view.rs:1414
 #, no-c-format
 msgid "Paste Several Lines?"
 msgstr ""
 
-#: src/terminal_view.rs:1412
+#: src/terminal_view.rs:1416
 #, no-c-format
 msgid ""
 "The program here does not mark pasted text, so each line runs as if typed "
 "and entered."
 msgstr ""
 
-#: src/terminal_view.rs:1416 src/window.rs:443 src/window.rs:539
+#: src/terminal_view.rs:1420 src/window.rs:443 src/window.rs:539
 #: src/window.rs:567
 #, no-c-format
 msgid "_Cancel"
 msgstr ""
 
-#: src/terminal_view.rs:1417 src/terminal_view/input.rs:716
+#: src/terminal_view.rs:1421 src/terminal_view/input.rs:716
 #, no-c-format
 msgid "_Paste"
 msgstr ""

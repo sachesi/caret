@@ -16,6 +16,16 @@
       <summary>Font</summary>
       <description>A Pango font description such as “Monospace 11”; empty for the desktop's monospace font.</description>
     </key>
+    <key name="font-features" type="s">
+      <default>''</default>
+      <summary>Font features</summary>
+      <description>OpenType features of the font to turn on or off, as in CSS: “zero, ss01, calt=0”.</description>
+    </key>
+    <key name="ligatures" type="b">
+      <default>true</default>
+      <summary>Ligatures</summary>
+      <description>Whether symbols the font joins, such as -> and !=, are drawn joined.</description>
+    </key>
     <key name="color-scheme" enum="io.github.sachesi.caret.ColorScheme">
       <default>'system'</default>
       <summary>Light or dark</summary>
