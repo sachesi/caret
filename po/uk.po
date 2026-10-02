@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-02 18:07+0300\n"
+"POT-Creation-Date: 2026-10-02 18:14+0300\n"
 "PO-Revision-Date: 2026-09-27 19:00+0300\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Ukrainian\n"
@@ -17,7 +17,7 @@ msgstr ""
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
 #: data/io.github.sachesi.caret.desktop:2
-#: data/io.github.sachesi.caret.metainfo.xml:6 src/window.rs:523
+#: data/io.github.sachesi.caret.metainfo.xml:6 src/window.rs:531
 #: ui/window.ui:58 ui/window.ui:83
 msgid "Caret"
 msgstr "Caret"
@@ -226,12 +226,12 @@ msgstr "Моноширинний шрифт і колірна схема сті�
 msgid "sachesi"
 msgstr "sachesi"
 
-#: data/io.github.sachesi.caret.metainfo.xml:36
+#: data/io.github.sachesi.caret.metainfo.xml:37
 msgid "Tangent is now called Caret. Its settings start from the defaults."
 msgstr ""
 "Tangent тепер називається Caret. Параметри починаються з типових значень."
 
-#: data/io.github.sachesi.caret.metainfo.xml:38
+#: data/io.github.sachesi.caret.metainfo.xml:39
 msgid ""
 "New tabs open in the folder of the current one, and in its Toolbox or "
 "Distrobox container, where the shell reports them"
@@ -239,7 +239,7 @@ msgstr ""
 "Нові вкладки відкриваються в теці поточної та в її контейнері Toolbox або "
 "Distrobox, якщо оболонка про них повідомляє"
 
-#: data/io.github.sachesi.caret.metainfo.xml:39
+#: data/io.github.sachesi.caret.metainfo.xml:40
 msgid ""
 "Tabs show a running command, and a finished one or a notification in a tab "
 "that is not in view; Ctrl+Shift+Up and Down scroll between prompts"
@@ -248,20 +248,20 @@ msgstr ""
 "сповіщення у вкладці, якої не видно; Ctrl+Shift+Вгору та Вниз гортають між "
 "запрошеннями"
 
-#: data/io.github.sachesi.caret.metainfo.xml:40
+#: data/io.github.sachesi.caret.metainfo.xml:41
 msgid "Tabs can be renamed from their context menu"
 msgstr "Вкладку можна перейменувати з її контекстного меню"
 
-#: data/io.github.sachesi.caret.metainfo.xml:41
+#: data/io.github.sachesi.caret.metainfo.xml:42
 msgid "The title bar can be hidden, and is in full screen"
 msgstr "Заголовок вікна можна сховати, а в повноекранному режимі його сховано"
 
-#: data/io.github.sachesi.caret.metainfo.xml:42
+#: data/io.github.sachesi.caret.metainfo.xml:43
 msgid "Selecting with the mouse scrolls past the edge; Select All and Deselect"
 msgstr ""
 "Виділення мишею гортає текст за краєм; «Виділити все» та «Зняти виділення»"
 
-#: data/io.github.sachesi.caret.metainfo.xml:43
+#: data/io.github.sachesi.caret.metainfo.xml:44
 msgid ""
 "The link under the pointer is underlined, and one a program broke into lines "
 "is followed"
@@ -269,7 +269,7 @@ msgstr ""
 "Посилання під вказівником підкреслюється, а посилання, яке програма розбила "
 "на рядки, простежується повністю"
 
-#: data/io.github.sachesi.caret.metainfo.xml:44
+#: data/io.github.sachesi.caret.metainfo.xml:45
 msgid ""
 "Symbols the font joins, such as -> and !=, are drawn joined, and a setting "
 "turns features of the font on and off"
@@ -277,7 +277,7 @@ msgstr ""
 "Символи, які шрифт з’єднує, наприклад -> та !=, малюються разом, а параметр "
 "вмикає й вимикає можливості шрифту"
 
-#: data/io.github.sachesi.caret.metainfo.xml:45
+#: data/io.github.sachesi.caret.metainfo.xml:46
 msgid ""
 "Settings for a command to run instead of the shell and for scrolling on "
 "output and on keystroke"
@@ -285,7 +285,7 @@ msgstr ""
 "Параметри для команди, що запускається замість оболонки, і для гортання під "
 "час виведення та натискання клавіш"
 
-#: data/io.github.sachesi.caret.metainfo.xml:46
+#: data/io.github.sachesi.caret.metainfo.xml:47
 msgid ""
 "Pasting several lines asks first where they would run, and programs can be "
 "kept from notifying and from copying"
@@ -293,7 +293,7 @@ msgstr ""
 "Перед вставленням кількох рядків, які були б виконані, ставиться запитання, "
 "а програмам можна заборонити сповіщення та копіювання"
 
-#: data/io.github.sachesi.caret.metainfo.xml:52
+#: data/io.github.sachesi.caret.metainfo.xml:53
 msgid "The first release."
 msgstr "Перший випуск."
 
@@ -313,12 +313,12 @@ msgstr "Показати версію й вийти"
 msgid "[-e] [COMMAND [ARGUMENT…]]"
 msgstr "[-e] [КОМАНДА [АРГУМЕНТ…]]"
 
-#: src/application.rs:244
+#: src/application.rs:243
 msgid "A terminal drawn by the GPU"
 msgstr "Термінал, який малює графічний процесор"
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:246
+#: src/application.rs:245
 msgid "translator-credits"
 msgstr "sachesi"
 
@@ -462,41 +462,41 @@ msgstr "Копіювання"
 msgid "Programs can put text on the clipboard, but never read it"
 msgstr "Програми можуть додавати текст до буфера обміну, але не читати його"
 
-#: src/terminal_view.rs:259
+#: src/terminal_view.rs:257
 #, rust-format
 msgid "The terminal cannot be drawn: {reason}"
 msgstr "Не вдається намалювати термінал: {reason}"
 
-#: src/terminal_view.rs:690
+#: src/terminal_view.rs:667
 #, rust-format
 msgid "“{program}” exited with status {status}"
 msgstr "«{program}» завершилася з кодом {status}"
 
-#: src/terminal_view.rs:694
+#: src/terminal_view.rs:671
 #, rust-format
 msgid "“{program}” was ended by signal {signal}"
 msgstr "«{program}» завершено сигналом {signal}"
 
-#: src/terminal_view.rs:697
+#: src/terminal_view.rs:674
 #, rust-format
 msgid "“{program}” ended"
 msgstr "«{program}» завершилася"
 
-#: src/terminal_view.rs:982
+#: src/terminal_view.rs:877
 #, rust-format
 msgid "Could not start “{program}”: {reason}"
 msgstr "Не вдалося запустити «{program}»: {reason}"
 
-#: src/terminal_view.rs:985
+#: src/terminal_view.rs:880
 #, rust-format
 msgid "Could not start the shell: {reason}"
 msgstr "Не вдалося запустити командну оболонку: {reason}"
 
-#: src/terminal_view.rs:1397
+#: src/terminal_view.rs:1143
 msgid "Paste Several Lines?"
 msgstr "Вставити кілька рядків?"
 
-#: src/terminal_view.rs:1399
+#: src/terminal_view.rs:1145
 msgid ""
 "The program here does not mark pasted text, so each line runs as if typed "
 "and entered."
@@ -504,12 +504,12 @@ msgstr ""
 "Ця програма не позначає вставлений текст, тому кожен рядок виконається, наче "
 "його набрали й натиснули Enter."
 
-#: src/terminal_view.rs:1403 src/window.rs:448 src/window.rs:547
-#: src/window.rs:573
+#: src/terminal_view.rs:1149 src/window.rs:456 src/window.rs:555
+#: src/window.rs:581
 msgid "_Cancel"
 msgstr "_Скасувати"
 
-#: src/terminal_view.rs:1404 src/terminal_view/input.rs:716
+#: src/terminal_view.rs:1150 src/terminal_view/input.rs:716
 msgid "_Paste"
 msgstr "_Вставити"
 
@@ -578,48 +578,48 @@ msgstr "_Про Caret"
 msgid "_Close Window"
 msgstr "_Закрити вікно"
 
-#: src/window.rs:303
+#: src/window.rs:311
 msgid "Command Finished"
 msgstr "Команду завершено"
 
-#: src/window.rs:304
+#: src/window.rs:312
 msgid "Command Failed"
 msgstr "Команда завершилася з помилкою"
 
-#: src/window.rs:441
+#: src/window.rs:449
 msgid "Rename Tab"
 msgstr "Перейменувати вкладку"
 
-#: src/window.rs:443
+#: src/window.rs:451
 msgid "Without a name, the tab shows the program’s title."
 msgstr "Без назви вкладка показує заголовок програми."
 
-#: src/window.rs:449
+#: src/window.rs:457
 msgid "_Rename"
 msgstr "_Перейменувати"
 
-#: src/window.rs:538
+#: src/window.rs:546
 msgid "A program is still running in this tab and will be stopped."
 msgstr "У цій вкладці ще працює програма, її роботу буде перервано."
 
-#: src/window.rs:541
+#: src/window.rs:549
 #, rust-format
 msgid "“{program}” is still running in this tab and will be stopped."
 msgstr "У цій вкладці ще працює «{program}», і її роботу буде перервано."
 
-#: src/window.rs:545
+#: src/window.rs:553
 msgid "Close Tab?"
 msgstr "Закрити вкладку?"
 
-#: src/window.rs:548 src/window.rs:574
+#: src/window.rs:556 src/window.rs:582
 msgid "C_lose"
 msgstr "_Закрити"
 
-#: src/window.rs:564
+#: src/window.rs:572
 msgid "Close Window?"
 msgstr "Закрити вікно?"
 
-#: src/window.rs:566
+#: src/window.rs:574
 #, rust-format
 msgid "A program is still running in {count} tab and will be stopped."
 msgid_plural "Programs are still running in {count} tabs and will be stopped."

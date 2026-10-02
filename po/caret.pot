@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret 0.2.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-02 18:07+0300\n"
+"POT-Creation-Date: 2026-10-02 18:14+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -19,7 +19,7 @@ msgstr ""
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
 #: data/io.github.sachesi.caret.desktop:2
-#: data/io.github.sachesi.caret.metainfo.xml:6 src/window.rs:523
+#: data/io.github.sachesi.caret.metainfo.xml:6 src/window.rs:531
 #: ui/window.ui:58 ui/window.ui:83
 msgid "Caret"
 msgstr ""
@@ -204,59 +204,59 @@ msgstr ""
 msgid "sachesi"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:36
+#: data/io.github.sachesi.caret.metainfo.xml:37
 msgid "Tangent is now called Caret. Its settings start from the defaults."
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:38
+#: data/io.github.sachesi.caret.metainfo.xml:39
 msgid ""
 "New tabs open in the folder of the current one, and in its Toolbox or "
 "Distrobox container, where the shell reports them"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:39
+#: data/io.github.sachesi.caret.metainfo.xml:40
 msgid ""
 "Tabs show a running command, and a finished one or a notification in a tab "
 "that is not in view; Ctrl+Shift+Up and Down scroll between prompts"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:40
+#: data/io.github.sachesi.caret.metainfo.xml:41
 msgid "Tabs can be renamed from their context menu"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:41
+#: data/io.github.sachesi.caret.metainfo.xml:42
 msgid "The title bar can be hidden, and is in full screen"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:42
+#: data/io.github.sachesi.caret.metainfo.xml:43
 msgid "Selecting with the mouse scrolls past the edge; Select All and Deselect"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:43
+#: data/io.github.sachesi.caret.metainfo.xml:44
 msgid ""
 "The link under the pointer is underlined, and one a program broke into lines "
 "is followed"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:44
+#: data/io.github.sachesi.caret.metainfo.xml:45
 msgid ""
 "Symbols the font joins, such as -> and !=, are drawn joined, and a setting "
 "turns features of the font on and off"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:45
+#: data/io.github.sachesi.caret.metainfo.xml:46
 msgid ""
 "Settings for a command to run instead of the shell and for scrolling on "
 "output and on keystroke"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:46
+#: data/io.github.sachesi.caret.metainfo.xml:47
 msgid ""
 "Pasting several lines asks first where they would run, and programs can be "
 "kept from notifying and from copying"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:52
+#: data/io.github.sachesi.caret.metainfo.xml:53
 msgid "The first release."
 msgstr ""
 
@@ -276,12 +276,12 @@ msgstr ""
 msgid "[-e] [COMMAND [ARGUMENT…]]"
 msgstr ""
 
-#: src/application.rs:244
+#: src/application.rs:243
 msgid "A terminal drawn by the GPU"
 msgstr ""
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:246
+#: src/application.rs:245
 msgid "translator-credits"
 msgstr ""
 
@@ -423,52 +423,52 @@ msgstr ""
 msgid "Programs can put text on the clipboard, but never read it"
 msgstr ""
 
-#: src/terminal_view.rs:259
+#: src/terminal_view.rs:257
 #, rust-format
 msgid "The terminal cannot be drawn: {reason}"
 msgstr ""
 
-#: src/terminal_view.rs:690
+#: src/terminal_view.rs:667
 #, rust-format
 msgid "“{program}” exited with status {status}"
 msgstr ""
 
-#: src/terminal_view.rs:694
+#: src/terminal_view.rs:671
 #, rust-format
 msgid "“{program}” was ended by signal {signal}"
 msgstr ""
 
-#: src/terminal_view.rs:697
+#: src/terminal_view.rs:674
 #, rust-format
 msgid "“{program}” ended"
 msgstr ""
 
-#: src/terminal_view.rs:982
+#: src/terminal_view.rs:877
 #, rust-format
 msgid "Could not start “{program}”: {reason}"
 msgstr ""
 
-#: src/terminal_view.rs:985
+#: src/terminal_view.rs:880
 #, rust-format
 msgid "Could not start the shell: {reason}"
 msgstr ""
 
-#: src/terminal_view.rs:1397
+#: src/terminal_view.rs:1143
 msgid "Paste Several Lines?"
 msgstr ""
 
-#: src/terminal_view.rs:1399
+#: src/terminal_view.rs:1145
 msgid ""
 "The program here does not mark pasted text, so each line runs as if typed "
 "and entered."
 msgstr ""
 
-#: src/terminal_view.rs:1403 src/window.rs:448 src/window.rs:547
-#: src/window.rs:573
+#: src/terminal_view.rs:1149 src/window.rs:456 src/window.rs:555
+#: src/window.rs:581
 msgid "_Cancel"
 msgstr ""
 
-#: src/terminal_view.rs:1404 src/terminal_view/input.rs:716
+#: src/terminal_view.rs:1150 src/terminal_view/input.rs:716
 msgid "_Paste"
 msgstr ""
 
@@ -537,48 +537,48 @@ msgstr ""
 msgid "_Close Window"
 msgstr ""
 
-#: src/window.rs:303
+#: src/window.rs:311
 msgid "Command Finished"
 msgstr ""
 
-#: src/window.rs:304
+#: src/window.rs:312
 msgid "Command Failed"
 msgstr ""
 
-#: src/window.rs:441
+#: src/window.rs:449
 msgid "Rename Tab"
 msgstr ""
 
-#: src/window.rs:443
+#: src/window.rs:451
 msgid "Without a name, the tab shows the program’s title."
 msgstr ""
 
-#: src/window.rs:449
+#: src/window.rs:457
 msgid "_Rename"
 msgstr ""
 
-#: src/window.rs:538
+#: src/window.rs:546
 msgid "A program is still running in this tab and will be stopped."
 msgstr ""
 
-#: src/window.rs:541
+#: src/window.rs:549
 #, rust-format
 msgid "“{program}” is still running in this tab and will be stopped."
 msgstr ""
 
-#: src/window.rs:545
+#: src/window.rs:553
 msgid "Close Tab?"
 msgstr ""
 
-#: src/window.rs:548 src/window.rs:574
+#: src/window.rs:556 src/window.rs:582
 msgid "C_lose"
 msgstr ""
 
-#: src/window.rs:564
+#: src/window.rs:572
 msgid "Close Window?"
 msgstr ""
 
-#: src/window.rs:566
+#: src/window.rs:574
 #, rust-format
 msgid "A program is still running in {count} tab and will be stopped."
 msgid_plural "Programs are still running in {count} tabs and will be stopped."
