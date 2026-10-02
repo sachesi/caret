@@ -687,9 +687,9 @@ impl TerminalView {
                 || error.matches(gtk::DialogError::Cancelled)
                 || error.matches(gio::IOErrorEnum::Cancelled);
             if let Some(view) = weak.upgrade().filter(|_| !chose_not_to) {
-                view.toast(&fill(
-                    &gettext("Could not open the link: %s"),
-                    &[error.message()],
+                view.toast(&gettext_f(
+                    "Could not open the link: {reason}",
+                    &[("reason", error.message())],
                 ));
             }
         });

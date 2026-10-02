@@ -28,6 +28,7 @@ use gtk::{cairo, gdk, gio, glib, graphene, pango};
 
 use crate::fonts::{Bitmap, Fonts, GlyphKey, GlyphThread};
 use crate::frame::{self, Look, Screen};
+use crate::i18n::gettext_f;
 use crate::palette::Palette;
 use crate::renderer::{Quads, RenderError, Renderer};
 use crate::session::{Command, Session};
@@ -254,10 +255,10 @@ mod imp {
                     }
                     Err(error) => {
                         tracing::warn!("drawing with OpenGL: {error}");
-                        self.failure.replace(Some(
-                            gettext("The terminal cannot be drawn: %s")
-                                .replace("%s", &error.to_string()),
-                        ));
+                        self.failure.replace(Some(gettext_f(
+                            "The terminal cannot be drawn: {reason}",
+                            &[("reason", &error.to_string())],
+                        )));
                     }
                 }
                 let weak = obj.downgrade();
@@ -358,23 +359,6 @@ fn rgba(color: Rgb) -> gdk::RGBA {
         f32::from(color.b) / 255.0,
         1.0,
     )
-}
-
-/// `template` with each `%s` replaced by the next of `values`, which are not searched for
-/// placeholders themselves.
-fn fill(template: &str, values: &[&str]) -> String {
-    let mut filled = String::with_capacity(template.len());
-    let mut rest = template;
-    for value in values {
-        let Some((before, after)) = rest.split_once("%s") else {
-            break;
-        };
-        filled.push_str(before);
-        filled.push_str(value);
-        rest = after;
-    }
-    filled.push_str(rest);
-    filled
 }
 
 /// `text` as a regular expression that matches it literally.
@@ -702,15 +686,15 @@ impl TerminalView {
         };
         let program: String = program.chars().filter(|c| !c.is_control()).collect();
         let message = match (status.code(), status.signal()) {
-            (Some(code), _) => fill(
-                &gettext("“%s” exited with status %s"),
-                &[&program, &code.to_string()],
+            (Some(code), _) => gettext_f(
+                "“{program}” exited with status {status}",
+                &[("program", &program), ("status", &code.to_string())],
             ),
-            (None, Some(signal)) => fill(
-                &gettext("“%s” was ended by signal %s"),
-                &[&program, &signal.to_string()],
+            (None, Some(signal)) => gettext_f(
+                "“{program}” was ended by signal {signal}",
+                &[("program", &program), ("signal", &signal.to_string())],
             ),
-            (None, None) => fill(&gettext("“%s” ended"), &[&program]),
+            (None, None) => gettext_f("“{program}” ended", &[("program", &program)]),
         };
         if let Some(session) = imp.session.borrow().as_ref() {
             let mut term = session.lock();
@@ -994,12 +978,11 @@ impl TerminalView {
             Err(error) => {
                 let error = error.to_string();
                 let message = match command.argv.first() {
-                    Some(program) => fill(
-                        // Translators: the program, then why it could not start.
-                        &gettext("Could not start “%s”: %s"),
-                        &[program, &error],
+                    Some(program) => gettext_f(
+                        "Could not start “{program}”: {reason}",
+                        &[("program", program), ("reason", &error)],
                     ),
-                    None => fill(&gettext("Could not start the shell: %s"), &[&error]),
+                    None => gettext_f("Could not start the shell: {reason}", &[("reason", &error)]),
                 };
                 imp.failure.replace(Some(message));
                 self.queue_draw();
@@ -1580,16 +1563,6 @@ fn search_origin<T>(term: &Term<T>, upwards: bool) -> Point {
 mod tests {
     use super::*;
     use alacritty_terminal::event::VoidListener;
-
-    #[test]
-    fn placeholders_in_values_are_left_alone() {
-        let template = "Could not start “%s”: %s";
-        assert_eq!(
-            fill(template, &["echo %s", "not found"]),
-            "Could not start “echo %s”: not found"
-        );
-        assert_eq!(fill("%s and %s", &["one"]), "one and %s");
-    }
 
     #[test]
     fn searches_go_round_the_history_in_steps() {

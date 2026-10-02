@@ -76,9 +76,11 @@ experiments out of your settings. Warnings go to stderr; `RUST_LOG=debug` shows 
 
 ## A few things to know before changing them
 
-User-visible strings go through `gettext` with `%s`-style placeholders and
-`str::replace`; there is no printf from Rust. Counts use `ngettext` even where English
-would not need it, because the plural rules of other languages do. `just pot`
+User-visible strings go through `gettext`, called by that name so xgettext finds it, and
+not inside a macro such as `glib::clone!`, whose body xgettext skips. Values go in through
+named placeholders with `gettext_f` and `ngettext_f` from `src/i18n.rs`, `{program}`
+rather than `%s`, so a translation can put them in its own order. Counts use `ngettext`
+even where English would not need it, because the plural rules of other languages do. `just pot`
 regenerates the template from the Rust sources, the Blueprint files, the desktop entry,
 the metainfo and the schema, and `just po` merges it into every `po/<lang>.po`. A new
 language is a new line in `po/LINGUAS` plus the `.po` file. `install` compiles the

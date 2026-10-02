@@ -5,10 +5,11 @@ use std::time::Duration;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use gettextrs::{gettext, ngettext};
+use gettextrs::gettext;
 use gtk::{gio, glib};
 
 use crate::application::CaretApplication;
+use crate::i18n::{gettext_f, ngettext_f};
 use crate::session::Command;
 use crate::settings::settings;
 use crate::terminal_view::TerminalView;
@@ -296,6 +297,14 @@ glib::wrapper! {
 /// Commands that take this long tell when they end in a window out of sight.
 const NOTIFY_AFTER: Duration = Duration::from_secs(10);
 
+/// Outside the `clone!` that uses it, where xgettext would not find the strings.
+fn finished_title(status: Option<i32>) -> String {
+    match status {
+        Some(0) | None => gettext("Command Finished"),
+        Some(_) => gettext("Command Failed"),
+    }
+}
+
 fn view_of(page: &adw::TabPage) -> Option<TerminalView> {
     page.child()
         .downcast::<gtk::ScrolledWindow>()
@@ -392,11 +401,7 @@ impl CaretWindow {
                 }
                 page.set_needs_attention(true);
                 if took >= NOTIFY_AFTER {
-                    let title = match status {
-                        Some(0) | None => gettext("Command Finished"),
-                        Some(_) => gettext("Command Failed"),
-                    };
-                    window.notify(view, &title, &page.title());
+                    window.notify(view, &finished_title(status), &page.title());
                 }
             }
         ));
@@ -532,7 +537,10 @@ impl CaretWindow {
         let body = if program.is_empty() {
             gettext("A program is still running in this tab and will be stopped.")
         } else {
-            gettext("“%s” is still running in this tab and will be stopped.").replace("%s", program)
+            gettext_f(
+                "“{program}” is still running in this tab and will be stopped.",
+                &[("program", program)],
+            )
         };
         let dialog = adw::AlertDialog::new(Some(&gettext("Close Tab?")), Some(&body));
         dialog.add_responses(&[
@@ -554,14 +562,12 @@ impl CaretWindow {
     fn confirm_close(&self, busy: u32) {
         let dialog = adw::AlertDialog::new(
             Some(&gettext("Close Window?")),
-            Some(
-                &ngettext(
-                    "A program is still running in %d tab and will be stopped.",
-                    "Programs are still running in %d tabs and will be stopped.",
-                    busy,
-                )
-                .replace("%d", &busy.to_string()),
-            ),
+            Some(&ngettext_f(
+                "A program is still running in {count} tab and will be stopped.",
+                "Programs are still running in {count} tabs and will be stopped.",
+                busy,
+                &[("count", &busy.to_string())],
+            )),
         );
         dialog.add_responses(&[
             ("cancel", &gettext("_Cancel")),

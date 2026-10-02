@@ -4,6 +4,7 @@ mod config;
 mod encode;
 mod fonts;
 mod frame;
+mod i18n;
 mod links;
 mod palette;
 mod preferences;
@@ -50,12 +51,7 @@ unsafe fn init_early() {
             std::env::set_var(CHOSE_RENDERER, "1");
         }
     }
-    if let Err(err) = gettextrs::bindtextdomain(config::GETTEXT_PACKAGE, config::LOCALEDIR)
-        .and_then(|_| gettextrs::bind_textdomain_codeset(config::GETTEXT_PACKAGE, "UTF-8"))
-        .and_then(|_| gettextrs::textdomain(config::GETTEXT_PACKAGE))
-    {
-        tracing::warn!("binding the translations in {}: {err}", config::LOCALEDIR);
-    }
+    i18n::init();
 
     gio::resources_register_include!("caret.gresource").expect("register resources");
     glib::set_application_name("Caret");
