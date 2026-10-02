@@ -50,7 +50,7 @@ The same packages are attached to each [release](https://github.com/sachesi/care
 ## Building and installing
 
     just build
-    sudo just install        # or: just prefix=$HOME/.local install
+    sudo just install        # or: just prefix=$HOME/.local build install
 
 Build needs Rust 1.92, `blueprint-compiler`, `just` and the development packages for GTK
 and libadwaita. Details, other prefixes and removal are in

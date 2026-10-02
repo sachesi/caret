@@ -17,19 +17,18 @@ datadir := destdir + prefix + "/share"
 release := "target/release"
 schema_dir := "target/schemas"
 pot_dir := "target/pot"
-check_dir := "target/check"
 version := `sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml`
 
 default:
     @just --list
 
-# Release build.
+# Release build that looks for its translations under the install prefix.
 build:
-    cargo build --release
+    CARET_LOCALEDIR={{prefix}}/share/locale cargo build --release --locked
 
 # Debug build.
 build-debug:
-    cargo build
+    cargo build --locked
 
 # Compile the GSettings schema into target/schemas for running uninstalled.
 schemas:
@@ -41,19 +40,17 @@ schemas:
 run *args: build-debug schemas
     GSETTINGS_SCHEMA_DIR={{schema_dir}} target/debug/caret {{args}}
 
-# Lints: rustfmt, clippy, blueprint, desktop file and metainfo validation.
+# Formatting, clippy, Blueprint formatting, schema, desktop entry, metainfo and catalogues.
 check:
     cargo fmt --check
-    cargo clippy --all-targets -- -D warnings
-    mkdir -p {{check_dir}}
-    blueprint-compiler batch-compile {{check_dir}} data/ui data/ui/*.blp >/dev/null
+    cargo clippy --all-targets --locked -- -D warnings
+    blueprint-compiler format data/ui/*.blp
     glib-compile-schemas --strict --dry-run data
     desktop-file-validate data/{{app_id}}.desktop
     appstreamcli validate --no-net data/{{app_id}}.metainfo.xml
     for lang in $(cat po/LINGUAS); do msgfmt -c -o /dev/null po/$lang.po; done
 
-# Regenerate po/caret.pot from the Rust sources, the Blueprint files, the desktop entry,
-# the metainfo and the schema.
+# Regenerate po/caret.pot from the sources, Blueprint files, desktop entry, metainfo and schema.
 pot:
     mkdir -p {{pot_dir}}/ui
     blueprint-compiler batch-compile {{pot_dir}}/ui data/ui data/ui/*.blp >/dev/null
@@ -76,9 +73,13 @@ po: pot
 
 # Unit tests.
 test:
-    cargo test
+    cargo test --locked
 
-# Install the release build. Does not build: run `just build` first.
+# Advisories, licences and sources of the dependencies.
+deny:
+    cargo deny check
+
+# Install the release build. Does not build: run `just build` first, with the same prefix.
 install:
     @test -x {{release}}/caret || { echo "error: {{release}}/caret missing; run 'just build' first" >&2; exit 1; }
     install -Dm755 {{release}}/caret {{bindir}}/caret
@@ -95,6 +96,7 @@ install:
     [ -n "{{destdir}}" ] || gtk4-update-icon-cache -qtf {{datadir}}/icons/hicolor || gtk-update-icon-cache -qtf {{datadir}}/icons/hicolor || true
     @echo "installed to {{prefix}}"
 
+# Remove what install put under the prefix.
 uninstall:
     rm -f {{bindir}}/caret
     rm -f {{datadir}}/applications/{{app_id}}.desktop {{datadir}}/metainfo/{{app_id}}.metainfo.xml

@@ -69,7 +69,7 @@ by `box_drawing.rs` to the cell's exact size, so lines join across cells.
     just run [-e COMMAND…]   # debug build with the schema compiled into target/schemas
     just check               # fmt, clippy -D warnings, blueprint, validators, catalogues
     just test                # the unit tests
-    cargo deny check         # advisories, licences and sources of the dependencies
+    just deny                # advisories, licences and sources of the dependencies
 
 A second `just run` opens a window in the first; `GSETTINGS_BACKEND=memory` keeps
 experiments out of your settings.

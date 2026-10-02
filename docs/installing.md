@@ -17,17 +17,19 @@ programs in the terminal do not inherit that choice.
     just build          # release
     just build-debug
     just check          # rustfmt, clippy, blueprint, schema, desktop and metainfo validation
+    just test
+    just deny           # advisories, licences and sources of the dependencies
     just run            # debug build, uninstalled
     just run -e htop    # the same, running a command instead of the shell
 
-The locale directory is compiled in (`CARET_LOCALEDIR`, default
-`/usr/local/share/locale`). Set it in the environment of `cargo build` if you install
-somewhere else.
+The locale directory is compiled in (`CARET_LOCALEDIR`). `just build` sets it from the
+prefix, `/usr/local/share/locale` by default; give the same prefix to `build` and
+`install`. A plain `cargo build` uses that default unless `CARET_LOCALEDIR` is set.
 
 ## Install
 
     sudo just install
-    just prefix=$HOME/.local install
+    just prefix=$HOME/.local build install
     DESTDIR=/tmp/stage just install
 
 `install` copies what `just build` produced; it never builds. The default prefix is
