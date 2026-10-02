@@ -128,7 +128,7 @@ pub fn arguments() -> Vec<String> {
 impl Application {
     pub fn new() -> Self {
         let app: Self = glib::Object::builder()
-            .property("application-id", config::APP_ID)
+            .property("application-id", config::APPLICATION_ID)
             .property(
                 "flags",
                 gio::ApplicationFlags::HANDLES_COMMAND_LINE
@@ -233,18 +233,16 @@ impl Application {
     }
 
     fn show_about(&self) {
-        let about = adw::AboutDialog::builder()
-            .application_name("Caret")
-            .application_icon(config::APP_ID)
-            .developer_name("sachesi")
-            .version(config::VERSION)
-            .website("https://github.com/sachesi/caret")
-            .issue_url("https://github.com/sachesi/caret/issues")
-            .license_type(gtk::License::Gpl30)
-            .comments(gettext("A terminal drawn by the GPU"))
-            // Translators: put your name here, one per line, optionally with an email address.
-            .translator_credits(gettext("translator-credits"))
-            .build();
+        // Name, developer, links, licence and release notes come from the metainfo.
+        let about = adw::AboutDialog::from_appdata(
+            &format!("{}/{}.metainfo.xml", config::RESOURCE_PATH, config::APP_ID),
+            Some(env!("CARGO_PKG_VERSION")),
+        );
+        // A packager's version, which has no release notes of its own.
+        about.set_version(config::VERSION);
+        about.set_comments(&gettext("A terminal drawn by the GPU"));
+        // Translators: put your name here, one per line, optionally with an email address.
+        about.set_translator_credits(&gettext("translator-credits"));
         about.present(self.active_window().as_ref());
     }
 }

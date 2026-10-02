@@ -53,7 +53,8 @@ unsafe fn init_early() {
     }
     i18n::init();
 
-    gio::resources_register_include!("caret.gresource").expect("register resources");
+    gio::resources_register_include!("resources.gresource")
+        .expect("the resources are compiled into the binary");
     glib::set_application_name("Caret");
 }
 

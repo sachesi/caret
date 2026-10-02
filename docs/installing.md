@@ -19,7 +19,7 @@ programs in the terminal do not inherit that choice.
     just check          # rustfmt, clippy, blueprint, schema, desktop and metainfo validation
     just test
     just deny           # advisories, licences and sources of the dependencies
-    just run            # debug build, uninstalled
+    just run            # debug build, uninstalled, as the separate io.github.sachesi.caret.Devel
     just run -e htop    # the same, running a command instead of the shell
 
 The locale directory is compiled in (`CARET_LOCALEDIR`). `just build` sets it from the

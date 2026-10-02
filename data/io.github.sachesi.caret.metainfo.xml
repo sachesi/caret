@@ -19,6 +19,7 @@
   <url type="bugtracker">https://github.com/sachesi/caret/issues</url>
   <url type="vcs-browser">https://github.com/sachesi/caret</url>
   <developer id="io.github.sachesi"><name>sachesi</name></developer>
+  <translation type="gettext">caret</translation>
   <content_rating type="oars-1.1"/>
   <provides>
     <binary>caret</binary>

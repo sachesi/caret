@@ -9,6 +9,7 @@ use gettextrs::gettext;
 use gtk::{gio, glib};
 
 use crate::application::Application;
+use crate::config;
 use crate::i18n::{gettext_f, ngettext_f};
 use crate::session::Command;
 use crate::settings::settings;
@@ -102,6 +103,9 @@ mod imp {
     impl ObjectImpl for Window {
         fn constructed(&self) {
             self.parent_constructed();
+            if config::DEVEL {
+                self.obj().add_css_class("devel");
+            }
             // Only the tab shortcuts few programs want for themselves: Ctrl+Home and
             // Ctrl+End, say, stay with editors.
             self.tab_view.set_shortcuts(

@@ -10,6 +10,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 app_id := "io.github.sachesi.caret"
+app_path := "/io/github/sachesi/caret"
 prefix := env("PREFIX", "/usr/local")
 destdir := env("DESTDIR", "")
 bindir := destdir + prefix + "/bin"
@@ -30,15 +31,16 @@ build:
 build-debug:
     cargo build --locked
 
-# Compile the GSettings schema into target/schemas for running uninstalled.
+# The settings schema under the .Devel id that debug builds use.
 schemas:
     mkdir -p {{schema_dir}}
-    cp data/{{app_id}}.gschema.xml {{schema_dir}}/
-    glib-compile-schemas {{schema_dir}}
+    sed -e 's|"{{app_id}}"|"{{app_id}}.Devel"|' -e 's|"{{app_path}}/"|"{{app_path}}/Devel/"|' \
+        data/{{app_id}}.gschema.xml > {{schema_dir}}/{{app_id}}.Devel.gschema.xml
+    glib-compile-schemas --strict {{schema_dir}}
 
-# Run the debug build uninstalled: just run [-e COMMAND…]
-run *args: build-debug schemas
-    GSETTINGS_SCHEMA_DIR={{schema_dir}} target/debug/caret {{args}}
+# Run a debug build uninstalled, as the separate {{app_id}}.Devel application: just run [-e COMMAND…]
+run *args: schemas
+    GSETTINGS_SCHEMA_DIR={{schema_dir}} cargo run --locked -- {{args}}
 
 # Formatting, clippy, Blueprint formatting, schema, desktop entry, metainfo and catalogues.
 check:

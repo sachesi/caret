@@ -6,7 +6,7 @@ use gtk::{gio, pango};
 use crate::config;
 
 thread_local! {
-    static SETTINGS: gio::Settings = gio::Settings::new(config::APP_ID);
+    static SETTINGS: gio::Settings = gio::Settings::new(config::APPLICATION_ID);
 }
 
 pub fn settings() -> gio::Settings {

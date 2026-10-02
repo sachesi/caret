@@ -16,7 +16,8 @@ Before a change goes in:
 
 ## Where things are
 
-    build.rs                  runs blueprint-compiler and bundles the GResource
+    build.rs                  runs blueprint-compiler and bundles the GResource, with the
+                              metainfo the About dialog reads
     data/ui/*.blp             the window and the shortcuts dialog
     src/main.rs               early setup: translations, resources, GTK's renderer
     src/application.rs        GtkApplication subclass, command line, app actions, accels
@@ -67,13 +68,15 @@ by `box_drawing.rs` to the cell's exact size, so lines join across cells.
 
 ## Running
 
-    just run [-e COMMAND…]   # debug build with the schema compiled into target/schemas
+    just run [-e COMMAND…]   # debug build, as io.github.sachesi.caret.Devel
     just check               # fmt, clippy -D warnings, blueprint, validators, catalogues
     just test                # the unit tests
     just deny                # advisories, licences and sources of the dependencies
 
-A second `just run` opens a window in the first; `GSETTINGS_BACKEND=memory` keeps
-experiments out of your settings. Warnings go to stderr; `RUST_LOG=debug` shows more.
+Debug builds are a separate application, `io.github.sachesi.caret.Devel`, with stripes in
+the header bar and settings of their own under `/io/github/sachesi/caret/Devel/`, so they
+run beside an installed Caret. A second `just run` opens a window in the first;
+`GSETTINGS_BACKEND=memory` keeps experiments out of the development settings. Warnings go to stderr; `RUST_LOG=debug` shows more.
 
 ## A few things to know before changing them
 
