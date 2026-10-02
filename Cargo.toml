@@ -21,6 +21,7 @@ libc = "0.2"
 libloading = "0.9"
 pangocairo = "0.22"
 polling = "3"
+thiserror = "2"
 
 [build-dependencies]
 glib-build-tools = "0.22"

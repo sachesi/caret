@@ -29,7 +29,7 @@ use gtk::{cairo, gdk, gio, glib, graphene, pango};
 use crate::fonts::{Bitmap, Fonts, GlyphKey, GlyphThread};
 use crate::frame::{self, Look, Screen};
 use crate::palette::Palette;
-use crate::renderer::{Quads, Renderer};
+use crate::renderer::{Quads, RenderError, Renderer};
 use crate::session::{Command, Session};
 use crate::settings::{self, settings};
 use crate::shell::Report;
@@ -255,7 +255,8 @@ mod imp {
                     Err(error) => {
                         glib::g_warning!("caret", "drawing with OpenGL: {error}");
                         self.failure.replace(Some(
-                            gettext("The terminal cannot be drawn: %s").replace("%s", &error),
+                            gettext("The terminal cannot be drawn: %s")
+                                .replace("%s", &error.to_string()),
                         ));
                     }
                 }
@@ -341,12 +342,10 @@ fn padding(scale: f64) -> i32 {
     (PADDING * scale).round() as i32
 }
 
-fn renderer_for(surface: &gdk::Surface) -> Result<(gdk::GLContext, Renderer), String> {
-    let context = surface
-        .create_gl_context()
-        .map_err(|error| error.to_string())?;
+fn renderer_for(surface: &gdk::Surface) -> Result<(gdk::GLContext, Renderer), RenderError> {
+    let context = surface.create_gl_context()?;
     context.set_allowed_apis(gdk::GLAPI::GL | gdk::GLAPI::GLES);
-    context.realize().map_err(|error| error.to_string())?;
+    context.realize()?;
     context.make_current();
     let renderer = Renderer::new(&context)?;
     Ok((context, renderer))

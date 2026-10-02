@@ -212,20 +212,44 @@ void main() {
 }
 ";
 
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum RenderError {
+    /// GDK's message already says what failed.
+    #[error(transparent)]
+    Context(#[from] glib::Error),
+    #[error("loading libEGL.so.1: {0}")]
+    LoadEgl(#[source] Arc<libloading::Error>),
+    #[error("finding eglGetProcAddress: {0}")]
+    FindGetProcAddress(#[source] Arc<libloading::Error>),
+    #[error("compiling a shader: {0}")]
+    CompileShader(String),
+    #[error("linking the shaders: {0}")]
+    LinkShaders(String),
+    /// glow reports a failed call as its message.
+    #[error("{0}")]
+    Gl(String),
+}
+
+impl From<String> for RenderError {
+    fn from(message: String) -> Self {
+        Self::Gl(message)
+    }
+}
+
 /// OpenGL functions, looked up through EGL: GDK draws through EGL on Wayland and by
 /// default on X11, and with libglvnd the functions EGL hands out dispatch to whatever
 /// context is current.
-fn load() -> Result<glow::Context, String> {
+fn load() -> Result<glow::Context, RenderError> {
     type GetProcAddress = unsafe extern "C" fn(*const c_char) -> *const c_void;
-    static GET_PROC_ADDRESS: OnceLock<Result<GetProcAddress, String>> = OnceLock::new();
+    static GET_PROC_ADDRESS: OnceLock<Result<GetProcAddress, RenderError>> = OnceLock::new();
     let get = GET_PROC_ADDRESS.get_or_init(|| {
         // SAFETY: libEGL's initialisers are safe to run; GTK has usually loaded it already.
         let library = unsafe { libloading::Library::new("libEGL.so.1") }
-            .map_err(|error| format!("loading libEGL.so.1: {error}"))?;
+            .map_err(|error| RenderError::LoadEgl(Arc::new(error)))?;
         // SAFETY: eglGetProcAddress has this signature in every EGL version.
         let get = unsafe { library.get::<GetProcAddress>(b"eglGetProcAddress\0") }
             .map(|symbol| *symbol)
-            .map_err(|error| format!("finding eglGetProcAddress: {error}"))?;
+            .map_err(|error| RenderError::FindGetProcAddress(Arc::new(error)))?;
         // The function pointer must outlive every context, so the library stays loaded.
         std::mem::forget(library);
         Ok(get)
@@ -242,7 +266,7 @@ fn load() -> Result<glow::Context, String> {
 
 impl Renderer {
     /// Sets up the program and buffers in `context`, which must be current.
-    pub fn new(context: &gdk::GLContext) -> Result<Self, String> {
+    pub fn new(context: &gdk::GLContext) -> Result<Self, RenderError> {
         let gl = load()?;
         let es = context.api() == gdk::GLAPI::GLES;
         let header = if es {
@@ -263,10 +287,7 @@ impl Renderer {
                 gl.shader_source(shader, &format!("{header}{source}"));
                 gl.compile_shader(shader);
                 if !gl.get_shader_compile_status(shader) {
-                    return Err(format!(
-                        "compiling a shader: {}",
-                        gl.get_shader_info_log(shader)
-                    ));
+                    return Err(RenderError::CompileShader(gl.get_shader_info_log(shader)));
                 }
                 gl.attach_shader(program, shader);
                 shaders.push(shader);
@@ -277,10 +298,7 @@ impl Renderer {
                 gl.delete_shader(shader);
             }
             if !gl.get_program_link_status(program) {
-                return Err(format!(
-                    "linking the shaders: {}",
-                    gl.get_program_info_log(program)
-                ));
+                return Err(RenderError::LinkShaders(gl.get_program_info_log(program)));
             }
 
             let vertex_array = gl.create_vertex_array()?;
@@ -427,7 +445,7 @@ impl Renderer {
         height: i32,
         background: [u8; 3],
         quads: &Quads,
-    ) -> Result<gdk::Texture, String> {
+    ) -> Result<gdk::Texture, RenderError> {
         let index = self.target(width, height)?;
         let gl = &self.gl;
         let [r, g, b] = background.map(|channel| f32::from(channel) / 255.0);
@@ -496,7 +514,7 @@ impl Renderer {
     }
 
     /// A target GTK is done with, of the right size if there is one.
-    fn target(&mut self, width: i32, height: i32) -> Result<usize, String> {
+    fn target(&mut self, width: i32, height: i32) -> Result<usize, RenderError> {
         let free: Vec<usize> = (0..self.targets.len())
             .filter(|&i| self.targets[i].free.load(Ordering::SeqCst))
             .collect();
@@ -575,7 +593,7 @@ unsafe fn new_texture(
     width: i32,
     height: i32,
     bgra: bool,
-) -> Result<glow::Texture, String> {
+) -> Result<glow::Texture, RenderError> {
     // SAFETY: the caller made a context current.
     unsafe {
         let texture = gl.create_texture()?;
