@@ -315,7 +315,7 @@ msgstr "[-e] [КОМАНДА [АРГУМЕНТ…]]"
 
 #: src/application.rs:243
 msgid "A terminal drawn by the GPU"
-msgstr "Термінал, який малює графічний процесор"
+msgstr "Термінал з апаратним прискоренням"
 
 #. Translators: put your name here, one per line, optionally with an email address.
 #: src/application.rs:245
