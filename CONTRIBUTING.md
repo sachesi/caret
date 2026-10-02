@@ -23,8 +23,9 @@ Before a change goes in:
     src/window.rs             the window: tabs, find bar, win.* actions, closing
     src/preferences.rs        the preferences dialog
     src/settings.rs           the GSettings object, the font and the colour scheme
-    src/terminal_view.rs      one terminal: the widget, its GL context, sizing, scrolling,
-                              drawing, clipboard and find; in terminal_view/ its input
+    src/terminal_view.rs      one terminal: the widget, its GL context, sizing, scrolling
+                              and clipboard; in terminal_view/ its input, drawing, find
+                              and accessible text
     src/session.rs            the terminal state, the pty and the thread that reads it
     src/encode.rs             keys, mouse events, pastes and focus as bytes for the program
     src/frame.rs              a screen captured from the terminal, turned into quads
