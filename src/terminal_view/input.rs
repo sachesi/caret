@@ -735,7 +735,7 @@ impl TerminalView {
         let window = gio::Menu::new();
         let title_bar = !self
             .root()
-            .and_downcast::<crate::window::CaretWindow>()
+            .and_downcast::<crate::window::Window>()
             .is_some_and(|window| window.header_bar_hidden());
         if !title_bar {
             window.append(Some(&gettext("New _Window")), Some("app.new-window"));

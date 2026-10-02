@@ -20,7 +20,7 @@ use gtk::{gio, glib};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::application::CaretApplication;
+use crate::application::Application;
 
 /// Set beside `GSK_RENDERER` when Caret chose GTK's renderer itself, so that the
 /// programs it starts get neither.
@@ -68,5 +68,5 @@ fn main() -> glib::ExitCode {
         .init();
     // SAFETY: no thread has been started yet.
     unsafe { init_early() };
-    CaretApplication::new().run_with_args(&application::arguments())
+    Application::new().run_with_args(&application::arguments())
 }

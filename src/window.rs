@@ -8,7 +8,7 @@ use adw::subclass::prelude::*;
 use gettextrs::gettext;
 use gtk::{gio, glib};
 
-use crate::application::CaretApplication;
+use crate::application::Application;
 use crate::i18n::{gettext_f, ngettext_f};
 use crate::session::Command;
 use crate::settings::settings;
@@ -19,12 +19,16 @@ mod imp {
 
     #[derive(Default, gtk::CompositeTemplate)]
     #[template(resource = "/io/github/sachesi/caret/ui/window.ui")]
-    pub struct CaretWindow {
+    pub struct Window {
         #[template_child]
         pub tab_overview: TemplateChild<adw::TabOverview>,
         #[template_child]
         pub tab_view: TemplateChild<adw::TabView>,
         #[template_child]
+        #[expect(
+            clippy::struct_field_names,
+            reason = "the template's id for its AdwWindowTitle"
+        )]
         pub window_title: TemplateChild<adw::WindowTitle>,
         #[template_child]
         pub header_bar: TemplateChild<adw::HeaderBar>,
@@ -37,9 +41,9 @@ mod imp {
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for CaretWindow {
+    impl ObjectSubclass for Window {
         const NAME: &'static str = "CaretWindow";
-        type Type = super::CaretWindow;
+        type Type = super::Window;
         type ParentType = adw::ApplicationWindow;
 
         fn class_init(klass: &mut Self::Class) {
@@ -95,7 +99,7 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for CaretWindow {
+    impl ObjectImpl for Window {
         fn constructed(&self) {
             self.parent_constructed();
             // Only the tab shortcuts few programs want for themselves: Ctrl+Home and
@@ -117,7 +121,7 @@ mod imp {
                     move |_, _| obj.update_header_bar()
                 ),
             );
-            obj.connect_fullscreened_notify(super::CaretWindow::update_header_bar);
+            obj.connect_fullscreened_notify(super::Window::update_header_bar);
             obj.update_header_bar();
             let (width, height) = settings().get::<(i32, i32)>("window-size");
             if width > 0 && height > 0 {
@@ -150,9 +154,9 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for CaretWindow {}
+    impl WidgetImpl for Window {}
 
-    impl WindowImpl for CaretWindow {
+    impl WindowImpl for Window {
         fn close_request(&self) -> glib::Propagation {
             let obj = self.obj();
             if !self.closing.get() {
@@ -167,11 +171,11 @@ mod imp {
         }
     }
 
-    impl ApplicationWindowImpl for CaretWindow {}
-    impl AdwApplicationWindowImpl for CaretWindow {}
+    impl ApplicationWindowImpl for Window {}
+    impl AdwApplicationWindowImpl for Window {}
 
     #[gtk::template_callbacks]
-    impl CaretWindow {
+    impl Window {
         #[template_callback]
         fn on_create_tab(&self) -> adw::TabPage {
             let obj = self.obj();
@@ -188,8 +192,8 @@ mod imp {
 
         #[template_callback]
         fn on_create_window(&self) -> adw::TabView {
-            let application = self.obj().application().and_downcast::<CaretApplication>();
-            let window = super::CaretWindow::new(application.as_ref());
+            let application = self.obj().application().and_downcast::<Application>();
+            let window = super::Window::new(application.as_ref());
             window.present();
             window.imp().tab_view.clone()
         }
@@ -265,7 +269,7 @@ mod imp {
         }
     }
 
-    impl CaretWindow {
+    impl Window {
         fn search(&self, upwards: bool) {
             if let Some(view) = self.obj().current_view() {
                 let window = self.obj().downgrade();
@@ -288,7 +292,7 @@ mod imp {
 }
 
 glib::wrapper! {
-    pub struct CaretWindow(ObjectSubclass<imp::CaretWindow>)
+    pub struct Window(ObjectSubclass<imp::Window>)
         @extends adw::ApplicationWindow, gtk::ApplicationWindow, gtk::Window, gtk::Widget,
         @implements gio::ActionGroup, gio::ActionMap, gtk::Accessible, gtk::Buildable,
                     gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
@@ -313,7 +317,7 @@ fn view_of(page: &adw::TabPage) -> Option<TerminalView> {
         .and_downcast::<TerminalView>()
 }
 
-impl CaretWindow {
+impl Window {
     /// What a new tab runs: the shell, where the current tab's is.
     pub fn next_command(&self) -> Command {
         self.current_view()
@@ -321,7 +325,7 @@ impl CaretWindow {
             .unwrap_or_default()
     }
 
-    pub fn new(application: Option<&CaretApplication>) -> Self {
+    pub fn new(application: Option<&Application>) -> Self {
         glib::Object::builder()
             .property("application", application)
             .build()

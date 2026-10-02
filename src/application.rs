@@ -10,24 +10,24 @@ use gtk::{gio, glib};
 use crate::config;
 use crate::session::Command;
 use crate::settings::{self, settings};
-use crate::window::CaretWindow;
+use crate::window::Window;
 
 mod imp {
     use super::*;
 
     #[derive(Default)]
-    pub struct CaretApplication {}
+    pub struct Application {}
 
     #[glib::object_subclass]
-    impl ObjectSubclass for CaretApplication {
+    impl ObjectSubclass for Application {
         const NAME: &'static str = "CaretApplication";
-        type Type = super::CaretApplication;
+        type Type = super::Application;
         type ParentType = adw::Application;
     }
 
-    impl ObjectImpl for CaretApplication {}
+    impl ObjectImpl for Application {}
 
-    impl ApplicationImpl for CaretApplication {
+    impl ApplicationImpl for Application {
         fn startup(&self) {
             self.parent_startup();
             settings::apply_color_scheme();
@@ -92,17 +92,17 @@ mod imp {
         }
     }
 
-    impl GtkApplicationImpl for CaretApplication {}
-    impl AdwApplicationImpl for CaretApplication {}
+    impl GtkApplicationImpl for Application {}
+    impl AdwApplicationImpl for Application {}
 }
 
 glib::wrapper! {
-    pub struct CaretApplication(ObjectSubclass<imp::CaretApplication>)
+    pub struct Application(ObjectSubclass<imp::Application>)
         @extends adw::Application, gtk::Application, gio::Application,
         @implements gio::ActionGroup, gio::ActionMap;
 }
 
-impl Default for CaretApplication {
+impl Default for Application {
     fn default() -> Self {
         Self::new()
     }
@@ -125,7 +125,7 @@ pub fn arguments() -> Vec<String> {
     arguments
 }
 
-impl CaretApplication {
+impl Application {
     pub fn new() -> Self {
         let app: Self = glib::Object::builder()
             .property("application-id", config::APP_ID)
@@ -164,7 +164,7 @@ impl CaretApplication {
     }
 
     fn open_window(&self, command: Command) {
-        let window = CaretWindow::new(Some(self));
+        let window = Window::new(Some(self));
         window.add_tab(command);
         window.present();
     }
@@ -174,7 +174,7 @@ impl CaretApplication {
             .activate(|app: &Self, _, _| {
                 let command = app
                     .active_window()
-                    .and_downcast::<CaretWindow>()
+                    .and_downcast::<Window>()
                     .map(|window| window.next_command())
                     .unwrap_or_default();
                 app.open_window(command);
@@ -195,7 +195,7 @@ impl CaretApplication {
                     return;
                 };
                 for window in app.windows() {
-                    if let Ok(window) = window.downcast::<CaretWindow>()
+                    if let Ok(window) = window.downcast::<Window>()
                         && window.show_tab(serial)
                     {
                         return;
