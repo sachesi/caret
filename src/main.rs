@@ -16,6 +16,8 @@ mod window;
 
 use gio::prelude::*;
 use gtk::{gio, glib};
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::filter::LevelFilter;
 
 use crate::application::CaretApplication;
 
@@ -48,9 +50,12 @@ unsafe fn init_early() {
             std::env::set_var(CHOSE_RENDERER, "1");
         }
     }
-    gettextrs::bindtextdomain(config::GETTEXT_PACKAGE, config::LOCALEDIR).ok();
-    gettextrs::bind_textdomain_codeset(config::GETTEXT_PACKAGE, "UTF-8").ok();
-    gettextrs::textdomain(config::GETTEXT_PACKAGE).ok();
+    if let Err(err) = gettextrs::bindtextdomain(config::GETTEXT_PACKAGE, config::LOCALEDIR)
+        .and_then(|_| gettextrs::bind_textdomain_codeset(config::GETTEXT_PACKAGE, "UTF-8"))
+        .and_then(|_| gettextrs::textdomain(config::GETTEXT_PACKAGE))
+    {
+        tracing::warn!("binding the translations in {}: {err}", config::LOCALEDIR);
+    }
 
     gio::resources_register_include!("caret.gresource").expect("register resources");
     glib::set_application_name("Caret");
@@ -58,7 +63,14 @@ unsafe fn init_early() {
 
 #[expect(unsafe_code, reason = "calls init_early before any thread starts")]
 fn main() -> glib::ExitCode {
-    // SAFETY: the first thing the program does; no thread has been started.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::WARN.into())
+                .from_env_lossy(),
+        )
+        .init();
+    // SAFETY: no thread has been started yet.
     unsafe { init_early() };
     CaretApplication::new().run_with_args(&application::arguments())
 }

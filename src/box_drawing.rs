@@ -126,6 +126,8 @@ pub fn draw(c: char, cr: &cairo::Context, width: i32, height: i32, light: i32) -
     let Some(shape) = shape(c) else {
         return false;
     };
+    // cairo fails a fill or stroke only on a context already in error, and the cell is
+    // then left blank, as for a character no font has.
     let (w, h) = (f64::from(width), f64::from(height));
     let heavy = (light * 5 + 1) / 2;
     let thickness = |weight: u8| match weight {

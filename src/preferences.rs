@@ -82,7 +82,9 @@ pub fn preferences_dialog() -> adw::PreferencesDialog {
                     .map(|font| font.to_str().to_string())
                     .unwrap_or_default()
             };
-            let _ = settings.set_string("font", &font);
+            if let Err(err) = settings.set_string("font", &font) {
+                tracing::warn!("saving the font {font:?}: {err}");
+            }
         }
     ));
     font_button.connect_font_desc_notify(glib::clone!(
@@ -97,7 +99,10 @@ pub fn preferences_dialog() -> adw::PreferencesDialog {
                 && !system_font.is_active()
                 && let Some(font) = button.font_desc()
             {
-                let _ = settings.set_string("font", &font.to_str());
+                let font = font.to_str();
+                if let Err(err) = settings.set_string("font", &font) {
+                    tracing::warn!("saving the font {font:?}: {err}");
+                }
             }
         }
     ));

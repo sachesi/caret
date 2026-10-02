@@ -134,6 +134,7 @@ impl TerminalView {
             self,
             move |_, text| view.input(text.as_bytes().to_vec())
         ));
+        // Input is set up once per view, so the cell is empty.
         imp.im.set(im.clone()).ok();
 
         let keys = gtk::EventControllerKey::new();

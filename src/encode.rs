@@ -198,6 +198,7 @@ pub fn mouse(
             'M'
         };
         let mut sequence = String::with_capacity(16);
+        // Writing to a String cannot fail.
         let _ = write!(sequence, "\x1b[<{code};{};{}{end}", column + 1, line + 1);
         return Some(sequence.into_bytes());
     }

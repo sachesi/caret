@@ -22,6 +22,8 @@ libloading = "0.9"
 pangocairo = "0.22"
 polling = "3"
 thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [build-dependencies]
 glib-build-tools = "0.22"

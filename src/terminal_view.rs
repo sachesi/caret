@@ -253,7 +253,7 @@ mod imp {
                         self.glyphs_stale.set(false);
                     }
                     Err(error) => {
-                        glib::g_warning!("caret", "drawing with OpenGL: {error}");
+                        tracing::warn!("drawing with OpenGL: {error}");
                         self.failure.replace(Some(
                             gettext("The terminal cannot be drawn: %s")
                                 .replace("%s", &error.to_string()),
@@ -1323,7 +1323,7 @@ impl TerminalView {
                 snapshot.pop();
             }
             Err(error) => {
-                glib::g_warning!("caret", "drawing a frame: {error}");
+                tracing::warn!("drawing a frame: {error}");
                 snapshot.append_color(&rgba(background), &bounds);
             }
         }

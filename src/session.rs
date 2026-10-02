@@ -40,7 +40,8 @@ impl EventListener for Listener {
             _ => {}
         }
         // Unbounded: the sender is the parser, which holds the terminal's lock, and a
-        // full channel would stall it while the main context waits for the same lock.
+        // full channel would stall it while the main context waits for the same lock. It
+        // fails only once the view, which receives, is gone.
         let _ = self.events.try_send(event);
     }
 }
@@ -279,6 +280,7 @@ impl Session {
         let controller = pty.file().try_clone()?;
         let (reports, reported) = async_channel::unbounded();
         let pty = FilteredPty::new(pty, move |report| {
+            // Fails only once the view, which receives, is gone.
             let _ = reports.try_send(report);
         })?;
 
@@ -314,6 +316,7 @@ impl Session {
     pub fn write(&self, bytes: impl Into<Cow<'static, [u8]>>) {
         let bytes = bytes.into();
         if !bytes.is_empty() {
+            // Fails only once the event loop has ended with the program.
             let _ = self.sender.send(Msg::Input(bytes));
         }
     }
@@ -330,6 +333,7 @@ impl Session {
             columns: usize::from(size.num_cols),
             lines: usize::from(size.num_lines),
         });
+        // Fails only once the event loop has ended with the program.
         let _ = self.sender.send(Msg::Resize(size));
     }
 
@@ -354,6 +358,7 @@ impl Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
+        // An event loop that has ended needs no shutdown.
         let _ = self.sender.send(Msg::Shutdown);
     }
 }

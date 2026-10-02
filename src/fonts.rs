@@ -225,7 +225,7 @@ impl GlyphThread {
         let (requests, requested) = mpsc::channel::<GlyphKey>();
         let (done, results) = async_channel::unbounded();
         let (font, dpi, options, features) = fonts.made_from.clone();
-        let _ = std::thread::Builder::new()
+        let spawned = std::thread::Builder::new()
             .name("glyphs".to_owned())
             .spawn(move || {
                 let fonts = Fonts::new(&font, dpi, &options, &features);
@@ -236,6 +236,9 @@ impl GlyphThread {
                     }
                 }
             });
+        if let Err(err) = spawned {
+            tracing::warn!("starting the glyph thread: {err}");
+        }
         let thread = Self {
             requests,
             results: results.clone(),

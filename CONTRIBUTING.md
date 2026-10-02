@@ -72,7 +72,7 @@ by `box_drawing.rs` to the cell's exact size, so lines join across cells.
     just deny                # advisories, licences and sources of the dependencies
 
 A second `just run` opens a window in the first; `GSETTINGS_BACKEND=memory` keeps
-experiments out of your settings.
+experiments out of your settings. Warnings go to stderr; `RUST_LOG=debug` shows more.
 
 ## A few things to know before changing them
 

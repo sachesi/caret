@@ -591,8 +591,12 @@ impl CaretWindow {
         let maximized = self.is_maximized();
         if !maximized && !self.is_fullscreen() {
             let (width, height) = self.default_size();
-            let _ = settings.set("window-size", (width, height));
+            if let Err(err) = settings.set("window-size", (width, height)) {
+                tracing::warn!("saving the window size {width}×{height}: {err}");
+            }
         }
-        let _ = settings.set_boolean("window-maximized", maximized);
+        if let Err(err) = settings.set_boolean("window-maximized", maximized) {
+            tracing::warn!("saving whether the window is maximized: {err}");
+        }
     }
 }
