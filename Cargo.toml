@@ -9,10 +9,6 @@ repository = "https://github.com/sachesi/caret"
 readme = "README.md"
 publish = false
 
-[[bin]]
-name = "caret"
-path = "src/bin/caret.rs"
-
 [dependencies]
 adw = { package = "libadwaita", version = "0.9", features = ["v1_9"] }
 alacritty_terminal = "0.26"

@@ -1,20 +1,23 @@
-pub mod application;
-pub mod box_drawing;
-pub mod config;
-pub mod encode;
-pub mod fonts;
-pub mod frame;
-pub mod links;
-pub mod palette;
-pub mod preferences;
-pub mod renderer;
-pub mod session;
-pub mod settings;
-pub mod shell;
-pub mod terminal_view;
-pub mod window;
+mod application;
+mod box_drawing;
+mod config;
+mod encode;
+mod fonts;
+mod frame;
+mod links;
+mod palette;
+mod preferences;
+mod renderer;
+mod session;
+mod settings;
+mod shell;
+mod terminal_view;
+mod window;
 
-pub use gtk::{gio, glib};
+use gio::prelude::*;
+use gtk::{gio, glib};
+
+use crate::application::CaretApplication;
 
 /// Set beside `GSK_RENDERER` when Caret chose GTK's renderer itself, so that the
 /// programs it starts get neither.
@@ -27,7 +30,7 @@ pub const CHOSE_RENDERER: &str = "CARET_CHOSE_GSK_RENDERER";
 ///
 /// Call it first in `main`, before any thread is started: it sets the locale and the
 /// environment, which other threads may be reading.
-pub unsafe fn init_early() {
+unsafe fn init_early() {
     // SAFETY: the caller has started no thread yet.
     unsafe { gettextrs::setlocale(gettextrs::LocaleCategory::LcAll, "") };
     // The terminal draws into OpenGL textures, which GTK's GL renderer takes as they are.
@@ -47,4 +50,10 @@ pub unsafe fn init_early() {
 
     gio::resources_register_include!("caret.gresource").expect("register resources");
     glib::set_application_name("Caret");
+}
+
+fn main() -> glib::ExitCode {
+    // SAFETY: the first thing the program does; no thread has been started.
+    unsafe { init_early() };
+    CaretApplication::new().run_with_args(&application::arguments())
 }

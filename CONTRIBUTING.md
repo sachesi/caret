@@ -18,7 +18,7 @@ Before a change goes in:
 
     build.rs                  runs blueprint-compiler and bundles the GResource
     data/ui/*.blp             the window and the shortcuts dialog
-    src/bin/caret.rs        the executable, a thin main
+    src/main.rs               early setup: translations, resources, GTK's renderer
     src/application.rs        GtkApplication subclass, command line, app actions, accels
     src/window.rs             the window: tabs, find bar, win.* actions, closing
     src/preferences.rs        the preferences dialog
