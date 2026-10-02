@@ -206,13 +206,13 @@ mod imp {
         }
 
         fn constructed(&self) {
+            static SERIAL: AtomicU64 = AtomicU64::new(0);
             self.parent_constructed();
             let obj = self.obj();
             obj.set_focusable(true);
             obj.set_overflow(gtk::Overflow::Hidden);
             obj.set_cursor_from_name(Some("text"));
             self.cursor_on.set(true);
-            static SERIAL: AtomicU64 = AtomicU64::new(0);
             self.serial.set(SERIAL.fetch_add(1, Ordering::Relaxed));
             obj.update_palette();
             obj.setup_input();
@@ -445,13 +445,14 @@ impl TerminalView {
         let custom = settings().string("custom-command");
         if command.argv.is_empty() && !custom.trim().is_empty() {
             // A line that does not parse is run whole, so that the tab says it failed.
-            command.argv = glib::shell_parse_argv(custom.as_str())
-                .map(|argv| {
+            command.argv = glib::shell_parse_argv(custom.as_str()).map_or_else(
+                |_| vec![custom.to_string()],
+                |argv| {
                     argv.iter()
                         .map(|word| word.to_string_lossy().into_owned())
                         .collect()
-                })
-                .unwrap_or_else(|_| vec![custom.to_string()]);
+                },
+            );
         }
         let program = command.program();
         let name = Path::new(&program)
@@ -534,7 +535,7 @@ impl TerminalView {
             "command-finished",
             false,
             glib::closure_local!(move |view: &Self, seconds: u64, status: i32, known: bool| {
-                f(view, Duration::from_secs(seconds), known.then_some(status))
+                f(view, Duration::from_secs(seconds), known.then_some(status));
             }),
         )
     }
@@ -648,7 +649,7 @@ impl TerminalView {
                 self.set_title(&title);
             }
             Event::ClipboardStore(ClipboardType::Clipboard, text) => {
-                self.clipboard().set_text(&text)
+                self.clipboard().set_text(&text);
             }
             Event::ClipboardStore(ClipboardType::Selection, text) => {
                 self.primary_clipboard().set_text(&text);
@@ -729,7 +730,7 @@ impl TerminalView {
         self.queue_draw();
     }
 
-    fn term_config(&self) -> term::Config {
+    fn term_config() -> term::Config {
         let settings = settings();
         let shape = match settings.string("cursor-shape").as_str() {
             "beam" => CursorShape::Beam,
@@ -761,7 +762,7 @@ impl TerminalView {
                 "font" | "font-features" => view.font_changed(),
                 "ligatures" => view.queue_draw(),
                 "cursor-shape" | "scrollback-lines" | "program-clipboard" => {
-                    let config = view.term_config();
+                    let config = Self::term_config();
                     if let Some(session) = view.imp().session.borrow().as_ref() {
                         session.lock().set_options(config);
                     }
@@ -801,7 +802,7 @@ impl TerminalView {
             let weak = self.downgrade();
             let handler = gtk_settings.connect_gtk_cursor_blink_notify(move |_| {
                 if let Some(view) = weak.upgrade() {
-                    let config = view.term_config();
+                    let config = Self::term_config();
                     if let Some(session) = view.imp().session.borrow().as_ref() {
                         session.lock().set_options(config);
                     }
@@ -846,7 +847,7 @@ impl TerminalView {
         let gtk_settings = gtk::Settings::default();
         let dpi = gtk_settings
             .as_ref()
-            .map(|settings| settings.gtk_xft_dpi())
+            .map(gtk::Settings::gtk_xft_dpi)
             .filter(|&dpi| dpi > 0)
             .unwrap_or(96 * 1024);
         let mut font = settings::font();
@@ -870,7 +871,7 @@ impl TerminalView {
         options.set_hint_metrics(cairo::HintMetrics::On);
         let hinting = gtk_settings
             .as_ref()
-            .and_then(|settings| settings.gtk_xft_hintstyle());
+            .and_then(gtk::Settings::gtk_xft_hintstyle);
         options.set_hint_style(match hinting.as_deref() {
             Some("hintnone") => cairo::HintStyle::None,
             Some("hintslight") => cairo::HintStyle::Slight,
@@ -972,7 +973,7 @@ impl TerminalView {
 
     fn start(&self, command: &Command, size: WindowSize) {
         let imp = self.imp();
-        match Session::spawn(command, size, self.term_config()) {
+        match Session::spawn(command, size, Self::term_config()) {
             Ok((session, events, reports)) => {
                 session.lock().is_focused = imp.focused.get();
                 imp.session.replace(Some(session));
@@ -1192,6 +1193,7 @@ impl TerminalView {
         imp.blink.replace(Some(blink));
     }
 
+    #[expect(clippy::too_many_lines, reason = "one frame from capture to texture")]
     fn draw(&self, snapshot: &gtk::Snapshot) {
         let imp = self.imp();
         let (width, height) = (self.width(), self.height());

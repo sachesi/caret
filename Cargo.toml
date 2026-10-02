@@ -25,6 +25,30 @@ polling = "3"
 [build-dependencies]
 glib-build-tools = "0.22"
 
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# `mod imp { use super::*; }` is how every GObject subclass is written.
+wildcard_imports = "allow"
+# Pixel, cell and texel arithmetic converts between i32, usize and floats everywhere,
+# with values bounded by the size of a window or a texture.
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+# A terminal has lines and links, columns and colours.
+similar_names = "allow"
+# Colours read as 0xRRGGBB.
+unreadable_literal = "allow"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+dbg_macro = "warn"
+todo = "warn"
+undocumented_unsafe_blocks = "warn"
+unwrap_used = "warn"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

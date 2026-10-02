@@ -1,4 +1,4 @@
-//! The application's GSettings and what they resolve to.
+//! The application's `GSettings` and what they resolve to.
 
 use adw::prelude::*;
 use gtk::{gio, pango};

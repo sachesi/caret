@@ -1,6 +1,6 @@
 //! What the shell tells the terminal beside its output: the directory it is in (OSC 7),
 //! notifications (OSC 9 and 777), the container it entered (OSC 777) and where prompts
-//! and commands begin and end (OSC 133). alacritty_terminal's parser drops these, so the
+//! and commands begin and end (OSC 133). `alacritty_terminal`'s parser drops these, so the
 //! output is read through a filter that takes them out before it.
 
 use std::fs::File;
@@ -289,6 +289,7 @@ impl Read for FilteredReader {
     }
 }
 
+#[expect(unsafe_code, reason = "the trait's register is an unsafe fn")]
 impl EventedReadWrite for FilteredPty {
     type Reader = FilteredReader;
     type Writer = File;

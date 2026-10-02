@@ -1,4 +1,4 @@
-//! Preferences dialog: every row writes its GSettings key immediately.
+//! Preferences dialog: every row writes its `GSettings` key immediately.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -9,6 +9,10 @@ use gtk::{gio, glib, pango};
 
 use crate::settings::{self, settings};
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "the dialog's rows, one after another"
+)]
 pub fn preferences_dialog() -> adw::PreferencesDialog {
     let dialog = adw::PreferencesDialog::builder()
         .title(gettext("Preferences"))
@@ -34,7 +38,7 @@ pub fn preferences_dialog() -> adw::PreferencesDialog {
                 .filter(&gtk::CustomFilter::new(|item| {
                     // The dialog lists families and then their faces.
                     item.downcast_ref::<pango::FontFamily>()
-                        .map(|family| family.is_monospace())
+                        .map(pango::FontFamily::is_monospace)
                         .or_else(|| {
                             item.downcast_ref::<pango::FontFace>()
                                 .map(|face| face.family().is_monospace())
@@ -307,7 +311,7 @@ fn choice_row(
         })
         .set_mapping(move |value, _| {
             let index = usize::try_from(value.get::<u32>().ok()?).ok()?;
-            nicks.get(index).map(|nick| nick.to_variant())
+            nicks.get(index).map(ToVariant::to_variant)
         })
         .build();
     row

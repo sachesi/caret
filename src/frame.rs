@@ -58,6 +58,7 @@ pub struct Screen {
 
 impl Screen {
     /// `link` is underlined, as the one a click would open.
+    #[expect(clippy::too_many_lines, reason = "one pass over the visible cells")]
     pub fn capture<T: EventListener>(
         &mut self,
         term: &Term<T>,
@@ -213,7 +214,14 @@ fn rgba(color: Rgb) -> [u8; 4] {
 /// from `rasterize`, which may have none to give yet, and are then left out. With
 /// `partial`, so are glyphs the atlas has no room for, instead of failing the frame.
 /// `ligatures` divides a run of symbols of one style into the lengths of its glyphs.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a frame is built from the screen, the look, the fonts and the renderer"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one pass over the screen, layer by layer"
+)]
 pub fn build(
     screen: &Screen,
     look: &Look,

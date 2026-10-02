@@ -655,7 +655,7 @@ impl TerminalView {
             files
                 .files()
                 .iter()
-                .filter_map(|file| file.path())
+                .filter_map(gio::prelude::FileExt::path)
                 .map(|path| encode::shell_quoted(path.as_os_str().as_bytes()))
                 .collect::<Vec<_>>()
                 .join(&b' ')

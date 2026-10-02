@@ -30,6 +30,10 @@ pub const CHOSE_RENDERER: &str = "CARET_CHOSE_GSK_RENDERER";
 ///
 /// Call it first in `main`, before any thread is started: it sets the locale and the
 /// environment, which other threads may be reading.
+#[expect(
+    unsafe_code,
+    reason = "sets the locale and the environment, unsound once threads run"
+)]
 unsafe fn init_early() {
     // SAFETY: the caller has started no thread yet.
     unsafe { gettextrs::setlocale(gettextrs::LocaleCategory::LcAll, "") };
@@ -52,6 +56,7 @@ unsafe fn init_early() {
     glib::set_application_name("Caret");
 }
 
+#[expect(unsafe_code, reason = "calls init_early before any thread starts")]
 fn main() -> glib::ExitCode {
     // SAFETY: the first thing the program does; no thread has been started.
     unsafe { init_early() };

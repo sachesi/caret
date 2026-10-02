@@ -2,8 +2,13 @@
 //! of rectangles and glyphs from an atlas, into a texture the size of the widget in
 //! device pixels.
 //!
-//! GtkGLArea is not used because it sizes its buffer by the integer scale, which would
+//! `GtkGLArea` is not used because it sizes its buffer by the integer scale, which would
 //! leave text resampled on a fractional one.
+
+#![expect(
+    unsafe_code,
+    reason = "OpenGL through glow and the libEGL loader are FFI"
+)]
 
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void};
@@ -59,7 +64,7 @@ impl Quads {
             *bytes = value.to_ne_bytes();
         }
         quad[32..36].copy_from_slice(&color);
-        quad[36..].copy_from_slice(&(kind as u8 as f32).to_ne_bytes());
+        quad[36..].copy_from_slice(&f32::from(kind as u8).to_ne_bytes());
         self.bytes.extend_from_slice(&quad);
         self.count += 1;
     }
@@ -99,6 +104,7 @@ struct Atlas {
     row: i32,
     glyphs: HashMap<GlyphKey, Option<AtlasGlyph>>,
     /// ASCII in each style, most of what a frame draws, looked up without hashing.
+    #[expect(clippy::option_option, reason = "as `glyph` returns them")]
     ascii: Vec<Option<Option<AtlasGlyph>>>,
 }
 
@@ -331,6 +337,10 @@ impl Renderer {
 
     /// Where `key`'s glyph is in the atlas, when it was uploaded; inside, nothing for a
     /// glyph without ink.
+    #[expect(
+        clippy::option_option,
+        reason = "not uploaded differs from uploaded without ink"
+    )]
     pub fn glyph(&self, key: &GlyphKey) -> Option<Option<AtlasGlyph>> {
         match ascii_index(key) {
             Some(index) => self.atlas.ascii[index],
@@ -499,19 +509,18 @@ impl Renderer {
         // SAFETY: the context is current; GTK has let go of a free target's texture and
         // fence.
         unsafe {
-            let index = match chosen {
-                Some(index) => index,
-                None => {
-                    self.targets.push(Target {
-                        texture: new_texture(gl, width, height, !self.es)?,
-                        width,
-                        height,
-                        free: Arc::new(AtomicBool::new(true)),
-                        sync: None,
-                        shown: glib::WeakRef::new(),
-                    });
-                    self.targets.len() - 1
-                }
+            let index = if let Some(index) = chosen {
+                index
+            } else {
+                self.targets.push(Target {
+                    texture: new_texture(gl, width, height, !self.es)?,
+                    width,
+                    height,
+                    free: Arc::new(AtomicBool::new(true)),
+                    sync: None,
+                    shown: glib::WeakRef::new(),
+                });
+                self.targets.len() - 1
             };
             let target = &mut self.targets[index];
             if let Some(sync) = target.sync.take() {
@@ -597,7 +606,7 @@ unsafe fn new_texture(
 }
 
 /// Storage for the bound texture. Desktop GL describes GDK's textures as BGRA, as
-/// GtkGLArea does, and GLES as RGBA.
+/// `GtkGLArea` does, and GLES as RGBA.
 ///
 /// # Safety
 ///

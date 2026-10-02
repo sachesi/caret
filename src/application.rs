@@ -109,7 +109,7 @@ impl Default for CaretApplication {
 }
 
 /// The command line with `-e` or `-x`, which run the rest of it as a command the way
-/// other terminals and xdg-terminal-exec expect, turned into the `--` GOption knows.
+/// other terminals and `xdg-terminal-exec` expect, turned into the `--` `GOption` knows.
 pub fn arguments() -> Vec<String> {
     let mut arguments: Vec<String> = std::env::args_os()
         .map(|argument| argument.to_string_lossy().into_owned())
@@ -120,7 +120,7 @@ pub fn arguments() -> Vec<String> {
         .take_while(|argument| *argument != "--")
         .position(|argument| argument == "-e" || argument == "-x")
     {
-        arguments[command + 1] = "--".to_owned();
+        "--".clone_into(&mut arguments[command + 1]);
     }
     arguments
 }
@@ -191,7 +191,7 @@ impl CaretApplication {
         let show_tab = gio::ActionEntry::builder("show-tab")
             .parameter_type(Some(glib::VariantTy::UINT64))
             .activate(|app: &Self, _, serial| {
-                let Some(serial) = serial.and_then(|serial| serial.get::<u64>()) else {
+                let Some(serial) = serial.and_then(glib::Variant::get::<u64>) else {
                     return;
                 };
                 for window in app.windows() {

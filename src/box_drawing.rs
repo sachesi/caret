@@ -118,6 +118,10 @@ pub fn is_drawn(c: char) -> bool {
 
 /// Draws `c` in white on a `width` by `height` cell, with lines `light` pixels thick.
 /// False for characters left to the font.
+#[expect(
+    clippy::many_single_char_names,
+    reason = "cell geometry: width, height, centre, line widths"
+)]
 pub fn draw(c: char, cr: &cairo::Context, width: i32, height: i32, light: i32) -> bool {
     let Some(shape) = shape(c) else {
         return false;

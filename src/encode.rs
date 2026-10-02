@@ -43,7 +43,7 @@ impl Modifiers {
 pub fn key(key: Key, modifiers: Modifiers, mode: TermMode) -> Option<Vec<u8>> {
     let parameter = modifiers.parameter();
     let bytes: Vec<u8> = match key {
-        Key::Char(c) => return char(c, modifiers),
+        Key::Char(c) => return Some(char(c, modifiers)),
         Key::Enter if modifiers.alt => b"\x1b\r".to_vec(),
         Key::Enter if mode.contains(TermMode::LINE_FEED_NEW_LINE) => b"\r\n".to_vec(),
         Key::Enter => b"\r".to_vec(),
@@ -114,7 +114,7 @@ fn tilde(number: u8, parameter: u8) -> Vec<u8> {
 /// A character typed with Ctrl or Alt held, which no input method took. Ctrl turns
 /// letters and the few symbols that have one into their control code; Alt puts an escape
 /// in front.
-fn char(c: char, modifiers: Modifiers) -> Option<Vec<u8>> {
+fn char(c: char, modifiers: Modifiers) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(5);
     if modifiers.alt {
         bytes.push(0x1b);
@@ -135,7 +135,7 @@ fn char(c: char, modifiers: Modifiers) -> Option<Vec<u8>> {
         Some(code) => bytes.push(code),
         None => bytes.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes()),
     }
-    Some(bytes)
+    bytes
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

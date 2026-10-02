@@ -1,4 +1,4 @@
-//! One program in a pseudoterminal: alacritty_terminal's parser and grid, fed on a thread
+//! One program in a pseudoterminal: `alacritty_terminal`'s parser and grid, fed on a thread
 //! of its own, and the events it raises passed to the main context.
 
 use std::borrow::Cow;
@@ -87,7 +87,7 @@ pub struct Command {
 }
 
 /// Variables that describe the terminal a command line was typed in, or a multiplexer
-/// running in it, and would mislead programs in this one; and those alacritty_terminal
+/// running in it, and would mislead programs in this one; and those `alacritty_terminal`
 /// sets for its own windows.
 const FOREIGN: [&str; 26] = [
     "ALACRITTY_LOG",
@@ -119,6 +119,10 @@ const FOREIGN: [&str; 26] = [
 ];
 
 /// The account's entry in the password database: its name, home and shell.
+#[expect(
+    unsafe_code,
+    reason = "getpwuid_r is the only way to the password database"
+)]
 fn account() -> Option<(String, String, String)> {
     let mut buffer = vec![0; 16 * 1024];
     // SAFETY: an all-zero passwd is a valid value for getpwuid_r to fill in.
@@ -128,20 +132,20 @@ fn account() -> Option<(String, String, String)> {
     let status = unsafe {
         libc::getpwuid_r(
             libc::getuid(),
-            &mut entry,
+            &raw mut entry,
             buffer.as_mut_ptr(),
             buffer.len(),
-            &mut found,
+            &raw mut found,
         )
     };
     if status != 0 || found.is_null() {
         return None;
     }
     let field = |pointer: *const libc::c_char| {
-        // SAFETY: getpwuid_r left the entry's strings NUL-terminated in `buffer`, which
-        // is still alive.
         (!pointer.is_null())
             .then(|| {
+                // SAFETY: getpwuid_r left the entry's strings NUL-terminated in `buffer`,
+                // which is still alive.
                 unsafe { CStr::from_ptr(pointer) }
                     .to_str()
                     .ok()
@@ -331,6 +335,7 @@ impl Session {
 
     /// The name of the program in the foreground when it is not the one the session
     /// started, the shell usually: something that closing would interrupt.
+    #[expect(unsafe_code, reason = "tcgetpgrp through libc")]
     pub fn busy(&self) -> Option<String> {
         // SAFETY: tcgetpgrp only reads the descriptor, which `controller` keeps open.
         let group = unsafe { libc::tcgetpgrp(self.controller.as_raw_fd()) };

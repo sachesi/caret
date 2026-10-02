@@ -116,7 +116,7 @@ mod imp {
                     move |_, _| obj.update_header_bar()
                 ),
             );
-            obj.connect_fullscreened_notify(|window| window.update_header_bar());
+            obj.connect_fullscreened_notify(super::CaretWindow::update_header_bar);
             obj.update_header_bar();
             let (width, height) = settings().get::<(i32, i32)>("window-size");
             if width > 0 && height > 0 {
