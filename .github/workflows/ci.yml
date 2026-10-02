@@ -35,6 +35,8 @@ jobs:
           gtk4-devel libadwaita-devel glib2-devel
           desktop-file-utils appstream gettext
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Lint
         run: just check
       - name: Test
@@ -51,6 +53,8 @@ jobs:
           git-core gcc rustup blueprint-compiler
           gtk4-devel libadwaita-devel glib2-devel
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Check with the version Cargo.toml names
         run: |
           rustup-init -y --profile minimal --default-toolchain "$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)"
@@ -61,13 +65,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+
+  workflows:
+    name: Workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          # Findings fail the job instead of going to code scanning.
+          advanced-security: false
 
   release:
     name: Release
-    needs: [check, msrv, deny]
+    needs: [check, msrv, deny, workflows]
     if: startsWith(github.ref, 'refs/tags/v')
-    uses: ./.github/workflows/release.yml
+    uses: $/.github/workflows/release.yml
     permissions:
       contents: write
 
@@ -75,25 +93,25 @@ jobs:
     name: Copr
     # After the release, whose files the build downloads.
     needs: release
-    uses: ./.github/workflows/copr.yml
+    uses: $/.github/workflows/copr.yml
     # A called workflow sees no secrets unless the caller passes them on.
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit] runs only after a release
 
   obs:
     name: OBS
     # After the release, whose files the build downloads.
     needs: release
-    uses: ./.github/workflows/obs.yml
+    uses: $/.github/workflows/obs.yml
     permissions:
       contents: write
     # A called workflow sees no secrets unless the caller passes them on.
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit] runs only after a release
 
   aur:
     name: AUR
     # After the release, whose job also checks that the tag matches the sources.
     needs: release
-    uses: ./.github/workflows/aur.yml
+    uses: $/.github/workflows/aur.yml
     # A called workflow sees no secrets, its environment's included, unless the
     # caller passes them on.
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit] runs only after a release

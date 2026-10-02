@@ -6,12 +6,18 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Releases get a week to be found broken or compromised before they are proposed.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: ci
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
+    # Releases get a week to be found broken or compromised before they are proposed.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: build
     groups:
