@@ -6,12 +6,12 @@ use std::time::Duration;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gettextrs::{gettext, ngettext};
+use gtk::{gio, glib};
 
 use crate::application::CaretApplication;
 use crate::session::Command;
 use crate::settings::settings;
 use crate::terminal_view::TerminalView;
-use crate::{adw, gio, glib, gtk};
 
 mod imp {
     use super::*;

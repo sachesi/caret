@@ -1,8 +1,9 @@
 //! The application's GSettings and what they resolve to.
 
-use crate::adw::prelude::*;
-use crate::gtk::pango;
-use crate::{adw, config, gio};
+use adw::prelude::*;
+use gtk::{gio, pango};
+
+use crate::config;
 
 thread_local! {
     static SETTINGS: gio::Settings = gio::Settings::new(config::APP_ID);

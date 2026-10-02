@@ -54,7 +54,7 @@ jobs:
       - name: Check with the version Cargo.toml names
         run: |
           rustup-init -y --profile minimal --default-toolchain "$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)"
-          ~/.cargo/bin/cargo check --all-targets
+          ~/.cargo/bin/cargo check --all-targets --locked
 
   deny:
     name: Dependencies

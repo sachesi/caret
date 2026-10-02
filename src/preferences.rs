@@ -3,12 +3,11 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use adw::prelude::*;
 use gettextrs::gettext;
+use gtk::{gio, glib, pango};
 
-use crate::adw::prelude::*;
-use crate::gtk::pango;
 use crate::settings::{self, settings};
-use crate::{adw, gio, glib, gtk};
 
 pub fn preferences_dialog() -> adw::PreferencesDialog {
     let dialog = adw::PreferencesDialog::builder()

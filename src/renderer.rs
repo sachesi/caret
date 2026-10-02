@@ -12,11 +12,10 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use glow::HasContext;
+use gtk::gdk::prelude::*;
+use gtk::{gdk, glib};
 
 use crate::fonts::{Bitmap, GlyphKey, GlyphText};
-use crate::gdk;
-use crate::gdk::prelude::*;
-use crate::glib;
 
 /// What a quad draws; the fragment shader branches on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

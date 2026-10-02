@@ -5,11 +5,12 @@ use std::path::PathBuf;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gettextrs::gettext;
+use gtk::{gio, glib};
 
+use crate::config;
 use crate::session::Command;
 use crate::settings::{self, settings};
 use crate::window::CaretWindow;
-use crate::{adw, config, gio, glib, gtk};
 
 mod imp {
     use super::*;

@@ -14,8 +14,7 @@ pub mod shell;
 pub mod terminal_view;
 pub mod window;
 
-pub use adw::{gdk, gio, glib, gtk};
-pub use libadwaita as adw;
+pub use gtk::{gio, glib};
 
 /// Set beside `GSK_RENDERER` when Caret chose GTK's renderer itself, so that the
 /// programs it starts get neither.

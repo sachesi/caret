@@ -6,9 +6,10 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::mpsc;
 
+use gtk::pango::prelude::*;
+use gtk::{cairo, pango};
+
 use crate::box_drawing;
-use crate::gtk::pango::prelude::*;
-use crate::gtk::{cairo, pango};
 
 pub const BOLD: u8 = 1;
 pub const ITALIC: u8 = 2;

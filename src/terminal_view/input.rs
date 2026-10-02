@@ -11,7 +11,6 @@ use gettextrs::gettext;
 
 use super::*;
 use crate::encode::{self, Key, Modifiers, MouseAction, MouseButton};
-use crate::gio;
 use crate::links::{self, Link, Span};
 use crate::session::Listener;
 

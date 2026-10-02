@@ -8,9 +8,9 @@ use std::io::{self, Read};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::glib;
 use alacritty_terminal::event::{OnResize, WindowSize};
 use alacritty_terminal::tty::{self, ChildEvent, EventedPty, EventedReadWrite};
+use gtk::glib;
 use polling::{Event, PollMode, Poller};
 
 /// The address prompts are marked with, as a hyperlink over their text, so that the grid

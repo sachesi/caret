@@ -4,7 +4,7 @@
 
 use std::f64::consts::PI;
 
-use crate::gtk::cairo;
+use gtk::cairo;
 
 /// Weights of the arms of U+2500 to U+254F: up, down, left, right; 1 light, 2 heavy.
 /// Dashed lines are drawn solid.

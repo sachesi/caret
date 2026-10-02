@@ -7,22 +7,23 @@ license = "GPL-3.0-or-later"
 description = "A GPU-rendered terminal for GTK 4 and libadwaita"
 repository = "https://github.com/sachesi/caret"
 readme = "README.md"
+publish = false
 
 [[bin]]
 name = "caret"
 path = "src/bin/caret.rs"
 
 [dependencies]
-gtk4 = { version = "0.11", features = ["v4_22"] }
-libadwaita = { version = "0.9", features = ["v1_9"] }
-gio = { version = "0.22", features = ["v2_80"] }
-pangocairo = "0.22"
+adw = { package = "libadwaita", version = "0.9", features = ["v1_9"] }
 alacritty_terminal = "0.26"
-glow = "0.18"
-libloading = "0.9"
 async-channel = "2"
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
+gio = { version = "0.22", features = ["v2_80"] }
+glow = "0.18"
+gtk = { package = "gtk4", version = "0.11", features = ["v4_22"] }
 libc = "0.2"
+libloading = "0.9"
+pangocairo = "0.22"
 polling = "3"
 
 [build-dependencies]

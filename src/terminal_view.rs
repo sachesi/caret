@@ -24,16 +24,15 @@ use alacritty_terminal::term::{self, ClipboardType, Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color, CursorShape, CursorStyle, NamedColor, Processor, Rgb};
 use gettextrs::gettext;
 use glib::subclass::Signal;
+use gtk::{cairo, gdk, gio, glib, graphene, pango};
 
 use crate::fonts::{Bitmap, Fonts, GlyphKey, GlyphThread};
 use crate::frame::{self, Look, Screen};
-use crate::gtk::{cairo, graphene, pango};
 use crate::palette::Palette;
 use crate::renderer::{Quads, Renderer};
 use crate::session::{Command, Session};
 use crate::settings::{self, settings};
 use crate::shell::Report;
-use crate::{adw, gdk, gio, glib, gtk};
 
 mod accessible;
 mod input;
