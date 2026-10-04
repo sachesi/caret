@@ -209,11 +209,14 @@ impl Fonts {
     }
 }
 
+/// Glyphs as the thread sends them back.
+type Rasterized = async_channel::Receiver<(GlyphKey, Option<Bitmap>)>;
+
 /// Rasterises glyphs on a thread of its own, with the same fonts, for frames that would
 /// otherwise wait for many: a screenful of new CJK text takes a quarter of a second.
 pub struct GlyphThread {
     requests: mpsc::Sender<GlyphKey>,
-    results: async_channel::Receiver<(GlyphKey, Option<Bitmap>)>,
+    results: Rasterized,
     /// Asked for and not yet taken back, so that each is asked for once.
     pending: HashSet<GlyphKey>,
 }
@@ -221,11 +224,11 @@ pub struct GlyphThread {
 impl GlyphThread {
     /// A thread rasterising with fonts made as `fonts` were. Its glyphs come back on the
     /// receiver, until the thread is dropped.
-    pub fn spawn(fonts: &Fonts) -> (Self, async_channel::Receiver<(GlyphKey, Option<Bitmap>)>) {
+    pub fn spawn(fonts: &Fonts) -> std::io::Result<(Self, Rasterized)> {
         let (requests, requested) = mpsc::channel::<GlyphKey>();
         let (done, results) = async_channel::unbounded();
         let (font, dpi, options, features) = fonts.made_from.clone();
-        let spawned = std::thread::Builder::new()
+        std::thread::Builder::new()
             .name("glyphs".to_owned())
             .spawn(move || {
                 let fonts = Fonts::new(&font, dpi, &options, &features);
@@ -235,16 +238,13 @@ impl GlyphThread {
                         break;
                     }
                 }
-            });
-        if let Err(err) = spawned {
-            tracing::warn!("starting the glyph thread: {err}");
-        }
+            })?;
         let thread = Self {
             requests,
             results: results.clone(),
             pending: HashSet::new(),
         };
-        (thread, results)
+        Ok((thread, results))
     }
 
     pub fn request(&mut self, key: &GlyphKey) {

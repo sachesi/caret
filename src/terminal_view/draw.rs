@@ -62,11 +62,17 @@ impl TerminalView {
     }
 
     /// Has the glyph thread rasterise `key`, starting it the first time, and draws again
-    /// as glyphs come back.
-    fn request_glyph(&self, fonts: &Fonts, key: &GlyphKey) {
+    /// as glyphs come back; false when the thread cannot be started.
+    fn request_glyph(&self, fonts: &Fonts, key: &GlyphKey) -> bool {
         let mut thread = self.imp().glyph_thread.borrow_mut();
-        let thread = thread.get_or_insert_with(|| {
-            let (thread, results) = GlyphThread::spawn(fonts);
+        if thread.is_none() {
+            let (spawned, results) = match GlyphThread::spawn(fonts) {
+                Ok(spawned) => spawned,
+                Err(err) => {
+                    tracing::warn!("starting the glyph thread: {err}");
+                    return false;
+                }
+            };
             glib::spawn_future_local(glib::clone!(
                 #[weak(rename_to = view)]
                 self,
@@ -85,9 +91,12 @@ impl TerminalView {
                     }
                 }
             ));
-            thread
-        });
-        thread.request(key);
+            *thread = Some(spawned);
+        }
+        if let Some(thread) = thread.as_mut() {
+            thread.request(key);
+        }
+        true
     }
 
     fn glyph_pending(&self, key: &GlyphKey) -> bool {
@@ -169,10 +178,9 @@ impl TerminalView {
                 Some(bitmap)
             } else if self.glyph_pending(key) {
                 None
-            } else if Instant::now() < deadline {
+            } else if Instant::now() < deadline || !self.request_glyph(fonts, key) {
                 Some(fonts.rasterize(key))
             } else {
-                self.request_glyph(fonts, key);
                 None
             }
         };
