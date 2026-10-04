@@ -12,7 +12,6 @@ use gettextrs::gettext;
 use super::*;
 use crate::encode::{self, Key, Modifiers, MouseAction, MouseButton};
 use crate::links::{self, Link, Span};
-use crate::session::Listener;
 
 fn modifiers(state: gdk::ModifierType) -> Modifiers {
     Modifiers {
@@ -69,7 +68,11 @@ const LONGEST_ADDRESS: i32 = 64;
 
 /// The address at a point of the view: the hyperlink a program gave the text there, or
 /// one written out in it.
-pub(super) fn link_in(term: &Term<Listener>, point: Point<usize>) -> Option<Link> {
+pub(super) fn link_in<T: EventListener>(term: &Term<T>, point: Point<usize>) -> Option<Link> {
+    // A cell the pointer was over before the grid shrank may be outside it now.
+    if point.line >= term.screen_lines() || point.column >= term.columns() {
+        return None;
+    }
     let point = viewport_to_point(term.grid().display_offset(), point);
     if let Some(link) = term.grid()[point].hyperlink()
         && links::openable(link.uri())
@@ -790,5 +793,26 @@ impl TerminalView {
         if let Some(link) = self.imp().menu_link.borrow().as_ref() {
             self.clipboard().set_text(link);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alacritty_terminal::event::VoidListener;
+
+    #[test]
+    fn a_cell_outside_a_shrunk_grid_has_no_link() {
+        let size = crate::session::GridSize {
+            columns: 80,
+            lines: 24,
+        };
+        let mut term = Term::new(term::Config::default(), &size, VoidListener);
+        term.resize(crate::session::GridSize {
+            columns: 40,
+            lines: 10,
+        });
+        assert!(link_in(&term, Point::new(20, Column(70))).is_none());
+        assert!(link_in(&term, Point::new(5, Column(70))).is_none());
     }
 }

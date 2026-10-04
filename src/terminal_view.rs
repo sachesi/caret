@@ -829,6 +829,10 @@ impl TerminalView {
         let columns = (width / cell.width).clamp(2, i32::from(u16::MAX)) as usize;
         let lines = (height / cell.height).clamp(1, i32::from(u16::MAX)) as usize;
         let previous = imp.grid.replace((columns, lines));
+        if previous != (columns, lines) {
+            // Other cells are under the pointer now; the next move says which.
+            imp.hovered_cell.set(None);
+        }
         let Some(size) = self.window_size() else {
             return;
         };
