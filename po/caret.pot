@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret 0.2.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-02 18:14+0300\n"
+"POT-Creation-Date: 2026-10-04 13:42+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -443,97 +443,97 @@ msgstr ""
 msgid "“{program}” ended"
 msgstr ""
 
-#: src/terminal_view.rs:877
+#: src/terminal_view.rs:881
 #, rust-format
 msgid "Could not start “{program}”: {reason}"
 msgstr ""
 
-#: src/terminal_view.rs:880
+#: src/terminal_view.rs:884
 #, rust-format
 msgid "Could not start the shell: {reason}"
 msgstr ""
 
-#: src/terminal_view.rs:1143
+#: src/terminal_view.rs:1147
 msgid "Paste Several Lines?"
 msgstr ""
 
-#: src/terminal_view.rs:1145
+#: src/terminal_view.rs:1149
 msgid ""
 "The program here does not mark pasted text, so each line runs as if typed "
 "and entered."
 msgstr ""
 
-#: src/terminal_view.rs:1149 src/window.rs:456 src/window.rs:555
+#: src/terminal_view.rs:1153 src/window.rs:456 src/window.rs:555
 #: src/window.rs:581
 msgid "_Cancel"
 msgstr ""
 
-#: src/terminal_view.rs:1150 src/terminal_view/input.rs:716
+#: src/terminal_view.rs:1154 src/terminal_view/input.rs:719
 msgid "_Paste"
 msgstr ""
 
-#: src/terminal_view/input.rs:691
+#: src/terminal_view/input.rs:694
 #, rust-format
 msgid "Could not open the link: {reason}"
 msgstr ""
 
-#: src/terminal_view/input.rs:715
+#: src/terminal_view/input.rs:718
 msgid "_Copy"
 msgstr ""
 
-#: src/terminal_view/input.rs:718
+#: src/terminal_view/input.rs:721
 msgid "Select _All"
 msgstr ""
 
-#: src/terminal_view/input.rs:722
+#: src/terminal_view/input.rs:725
 msgid "_Deselect"
 msgstr ""
 
-#: src/terminal_view/input.rs:731
+#: src/terminal_view/input.rs:734
 msgid "_Open Link"
 msgstr ""
 
-#: src/terminal_view/input.rs:732
+#: src/terminal_view/input.rs:735
 msgid "Copy _Link Address"
 msgstr ""
 
-#: src/terminal_view/input.rs:741 ui/window.ui:12
+#: src/terminal_view/input.rs:744 ui/window.ui:12
 msgid "New _Window"
 msgstr ""
 
-#: src/terminal_view/input.rs:743 ui/window.ui:16
+#: src/terminal_view/input.rs:746 ui/window.ui:16
 msgid "New _Tab"
 msgstr ""
 
-#: src/terminal_view/input.rs:744
+#: src/terminal_view/input.rs:747
 msgid "_Find…"
 msgstr ""
 
-#: src/terminal_view/input.rs:747
+#: src/terminal_view/input.rs:750
 msgid "Show _All Tabs"
 msgstr ""
 
-#: src/terminal_view/input.rs:752
+#: src/terminal_view/input.rs:755
 msgid "Title _Bar"
 msgstr ""
 
-#: src/terminal_view/input.rs:753 ui/window.ui:22
+#: src/terminal_view/input.rs:756 ui/window.ui:22
 msgid "_Full Screen"
 msgstr ""
 
-#: src/terminal_view/input.rs:754 ui/window.ui:28
+#: src/terminal_view/input.rs:757 ui/window.ui:28
 msgid "_Preferences"
 msgstr ""
 
-#: src/terminal_view/input.rs:755 ui/window.ui:32
+#: src/terminal_view/input.rs:758 ui/window.ui:32
 msgid "_Keyboard Shortcuts"
 msgstr ""
 
-#: src/terminal_view/input.rs:756 ui/window.ui:36
+#: src/terminal_view/input.rs:759 ui/window.ui:36
 msgid "_About Caret"
 msgstr ""
 
-#: src/terminal_view/input.rs:759
+#: src/terminal_view/input.rs:762
 msgid "_Close Window"
 msgstr ""
 
