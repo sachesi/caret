@@ -203,8 +203,10 @@ impl TerminalView {
         // on a fractional scale can fall between pixels.
         let (x, y) = self.origin_on_screen(scale);
         let (x, y) = (x - x.floor(), y - y.floor());
-        let pixels_wide = (x + f64::from(width) * scale).ceil() as i32;
-        let pixels_high = (y + f64::from(height) * scale).ceil() as i32;
+        // Past what the GPU allows, the rest of the widget is left out.
+        let largest = renderer.max_texture_size();
+        let pixels_wide = ((x + f64::from(width) * scale).ceil() as i32).min(largest);
+        let pixels_high = ((y + f64::from(height) * scale).ceil() as i32).min(largest);
         let background = screen.background;
         match renderer.render(
             context,

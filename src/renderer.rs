@@ -149,6 +149,8 @@ pub struct Renderer {
     atlas_size: Option<glow::UniformLocation>,
     atlas: Atlas,
     max_texture_size: i32,
+    /// The size the atlas grows to at most.
+    max_atlas_size: i32,
     targets: Vec<Target>,
 }
 
@@ -324,8 +326,9 @@ impl Renderer {
             let viewport = gl.get_uniform_location(program, "viewport");
             let atlas_size = gl.get_uniform_location(program, "atlas_size");
 
-            let max_texture_size = gl.get_parameter_i32(glow::MAX_TEXTURE_SIZE).min(8192);
-            let size = 1024.min(max_texture_size);
+            let max_texture_size = gl.get_parameter_i32(glow::MAX_TEXTURE_SIZE);
+            let max_atlas_size = max_texture_size.min(8192);
+            let size = 1024.min(max_atlas_size);
             let atlas = Atlas {
                 texture: new_texture(&gl, size, size, false)?,
                 size,
@@ -348,6 +351,7 @@ impl Renderer {
                 atlas_size,
                 atlas,
                 max_texture_size,
+                max_atlas_size,
                 targets: Vec::new(),
             })
         }
@@ -373,6 +377,13 @@ impl Renderer {
         bitmap: Option<Bitmap>,
     ) -> Result<Option<AtlasGlyph>, AtlasFull> {
         let glyph = match bitmap {
+            // Larger than the atlas can grow: drawn as no ink, rather than emptying the
+            // atlas for it on every frame.
+            Some(bitmap)
+                if bitmap.width > self.max_atlas_size || bitmap.height > self.max_atlas_size =>
+            {
+                None
+            }
             None => None,
             Some(bitmap) => {
                 let (x, y) = self
@@ -425,7 +436,7 @@ impl Renderer {
         self.atlas.x = 0;
         self.atlas.y = 0;
         self.atlas.row = 0;
-        let size = (self.atlas.size * 2).min(self.max_texture_size);
+        let size = (self.atlas.size * 2).min(self.max_atlas_size);
         if grow && size > self.atlas.size {
             // SAFETY: the context is current and the texture was made in it.
             unsafe {
@@ -435,6 +446,11 @@ impl Renderer {
             }
             self.atlas.size = size;
         }
+    }
+
+    /// The largest texture a frame can be drawn into, in either direction.
+    pub fn max_texture_size(&self) -> i32 {
+        self.max_texture_size
     }
 
     /// Draws `quads` over `background` into a `width` by `height` texture for GTK.
