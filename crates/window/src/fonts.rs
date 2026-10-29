@@ -2,13 +2,17 @@
 //! size of a cell, and each glyph's pixels.
 
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use caret_protocol::{BOLD, Glyph, GlyphText, ITALIC};
+use rustybuzz::Feature;
 use swash::FontRef;
 use swash::scale::image::{Content, Image};
 use swash::scale::{Render, ScaleContext, Source, StrikeWith};
 use swash::zeno::{Format, Transform, Vector};
+
+use crate::config::FontChoice;
 
 /// Families tried in order when none is set or the one set is not installed.
 const FAMILIES: &[&str] = &[
@@ -46,6 +50,13 @@ pub const HEADING: f32 = 1.36;
 /// How far a face without italics is slanted to stand in for one, as a tangent.
 const SLANT: f32 = 0.2;
 
+/// Symbols in a row beyond this are left apart: a ruler of dashes as one glyph for each
+/// of its lengths would fill the atlas.
+const LONGEST_LIGATURE: usize = 12;
+
+/// Runs remembered before the table is emptied.
+const LIGATURE_RUNS: usize = 4096;
+
 #[derive(Debug, thiserror::Error)]
 pub enum FontError {
     #[error("no monospaced font is installed")]
@@ -80,6 +91,8 @@ pub struct Raster {
 /// A glyph of shaped text, its place in pixels from where the text starts.
 struct Shaped {
     id: u16,
+    /// The byte of the text it starts at.
+    cluster: usize,
     x: f32,
     y: f32,
     /// Where the pen was before it, and how far it moves the pen.
@@ -140,6 +153,11 @@ pub struct Fonts {
     cell: CellMetrics,
     context: ScaleContext,
     fallbacks: HashMap<char, Option<Face>>,
+    /// The OpenType features the terminal's text is shaped with.
+    features: Vec<Feature>,
+    ligatures: bool,
+    /// How runs of symbols divide into ligatures, by style.
+    divided: HashMap<(Box<str>, u8), Rc<[u8]>>,
     /// The sans-serif faces of the window's own text, regular and bold, their size in
     /// pixels to the em, and their line's ascent and height.
     labels: [Option<Face>; 2],
@@ -149,16 +167,16 @@ pub struct Fonts {
 }
 
 impl Fonts {
-    /// The faces of `family`, or of the first installed family of those Caret prefers, at
-    /// `points` on a screen of `scale` device pixels to the logical one.
+    /// The faces of the family `choice` names, or of the first installed family of those
+    /// Caret prefers, on a screen of `scale` device pixels to the logical one.
     ///
     /// # Errors
     ///
     /// When no monospaced font is installed.
-    pub fn new(family: Option<&str>, points: f32, scale: f32) -> Result<Self, FontError> {
+    pub fn new(choice: &FontChoice, scale: f32) -> Result<Self, FontError> {
         let mut database = fontdb::Database::new();
         database.load_system_fonts();
-        let family = choose_family(&database, family).ok_or(FontError::NoFont)?;
+        let family = choose_family(&database, choice.family.as_deref()).ok_or(FontError::NoFont)?;
         let mut face = |weight, style| face(&mut database, &family, weight, style);
         let styles = [
             face(fontdb::Weight::NORMAL, fontdb::Style::Normal),
@@ -170,7 +188,7 @@ impl Fonts {
             return Err(FontError::NoFont);
         };
         // CSS pixels: 96 to the inch, 72 points.
-        let size = points * 96.0 / 72.0 * scale;
+        let size = choice.points * 96.0 / 72.0 * scale;
         let cell = measure(&regular, size).ok_or(FontError::NoFont)?;
         let label_size = LABEL_POINTS * 96.0 / 72.0 * scale;
         let labels = [
@@ -192,6 +210,9 @@ impl Fonts {
             cell,
             context: ScaleContext::new(),
             fallbacks: HashMap::new(),
+            features: choice.features.clone(),
+            ligatures: choice.ligatures,
+            divided: HashMap::new(),
             labels,
             label_size,
             label_ascent,
@@ -212,7 +233,7 @@ impl Fonts {
     pub fn label_advance(&self, text: &str, bold: bool) -> f32 {
         self.labels[usize::from(bold)]
             .as_ref()
-            .and_then(|face| shape(face, text, self.label_size))
+            .and_then(|face| shape(face, text, self.label_size, &[]))
             .map_or(0.0, |(_, advance)| advance)
     }
 
@@ -238,9 +259,9 @@ impl Fonts {
         size: f32,
         ascent: i32,
     ) -> Option<Raster> {
-        let (mut glyphs, advance) = shape(face, text, size)?;
+        let (mut glyphs, advance) = shape(face, text, size, &[])?;
         if advance > width as f32 {
-            let (dots, dots_advance) = shape(face, "\u{2026}", size)?;
+            let (dots, dots_advance) = shape(face, "\u{2026}", size, &[])?;
             let room = width as f32 - dots_advance;
             let kept = glyphs
                 .iter()
@@ -324,8 +345,38 @@ impl Fonts {
 
     /// Each glyph `text` shapes to in `face`, rendered and placed against the baseline.
     fn shape_and_render(&mut self, face: &Face, text: &str) -> Option<Vec<(i32, i32, Image)>> {
-        let (glyphs, _) = shape(face, text, self.size)?;
+        let (glyphs, _) = shape(face, text, self.size, &self.features)?;
         Some(self.render(face, self.size, &glyphs, self.cell.baseline))
+    }
+
+    /// How a run of ASCII symbols of `style` divides, as the lengths of its parts in
+    /// order: more than one for symbols the font draws differently together than each
+    /// alone, which are then one glyph, a [`GlyphText::Cluster`]. None while ligatures
+    /// are off.
+    pub fn ligatures(&mut self, run: &str, style: u8) -> Option<Rc<[u8]>> {
+        if !self.ligatures {
+            return None;
+        }
+        let style = style & (BOLD | ITALIC);
+        if let Some(parts) = self.divided.get(&(run.into(), style)) {
+            return Some(parts.clone());
+        }
+        let face = &self.styles[usize::from(style)];
+        let glyphs = |text: &str| {
+            shape(face, text, self.size, &self.features)
+                .map(|(glyphs, _)| glyphs)
+                .unwrap_or_default()
+        };
+        let together = glyphs(run);
+        let alone: Vec<_> = (0..run.len())
+            .map(|index| glyphs(&run[index..=index]))
+            .collect();
+        let parts: Rc<[u8]> = divide(&joined(&together, &alone)).into();
+        if self.divided.len() >= LIGATURE_RUNS {
+            self.divided.clear();
+        }
+        self.divided.insert((run.into(), style), parts.clone());
+        Some(parts)
     }
 
     /// `glyphs` of `face` rendered at `size`, placed against a baseline `baseline` pixels
@@ -410,8 +461,9 @@ impl Fonts {
     }
 }
 
-/// `text` shaped in `face` at `size` pixels to the em, and how far it moves the pen.
-fn shape(face: &Face, text: &str, size: f32) -> Option<(Vec<Shaped>, f32)> {
+/// `text` shaped in `face` at `size` pixels to the em with `features`, and how far it
+/// moves the pen.
+fn shape(face: &Face, text: &str, size: f32, features: &[Feature]) -> Option<(Vec<Shaped>, f32)> {
     let mut shaper = rustybuzz::Face::from_slice(face.bytes(), face.index)?;
     if let Some(weight) = face.weight {
         shaper.set_variations(&[rustybuzz::Variation {
@@ -423,7 +475,7 @@ fn shape(face: &Face, text: &str, size: f32) -> Option<(Vec<Shaped>, f32)> {
     let to_pixels = size / units;
     let mut buffer = rustybuzz::UnicodeBuffer::new();
     buffer.push_str(text);
-    let shaped = rustybuzz::shape(&shaper, &[], buffer);
+    let shaped = rustybuzz::shape(&shaper, features, buffer);
     let mut pen = 0.0f32;
     let mut glyphs = Vec::new();
     for (info, position) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {
@@ -431,6 +483,7 @@ fn shape(face: &Face, text: &str, size: f32) -> Option<(Vec<Shaped>, f32)> {
         if let Ok(id) = u16::try_from(info.glyph_id) {
             glyphs.push(Shaped {
                 id,
+                cluster: info.cluster as usize,
                 x: pen + position.x_offset as f32 * to_pixels,
                 y: position.y_offset as f32 * to_pixels,
                 pen,
@@ -440,6 +493,44 @@ fn shape(face: &Face, text: &str, size: f32) -> Option<(Vec<Shaped>, f32)> {
         pen += advance;
     }
     Some((glyphs, pen))
+}
+
+/// For each character of a run, whether the font draws it differently `together` with
+/// its neighbours than `alone`.
+fn joined(together: &[Shaped], alone: &[Vec<Shaped>]) -> Vec<bool> {
+    let same = |a: f32, b: f32| (a - b).abs() < 0.01;
+    alone
+        .iter()
+        .enumerate()
+        .map(|(index, alone)| {
+            let mut here = together.iter().filter(|glyph| glyph.cluster == index);
+            !matches!(
+                (here.next(), here.next(), alone.as_slice()),
+                (Some(glyph), None, [only])
+                    if glyph.id == only.id
+                        && same(glyph.advance, only.advance)
+                        && same(glyph.x - glyph.pen, only.x - only.pen)
+                        && same(glyph.y, only.y)
+            )
+        })
+        .collect()
+}
+
+/// The lengths of a run's glyphs: characters joined to their neighbours make one, unless
+/// there are more than [`LONGEST_LIGATURE`] of them.
+fn divide(joined: &[bool]) -> Vec<u8> {
+    let mut parts = Vec::with_capacity(joined.len());
+    let mut index = 0;
+    while index < joined.len() {
+        let length = joined[index..].iter().take_while(|&&joined| joined).count();
+        if (2..=LONGEST_LIGATURE).contains(&length) {
+            parts.push(length as u8);
+        } else {
+            parts.extend(std::iter::repeat_n(1, length.max(1)));
+        }
+        index += length.max(1);
+    }
+    parts
 }
 
 /// The face at `weight` of the first of [`LABEL_FAMILIES`] installed, else of the
@@ -677,6 +768,63 @@ fn span(index: u32, count: u32, source: u32) -> (u32, u32) {
 mod tests {
     use super::*;
 
+    fn choice(family: Option<&str>, ligatures: bool) -> FontChoice {
+        FontChoice {
+            family: family.map(str::to_owned),
+            points: 11.0,
+            features: Vec::new(),
+            ligatures,
+        }
+    }
+
+    fn glyph(cluster: usize, id: u16) -> Shaped {
+        Shaped {
+            id,
+            cluster,
+            x: 0.0,
+            y: 0.0,
+            pen: 0.0,
+            advance: 8.0,
+        }
+    }
+
+    #[test]
+    fn symbols_drawn_otherwise_together_are_joined() {
+        let together = [glyph(0, 90), glyph(2, 7)];
+        let alone = [vec![glyph(0, 5)], vec![glyph(0, 6)], vec![glyph(0, 7)]];
+        assert_eq!(joined(&together, &alone), [true, true, false]);
+    }
+
+    #[test]
+    fn joined_neighbours_make_one_part() {
+        assert_eq!(divide(&[false, true, true, false]), [1, 2, 1]);
+        assert_eq!(divide(&[true, true, true]), [3]);
+        assert_eq!(divide(&[false, false]), [1, 1]);
+        assert_eq!(divide(&[]), [0u8; 0]);
+        // One changed on its own, a contextual form, stays a part of one.
+        assert_eq!(divide(&[true, false, true]), [1, 1, 1]);
+        assert_eq!(
+            divide(&[true; LONGEST_LIGATURE + 1]),
+            [1; LONGEST_LIGATURE + 1]
+        );
+    }
+
+    #[test]
+    fn a_font_with_ligatures_joins_an_arrow_while_they_are_on() {
+        let mut database = fontdb::Database::new();
+        database.load_system_fonts();
+        let installed = ["Fira Code", "JetBrains Mono", "Cascadia Code"]
+            .into_iter()
+            .filter(|&family| choose_family(&database, Some(family)).as_deref() == Some(family));
+        for family in installed {
+            let mut fonts = Fonts::new(&choice(Some(family), true), 1.0).expect("it is installed");
+            assert_eq!(fonts.ligatures("->", 0).as_deref(), Some(&[2][..]));
+            assert_eq!(fonts.ligatures("()", 0).as_deref(), Some(&[1, 1][..]));
+            let mut off = Fonts::new(&choice(Some(family), false), 1.0).expect("it loaded on");
+            assert_eq!(off.ligatures("->", 0), None);
+        }
+    }
+
     #[test]
     fn coverage_drawn_over_colour_adds_up_and_saturates() {
         let mut pixel = [100, 0, 0, 100];
@@ -710,7 +858,7 @@ mod tests {
 
     #[test]
     fn a_cell_holds_its_letters_where_a_monospaced_font_is_installed() {
-        let Ok(mut fonts) = Fonts::new(None, 11.0, 1.0) else {
+        let Ok(mut fonts) = Fonts::new(&choice(None, true), 1.0) else {
             return;
         };
         let cell = fonts.cell();

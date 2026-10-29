@@ -48,7 +48,7 @@ use smithay_client_toolkit::seat::pointer::cursor_shape::CursorShapeManager;
 use crate::atlas::Atlas;
 use crate::chrome::{self, Chrome, Dialog, Drawing};
 use crate::cli::{Attach, Start};
-use crate::config::{self, Config};
+use crate::config::{self, Config, FontChoice};
 use crate::connection::{self, Received};
 use crate::desktop::{self, Desktop};
 use crate::fonts::{FontError, Fonts};
@@ -281,8 +281,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
     let gpu = unsafe { Gpu::new(display, surface)? };
 
     let desktop = first_desktop.recv_timeout(DESKTOP_WAIT).unwrap_or_default();
-    let (family, points) = config.font_for(desktop.monospace.as_deref());
-    let fonts = Fonts::new(family.as_deref(), points, 1.0)?;
+    let fonts = Fonts::new(&config.font_for(desktop.monospace.as_deref()), 1.0)?;
     let palette = palette(&config, &desktop);
     server.send(&look(&config, &palette));
     let (asked, first) = begin(&mut server, start);
@@ -592,8 +591,7 @@ impl App {
         }
         tracing::debug!("starting the glyph atlas again");
         self.atlas = self.atlas.next();
-        let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
-        self.grid.refill(|glyph| atlas.index(glyph, fonts));
+        self.grid.refill(self.atlas.lookup(&mut self.fonts));
         if self.atlas.full {
             tracing::warn!("the glyphs on screen do not fit the atlas");
             // Left set, every frame would start the atlas again to no avail.
@@ -621,14 +619,14 @@ impl App {
 
     /// What the settings and the desktop make of the window: its font, and how the
     /// server is to show its terminals.
-    fn style(&self) -> ((Option<String>, f32), Request) {
+    fn style(&self) -> (FontChoice, Request) {
         let font = self.config.font_for(self.desktop.monospace.as_deref());
         let palette = palette(&self.config, &self.desktop);
         (font, look(&self.config, &palette))
     }
 
     /// Applies what changed of the window's style since it was `before`.
-    fn restyle(&mut self, before: &((Option<String>, f32), Request)) {
+    fn restyle(&mut self, before: &(FontChoice, Request)) {
         let (font, look) = self.style();
         if font != before.0 {
             self.load_fonts();
@@ -646,14 +644,13 @@ impl App {
     /// Loads the font the settings or the desktop name at the window's scale, drawing every glyph
     /// again.
     fn load_fonts(&mut self) {
-        let (family, points) = self.config.font_for(self.desktop.monospace.as_deref());
-        let points = points * ZOOM.powi(self.zoom);
-        match Fonts::new(family.as_deref(), points, self.factor() as f32) {
+        let mut choice = self.config.font_for(self.desktop.monospace.as_deref());
+        choice.points *= ZOOM.powi(self.zoom);
+        match Fonts::new(&choice, self.factor() as f32) {
             Ok(fonts) => {
                 self.fonts = fonts;
                 self.atlas = self.atlas.next();
-                let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
-                self.grid.refill(|glyph| atlas.index(glyph, fonts));
+                self.grid.refill(self.atlas.lookup(&mut self.fonts));
             }
             Err(error) => tracing::error!("loading fonts at scale {}: {error}", self.factor()),
         }

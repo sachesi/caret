@@ -9,12 +9,23 @@ use std::process::Command;
 
 use caret_protocol::CursorShape;
 use rustix::fs::inotify;
+use rustybuzz::Feature;
 use toml_edit::{DocumentMut, Item, Value};
 
 use crate::shortcuts::{self, Action, Shortcut};
 
 /// The font size when neither the settings nor the desktop name one.
 const POINTS: f32 = 11.0;
+
+/// The terminal's font as the settings and the desktop choose it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FontChoice {
+    /// None for the family Caret picks.
+    pub family: Option<String>,
+    pub points: f32,
+    pub features: Vec<Feature>,
+    pub ligatures: bool,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorScheme {
@@ -33,6 +44,10 @@ pub struct Config {
     /// The terminal's font family and size; none for the desktop's.
     pub font: Option<String>,
     pub font_size: Option<f32>,
+    /// OpenType features of the font turned on or off.
+    pub font_features: Vec<Feature>,
+    /// Symbols the font joins, such as `->` and `!=`, are drawn joined.
+    pub ligatures: bool,
     pub color_scheme: ColorScheme,
     pub cursor_shape: CursorShape,
     pub scrollback_lines: u32,
@@ -59,6 +74,8 @@ impl Default for Config {
         Self {
             font: None,
             font_size: None,
+            font_features: Vec::new(),
+            ligatures: true,
             color_scheme: ColorScheme::System,
             cursor_shape: CursorShape::Block,
             scrollback_lines: 10_000,
@@ -152,6 +169,13 @@ impl Config {
                 let text = item.as_str().ok_or("a font name and size")?;
                 (self.font, self.font_size) = font(text);
             }
+            "font-features" => {
+                self.font_features = item
+                    .as_str()
+                    .and_then(features)
+                    .ok_or("OpenType features such as \"zero, ss01, calt=0\"")?;
+            }
+            "ligatures" => self.ligatures = boolean()?,
             "color-scheme" => {
                 self.color_scheme = match item.as_str() {
                     Some("system") => ColorScheme::System,
@@ -192,13 +216,16 @@ impl Config {
         Ok(())
     }
 
-    /// The family and size of the terminal's font: those the settings name, else those
-    /// of `desktop`'s monospace font, as `"Family Size"`. Without a family, Caret picks
-    /// one.
-    pub fn font_for(&self, desktop: Option<&str>) -> (Option<String>, f32) {
+    /// The terminal's font: the family and size the settings name, else those of
+    /// `desktop`'s monospace font, as `"Family Size"`. Without a family, Caret picks one.
+    pub fn font_for(&self, desktop: Option<&str>) -> FontChoice {
         let (family, size) = desktop.map(font).unwrap_or_default();
-        let size = self.font_size.or(size).unwrap_or(POINTS);
-        (self.font.clone().or(family), size)
+        FontChoice {
+            family: self.font.clone().or(family),
+            points: self.font_size.or(size).unwrap_or(POINTS),
+            features: self.font_features.clone(),
+            ligatures: self.ligatures,
+        }
     }
 
     /// Whether the window is dark, given whether `desktop` prefers dark styles.
@@ -238,6 +265,10 @@ const STARTER: &str = r#"# Caret's settings. Take the # off a setting to change 
 # The terminal's font family and size, such as "Adwaita Mono 11"; empty for the
 # desktop's monospace font.
 #font = ""
+# OpenType features of the font to turn on or off, such as "zero, ss01, calt=0".
+#font-features = ""
+# Whether symbols the font joins, such as -> and !=, are drawn joined.
+#ligatures = true
 # "system", "light" or "dark".
 #color-scheme = "system"
 # "block", "underline" or "beam".
@@ -454,12 +485,26 @@ fn font(text: &str) -> (Option<String>, Option<f32>) {
     (family, size)
 }
 
+/// The OpenType features a list such as `"zero, ss01, calt=0"` turns on or off; none if
+/// one of them is not a feature.
+fn features(text: &str) -> Option<Vec<Feature>> {
+    text.split(',')
+        .map(str::trim)
+        .filter(|feature| !feature.is_empty())
+        .map(|feature| feature.parse().ok())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn parse(text: &str) -> Config {
         Config::parse(Path::new("config.toml"), text)
+    }
+
+    fn family_and_size(choice: FontChoice) -> (Option<String>, f32) {
+        (choice.family, choice.points)
     }
 
     #[test]
@@ -469,7 +514,7 @@ mod tests {
              close-detaches = true\nscrollback-lines = 500\n",
         );
         assert_eq!(
-            config.font_for(Some("Monospace 10")),
+            family_and_size(config.font_for(Some("Monospace 10"))),
             (Some("Adwaita Mono".into()), 13.0)
         );
         assert_eq!(config.color_scheme, ColorScheme::Light);
@@ -496,19 +541,39 @@ mod tests {
     }
 
     #[test]
+    fn font_features_are_a_list_and_one_wrong_one_spoils_it() {
+        let config = parse("font-features = \"zero, ss01 ,calt=0\"");
+        let tags: Vec<_> = config
+            .font_features
+            .iter()
+            .map(|feature| (feature.tag.to_string(), feature.value))
+            .collect();
+        assert_eq!(
+            tags,
+            [("zero".into(), 1), ("ss01".into(), 1), ("calt".into(), 0)]
+        );
+        assert_eq!(parse("font-features = \"zero, =\""), Config::default());
+        assert_eq!(parse("font-features = \"\""), Config::default());
+    }
+
+    #[test]
     fn what_the_settings_leave_out_of_the_font_comes_from_the_desktop() {
         let sized = parse("font = \"14\"");
         assert_eq!(
-            sized.font_for(Some("Adwaita Mono 10")),
+            family_and_size(sized.font_for(Some("Adwaita Mono 10"))),
             (Some("Adwaita Mono".into()), 14.0)
         );
-        assert_eq!(Config::default().font_for(None), (None, POINTS));
+        assert_eq!(
+            family_and_size(Config::default().font_for(None)),
+            (None, POINTS)
+        );
     }
 
     #[test]
     fn settings_changed_in_gsettings_are_brought_over() {
         let listing = "io.github.sachesi.caret font 'Adwaita Mono 13'\n\
-            io.github.sachesi.caret ligatures true\n\
+            io.github.sachesi.caret ligatures false\n\
+            io.github.sachesi.caret font-features 'zero'\n\
             io.github.sachesi.caret color-scheme 'system'\n\
             io.github.sachesi.caret scrollback-lines uint32 5000\n\
             io.github.sachesi.caret custom-command \"tmux new -s 'it'\"\n\
@@ -517,7 +582,12 @@ mod tests {
             io.github.sachesi.caret window-size (0, 0)\n";
         let document = imported(listing).to_string();
         let config = parse(&document);
-        assert_eq!(config.font_for(None), (Some("Adwaita Mono".into()), 13.0));
+        assert_eq!(
+            family_and_size(config.font_for(None)),
+            (Some("Adwaita Mono".into()), 13.0)
+        );
+        assert_eq!(config.font_features, features("zero").unwrap_or_default());
+        assert!(!config.ligatures);
         assert_eq!(config.scrollback_lines, 5000);
         assert_eq!(config.custom_command, "tmux new -s 'it'");
         assert!(config.close_detaches);

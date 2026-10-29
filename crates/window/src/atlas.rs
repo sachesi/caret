@@ -3,11 +3,13 @@
 //! to the GPU.
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use caret_protocol::Glyph;
 
 use crate::chrome::Drawing;
 use crate::fonts::{Fonts, Raster};
+use crate::grid::Glyphs;
 
 /// Texels on each side of the atlas texture.
 pub const SIZE: u32 = 2048;
@@ -109,6 +111,11 @@ impl Atlas {
         index
     }
 
+    /// The atlas as the cells look glyphs up in it, drawn with `fonts`.
+    pub fn lookup<'a>(&'a mut self, fonts: &'a mut Fonts) -> Lookup<'a> {
+        Lookup { atlas: self, fonts }
+    }
+
     /// The number quads refer to `drawing` by, made with `raster` the first time.
     pub fn drawing(&mut self, drawing: &Drawing, raster: impl FnOnce() -> Option<Raster>) -> u32 {
         if let Some(&index) = self.drawings.get(drawing) {
@@ -145,6 +152,21 @@ impl Atlas {
             pixels: raster.pixels,
         });
         u32::try_from(self.entries.len()).ok()
+    }
+}
+
+pub struct Lookup<'a> {
+    atlas: &'a mut Atlas,
+    fonts: &'a mut Fonts,
+}
+
+impl Glyphs for Lookup<'_> {
+    fn index(&mut self, glyph: &Glyph) -> u32 {
+        self.atlas.index(glyph, self.fonts)
+    }
+
+    fn ligatures(&mut self, run: &str, style: u8) -> Option<Rc<[u8]>> {
+        self.fonts.ligatures(run, style)
     }
 }
 

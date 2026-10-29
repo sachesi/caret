@@ -8,7 +8,7 @@ use caret_protocol::{Bytes, Command, Frame, Question, Request, TerminalId};
 use super::{App, Asked};
 use crate::chrome::TabLabel;
 use crate::gpu::FRAMES_IN_FLIGHT;
-use crate::grid::Grid;
+use crate::grid::{Grid, Unresolved};
 
 pub struct Tab {
     pub terminal: TerminalId,
@@ -148,11 +148,10 @@ impl App {
         self.tabs[index].frame_asked = false;
         if index != self.selected {
             // Its glyphs are looked up when it is shown.
-            self.tabs[index].grid.apply(frame, |_| 0);
+            self.tabs[index].grid.apply(frame, Unresolved);
             return;
         }
-        let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
-        self.grid.apply(frame, |glyph| atlas.index(glyph, fonts));
+        self.grid.apply(frame, self.atlas.lookup(&mut self.fonts));
         self.renew_full_atlas();
         self.show_link();
         self.dirty = true;
@@ -184,8 +183,7 @@ impl App {
     /// Draws the shown tab's cells, which the GPU's copies do not hold, and asks for the
     /// rows it missed while hidden.
     fn reveal(&mut self) {
-        let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
-        self.grid.refill(|glyph| atlas.index(glyph, fonts));
+        self.grid.refill(self.atlas.lookup(&mut self.fonts));
         self.renew_full_atlas();
         self.show_link();
         if let Some(terminal) = self.terminal() {
