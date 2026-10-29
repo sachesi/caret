@@ -555,6 +555,11 @@ impl App {
                 status,
             } => self.command_finished(terminal, seconds, status),
             Message::TabNamed { terminal, name } => self.tab_named(terminal, name),
+            Message::TabMoved {
+                session,
+                terminal,
+                index,
+            } if Some(session) == self.session => self.tab_moved(terminal, index),
             // A window started on a session it was handed learns it is shown here.
             Message::Attached { session, tabs }
                 if self.session.is_none_or(|own| own == session) =>
@@ -882,13 +887,20 @@ impl App {
     fn frame_quads(&mut self, size: (u32, u32)) -> (Vec<chrome::Quad>, usize) {
         let scale = self.factor() as f32;
         if let Some(search) = &mut self.chrome.search {
-            search.caret = self
-                .fonts
-                .label_advance(&search.text[..search.cursor], false);
+            let field = &mut search.field;
+            field.caret = self.fonts.label_advance(&field.text[..field.cursor], false);
         }
         if let Some(menu) = &mut self.chrome.menu {
             let fonts = &self.fonts;
             menu.fit(|text| fonts.label_advance(text, false) / scale);
+        }
+        if let Some(field) = self
+            .chrome
+            .dialog
+            .as_mut()
+            .and_then(|dialog| dialog.field.as_mut())
+        {
+            field.caret = self.fonts.label_advance(&field.text[..field.cursor], false);
         }
         if let Some(dialog) = &mut self.chrome.dialog {
             let fonts = &self.fonts;

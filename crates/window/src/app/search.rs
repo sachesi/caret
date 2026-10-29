@@ -5,7 +5,7 @@ use caret_protocol::{Question, Select};
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
 use super::{App, Asked};
-use crate::chrome::Search;
+use crate::chrome::{Edit, Search};
 
 impl App {
     /// Opens the find bar, or gives its field the keys if it is open.
@@ -35,16 +35,14 @@ impl App {
 
     /// Gives the field `event`'s key if it has the keys, saying whether it took it.
     pub(super) fn search_key(&mut self, event: &KeyEvent) -> bool {
-        let Some(search) = self.chrome.search.as_mut().filter(|search| search.focused) else {
+        if !self
+            .chrome
+            .search
+            .as_ref()
+            .is_some_and(|search| search.focused)
+        {
             return false;
-        };
-        let (text, cursor) = (&mut search.text, &mut search.cursor);
-        let before = text[..*cursor]
-            .chars()
-            .next_back()
-            .map_or(0, char::len_utf8);
-        let after = text[*cursor..].chars().next().map_or(0, char::len_utf8);
-        let mut changed = false;
+        }
         match event.keysym {
             Keysym::Escape => {
                 self.close_search();
@@ -54,32 +52,13 @@ impl App {
                 self.find(!self.modifiers.shift);
                 return true;
             }
-            Keysym::BackSpace if before > 0 => {
-                *cursor -= before;
-                text.remove(*cursor);
-                changed = true;
-            }
-            Keysym::Delete | Keysym::KP_Delete if after > 0 => {
-                text.remove(*cursor);
-                changed = true;
-            }
-            Keysym::Left | Keysym::KP_Left => *cursor -= before,
-            Keysym::Right | Keysym::KP_Right => *cursor += after,
-            Keysym::Home | Keysym::KP_Home => *cursor = 0,
-            Keysym::End | Keysym::KP_End => *cursor = text.len(),
-            _ => {
-                let typed = event
-                    .utf8
-                    .as_deref()
-                    .filter(|typed| !typed.is_empty() && !typed.chars().any(char::is_control));
-                if let Some(typed) = typed.filter(|_| !self.modifiers.ctrl && !self.modifiers.alt) {
-                    text.insert_str(*cursor, typed);
-                    *cursor += typed.len();
-                    changed = true;
-                }
-            }
+            _ => {}
         }
-        if changed {
+        let typed = self.typed(event);
+        let Some(search) = &mut self.chrome.search else {
+            return true;
+        };
+        if search.field.key(event.keysym, typed.as_deref()) == Edit::Changed {
             // A new text is found from the bottom up again.
             self.select(Select::Clear);
             self.find(true);
@@ -94,13 +73,22 @@ impl App {
         let Some(search) = self.chrome.search.as_mut().filter(|search| search.focused) else {
             return false;
         };
-        search.text.insert_str(search.cursor, typed);
-        search.cursor += typed.len();
+        search.field.type_text(typed);
         self.select(Select::Clear);
         self.find(true);
         self.dirty = true;
         self.draw();
         true
+    }
+
+    /// The text `event` types into a field: none with Ctrl or Alt held, as such keys
+    /// are shortcuts.
+    pub(super) fn typed(&self, event: &KeyEvent) -> Option<String> {
+        event
+            .utf8
+            .clone()
+            .filter(|typed| !typed.is_empty() && !typed.chars().any(char::is_control))
+            .filter(|_| !self.modifiers.ctrl && !self.modifiers.alt)
     }
 
     /// Finds the field's text upwards or downwards from the selection.
@@ -110,13 +98,13 @@ impl App {
             return;
         };
         self.searches += 1;
-        if search.text.is_empty() {
+        if search.field.text.is_empty() {
             search.found = true;
             return;
         }
         let id = self.server.ask(Question::Find {
             terminal,
-            text: search.text.clone(),
+            text: search.field.text.clone(),
             upwards,
         });
         self.asked.insert(id, Asked::Find(self.searches));

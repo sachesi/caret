@@ -3,6 +3,7 @@
 //! the window that resize it.
 
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_toplevel::ResizeEdge;
+use smithay_client_toolkit::seat::keyboard::Keysym;
 use swash::zeno::{Cap, Mask, PathBuilder, Stroke};
 
 use crate::atlas::GpuGlyph;
@@ -187,18 +188,94 @@ pub struct Preedit {
     pub color: u32,
 }
 
-/// The bar to find text in the history with.
+/// A line of text the user types, and where typing goes in it.
 #[derive(Debug, Default)]
-pub struct Search {
+pub struct Field {
     pub text: String,
     /// Where typing goes in the text, in bytes.
     pub cursor: usize,
+    /// How far the cursor is from the start of the text, in device pixels.
+    pub caret: f32,
+}
+
+/// What a key did to a field.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Edit {
+    Changed,
+    Moved,
+    /// The key is not one a field takes.
+    Passed,
+}
+
+impl Field {
+    /// A field holding `text`, typing at its end.
+    pub fn holding(text: &str) -> Self {
+        Self {
+            text: text.to_owned(),
+            cursor: text.len(),
+            caret: 0.0,
+        }
+    }
+
+    /// Edits the text as `key` does, `typed` being the text it types if any.
+    pub fn key(&mut self, key: Keysym, typed: Option<&str>) -> Edit {
+        let (text, cursor) = (&mut self.text, &mut self.cursor);
+        let before = text[..*cursor]
+            .chars()
+            .next_back()
+            .map_or(0, char::len_utf8);
+        let after = text[*cursor..].chars().next().map_or(0, char::len_utf8);
+        match key {
+            Keysym::BackSpace if before > 0 => {
+                *cursor -= before;
+                text.remove(*cursor);
+                Edit::Changed
+            }
+            Keysym::Delete | Keysym::KP_Delete if after > 0 => {
+                text.remove(*cursor);
+                Edit::Changed
+            }
+            Keysym::BackSpace | Keysym::Delete | Keysym::KP_Delete => Edit::Moved,
+            Keysym::Left | Keysym::KP_Left => {
+                *cursor -= before;
+                Edit::Moved
+            }
+            Keysym::Right | Keysym::KP_Right => {
+                *cursor += after;
+                Edit::Moved
+            }
+            Keysym::Home | Keysym::KP_Home => {
+                *cursor = 0;
+                Edit::Moved
+            }
+            Keysym::End | Keysym::KP_End => {
+                *cursor = text.len();
+                Edit::Moved
+            }
+            _ => match typed {
+                Some(typed) => {
+                    self.type_text(typed);
+                    Edit::Changed
+                }
+                None => Edit::Passed,
+            },
+        }
+    }
+
+    pub fn type_text(&mut self, typed: &str) {
+        self.text.insert_str(self.cursor, typed);
+        self.cursor += typed.len();
+    }
+}
+
+/// The bar to find text in the history with.
+#[derive(Debug, Default)]
+pub struct Search {
+    pub field: Field,
     /// Keys go to the field, not the terminal.
     pub focused: bool,
     /// The text was found, or there is none to find.
     pub found: bool,
-    /// How far the cursor is from the start of the text, in device pixels.
-    pub caret: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -386,6 +463,15 @@ impl Chrome {
         } else {
             Part::Tab(index)
         })
+    }
+
+    /// The tab whose share of the strip of a window `width` wide `x` is in, the last
+    /// past its end.
+    pub fn tab_at(&self, x: f64, width: u32) -> Option<usize> {
+        let x = x as f32;
+        self.shares(width as f32)
+            .position(|(left, share)| x < left + share)
+            .or_else(|| self.tabs.len().checked_sub(1))
     }
 
     /// Each tab's share of the strip of a window `width` wide: its left edge and width.
@@ -722,53 +808,20 @@ impl Painter<'_> {
         let field_top = (middle - side / 2.0).round();
         let buttons = (margin + width - inset - 2.0 * side).round();
         let field = (margin + inset).round();
-        let field_width = buttons - inset - field;
-        let radius = FLAT_RADIUS * scale;
-        quads.push(rounded(
-            field,
-            field_top,
-            field_width,
-            side,
-            radius,
-            colors.button[0],
-        ));
-        let padding = FIELD_PADDING * scale;
-        let room = (field_width - 2.0 * padding).max(0.0);
-        let (text, color) = if search.text.is_empty() {
-            ("Find in the history", (colors.foreground & !0xff) | 0x80)
-        } else if search.found {
-            (search.text.as_str(), colors.foreground)
+        let color = if search.found {
+            colors.foreground
         } else {
-            (search.text.as_str(), colors.error)
+            colors.error
         };
-        let label = Drawing::Label {
-            text: text.to_owned(),
-            width: room as u32,
-            bold: false,
-        };
-        let start = field + padding;
-        if let Some((index, glyph)) = draw(&label) {
-            let (left, top) = offset(glyph);
-            let y = (middle - self.line as f32 / 2.0).floor() + top as f32;
-            quads.push(entry(
-                start + left as f32,
-                y,
-                index,
-                glyph,
-                chrome.dim(color),
-            ));
-        }
-        if search.focused && chrome.active {
-            let height = self.line as f32;
-            quads.push(Quad {
-                x: (start + search.caret.min(room)).round(),
-                y: (middle - height / 2.0).floor(),
-                width: scale.round().max(1.0),
-                height,
-                color: colors.foreground,
-                ..Quad::default()
-            });
-        }
+        self.field(
+            quads,
+            &search.field,
+            [field, field_top, buttons - inset - field, side],
+            ("Find in the history", color),
+            search.focused,
+            draw,
+        );
+        let radius = FLAT_RADIUS * scale;
         for (index, (part, icon, corners)) in [
             (Part::FindUp, Icon::Up, TOP_LEFT | BOTTOM_LEFT),
             (Part::FindDown, Icon::Down, TOP_RIGHT | BOTTOM_RIGHT),
@@ -937,6 +990,64 @@ impl Painter<'_> {
             glyph,
             colors.foreground,
         ));
+    }
+
+    /// `field` in `[x, y, width, height]`, showing `placeholder` while it is empty and
+    /// its text in `color`, with a caret while it has the keys.
+    fn field(
+        &self,
+        quads: &mut Vec<Quad>,
+        field: &Field,
+        [x, y, width, height]: [f32; 4],
+        (placeholder, color): (&str, u32),
+        focused: bool,
+        draw: &mut impl FnMut(&Drawing) -> Option<(u32, GpuGlyph)>,
+    ) {
+        let (chrome, scale) = (self.chrome, self.scale);
+        let colors = chrome.colors();
+        quads.push(rounded(
+            x,
+            y,
+            width,
+            height,
+            FLAT_RADIUS * scale,
+            colors.button[0],
+        ));
+        let padding = FIELD_PADDING * scale;
+        let room = (width - 2.0 * padding).max(0.0);
+        let (text, color) = if field.text.is_empty() {
+            (placeholder, (colors.foreground & !0xff) | 0x80)
+        } else {
+            (field.text.as_str(), color)
+        };
+        let label = Drawing::Label {
+            text: text.to_owned(),
+            width: room as u32,
+            bold: false,
+        };
+        let (start, middle) = (x + padding, y + height / 2.0);
+        if let Some((index, glyph)) = draw(&label) {
+            let (left, top) = offset(glyph);
+            let y = (middle - self.line as f32 / 2.0).floor() + top as f32;
+            quads.push(entry(
+                start + left as f32,
+                y,
+                index,
+                glyph,
+                chrome.dim(color),
+            ));
+        }
+        if focused && chrome.active {
+            let line = self.line as f32;
+            quads.push(Quad {
+                x: (start + field.caret.min(room)).round(),
+                y: (middle - line / 2.0).floor(),
+                width: scale.round().max(1.0),
+                height: line,
+                color: colors.foreground,
+                ..Quad::default()
+            });
+        }
     }
 
     /// A line of text centred on `(x, middle)`, placed by its line so that it does not

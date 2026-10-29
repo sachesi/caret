@@ -1,9 +1,9 @@
-//! A dialog over the window asking before it does what the user may not mean: stopping
-//! programs, or running each line of a paste.
+//! A dialog over the window: asking before it does what the user may not mean, such as
+//! stopping programs or running each line of a paste, or for a line of text.
 
 use super::{
-    ALL_CORNERS, Drawing, FLAT_RADIUS, GpuGlyph, Painter, Part, Quad, RADIUS, SHADOW, entry,
-    halves, offset, rounded,
+    ACCENT, ALL_CORNERS, Drawing, FLAT_RADIUS, Field, GpuGlyph, Painter, Part, Quad, RADIUS,
+    SHADOW, entry, halves, offset, rounded,
 };
 use crate::fonts::HEADING;
 
@@ -13,13 +13,13 @@ const INSET: f32 = 12.0;
 /// The room around its contents, and between the heading and the body.
 const PADDING: f32 = 24.0;
 const SPACING: f32 = 10.0;
-/// Its buttons' height, and the room between them.
+/// Its buttons' and field's height, and the room between the buttons.
 const BUTTON: f32 = 34.0;
 const BUTTON_SPACING: f32 = 12.0;
 /// The ring around the button the keys press: its width, and how far it stands out.
 const FOCUS: f32 = 2.0;
-/// What shades the button that warns, hovered and then pressed: its white text
-/// lightens it, as text of the window's colour shades other buttons.
+/// What shades a coloured button, hovered and then pressed: its white text lightens
+/// it, as text of the window's colour shades other buttons.
 const WARNING_SHADES: [u32; 2] = [0xffff_ff1a, 0x0000_0633];
 
 #[derive(Debug)]
@@ -28,13 +28,23 @@ pub struct Dialog {
     pub body: String,
     /// The buttons' labels: the first declines, the second does what was asked.
     pub responses: [String; 2],
-    /// What was asked stops or runs something, so its button is coloured to warn.
-    pub destructive: bool,
-    /// The button Enter presses.
-    pub focused: usize,
+    pub appearance: Appearance,
+    /// The button Enter presses; none while the field has the keys.
+    pub focused: Option<usize>,
+    /// The line of text it asks for.
+    pub field: Option<Field>,
     /// The body cut into lines that fit, and the height of one, in logical pixels.
     pub lines: Vec<String>,
     pub line: f32,
+}
+
+/// How the button that does what was asked looks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Appearance {
+    /// It stops or runs something, so it is coloured to warn.
+    Destructive,
+    /// It is what the dialog is for.
+    Suggested,
 }
 
 /// Where a dialog's parts are, in logical pixels from the window's corner.
@@ -42,19 +52,32 @@ struct Layout {
     card: [f32; 4],
     heading: f32,
     body: f32,
+    field: [f32; 4],
     buttons: [[f32; 4]; 2],
 }
 
 impl Dialog {
+    /// A dialog that asks to confirm, Enter declining.
     pub fn new(heading: &str, body: &str, responses: [&str; 2]) -> Self {
         Self {
             heading: heading.to_owned(),
             body: body.to_owned(),
             responses: responses.map(str::to_owned),
-            destructive: true,
-            focused: 0,
+            appearance: Appearance::Destructive,
+            focused: Some(0),
+            field: None,
             lines: Vec::new(),
             line: 0.0,
+        }
+    }
+
+    /// A dialog that asks for a line of text, starting as `text`, Enter accepting it.
+    pub fn asking(heading: &str, body: &str, responses: [&str; 2], text: &str) -> Self {
+        Self {
+            appearance: Appearance::Suggested,
+            focused: None,
+            field: Some(Field::holding(text)),
+            ..Self::new(heading, body, responses)
         }
     }
 
@@ -66,13 +89,13 @@ impl Dialog {
     fn layout(&self, (width, height): (f32, f32)) -> Layout {
         let card_width = card_width(width);
         let heading = self.line * HEADING;
-        let card_height = PADDING
-            + heading
-            + SPACING
-            + self.lines.len() as f32 * self.line
-            + PADDING
-            + BUTTON
-            + PADDING;
+        let body = self.lines.len() as f32 * self.line;
+        let field = if self.field.is_some() {
+            PADDING / 2.0 + BUTTON
+        } else {
+            0.0
+        };
+        let card_height = PADDING + heading + SPACING + body + field + PADDING + BUTTON + PADDING;
         let (x, y) = (
             (width - card_width) / 2.0,
             ((height - card_height) / 2.0).max(0.0),
@@ -83,6 +106,12 @@ impl Dialog {
             card: [x, y, card_width, card_height],
             heading: y + PADDING,
             body: y + PADDING + heading + SPACING,
+            field: [
+                x + PADDING,
+                y + PADDING + heading + SPACING + body + PADDING / 2.0,
+                card_width - 2.0 * PADDING,
+                BUTTON,
+            ],
             buttons: [0.0, 1.0].map(|index| {
                 [
                     x + PADDING + index * (button_width + BUTTON_SPACING),
@@ -213,6 +242,22 @@ impl Painter<'_> {
                 quads.push(centred_line(centre, top, glyph, colors.foreground));
             }
         }
+        if let Some(field) = &dialog.field {
+            let [x, y, width, height] = place(layout.field);
+            let ring = FOCUS * scale;
+            let radius = FLAT_RADIUS * scale;
+            quads.push(rounded(
+                x - ring,
+                y - ring,
+                width + 2.0 * ring,
+                height + 2.0 * ring,
+                radius + ring,
+                colors.focus,
+            ));
+            quads.push(rounded(x, y, width, height, radius, colors.dialog));
+            let color = colors.foreground;
+            self.field(quads, field, [x, y, width, height], ("", color), true, draw);
+        }
         for index in 0..dialog.responses.len() {
             let button = place(layout.buttons[index]);
             self.response(quads, dialog, index, button, draw);
@@ -231,7 +276,7 @@ impl Painter<'_> {
         let (chrome, scale) = (self.chrome, self.scale);
         let colors = chrome.colors();
         let radius = FLAT_RADIUS * scale;
-        if dialog.focused == index {
+        if dialog.focused == Some(index) {
             let ring = FOCUS * scale;
             quads.push(rounded(
                 x - ring,
@@ -243,10 +288,10 @@ impl Painter<'_> {
             ));
             quads.push(rounded(x, y, width, height, radius, colors.dialog));
         }
-        let (fill, text, shades) = if dialog.destructive && index == 1 {
-            (colors.destructive, 0xffff_ffff, WARNING_SHADES)
-        } else {
-            (colors.button[0], colors.foreground, colors.flat)
+        let (fill, text, shades) = match dialog.appearance {
+            _ if index == 0 => (colors.button[0], colors.foreground, colors.flat),
+            Appearance::Destructive => (colors.destructive, 0xffff_ffff, WARNING_SHADES),
+            Appearance::Suggested => (ACCENT, 0xffff_ffff, WARNING_SHADES),
         };
         quads.push(rounded(x, y, width, height, radius, fill));
         let part = Part::Response(index);

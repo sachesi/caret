@@ -1,7 +1,7 @@
 //! The window's menus: the main one from the header bar, and the terminal's from a
 //! right click, with what it can do where it was clicked.
 
-use caret_protocol::{Question, SessionInfo};
+use caret_protocol::{Question, SessionInfo, TerminalId};
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
 use super::{App, Asked, pointer};
@@ -13,6 +13,8 @@ use crate::shortcuts::Action;
 #[derive(Debug, Clone)]
 pub enum Choice {
     Act(Action),
+    RenameTab(TerminalId),
+    CloseTab(TerminalId),
     Detach,
     Reattach,
     Preferences,
@@ -115,6 +117,18 @@ impl App {
         self.show_menu(sections, at, false);
     }
 
+    /// The menu of the tab at `index`, where the pointer is.
+    pub(super) fn tab_menu(&mut self, index: usize) {
+        let Some(terminal) = self.tabs.get(index).map(|tab| tab.terminal) else {
+            return;
+        };
+        let sections = vec![
+            vec![self.item("Rename Tab…", Choice::RenameTab(terminal), true)],
+            vec![self.item("Close Tab", Choice::CloseTab(terminal), true)],
+        ];
+        self.show_menu(sections, self.pointer_at(), false);
+    }
+
     pub(super) fn close_menu(&mut self) {
         if self.chrome.menu.take().is_some() {
             self.choices.clear();
@@ -138,6 +152,12 @@ impl App {
             Some(Choice::Act(action)) => self.act(action),
             Some(Choice::OpenLink(link)) => pointer::open(&link, &self.toaster),
             Some(Choice::CopyLink(link)) => self.copy(link, false),
+            Some(Choice::RenameTab(terminal)) => self.rename_tab(terminal),
+            Some(Choice::CloseTab(terminal)) => {
+                if let Some(index) = self.tab_of(terminal) {
+                    self.close_tab(index);
+                }
+            }
             Some(Choice::Detach) => self.end(true),
             Some(Choice::Reattach) => {
                 let id = self.server.ask(Question::Sessions);

@@ -48,6 +48,8 @@ pub struct Pointer {
     position: (f64, f64),
     /// Selecting with the left button held.
     selecting: bool,
+    /// The tab held by the left button, which moves along the strip with the pointer.
+    dragged_tab: Option<TerminalId>,
     /// The button a program was told is held, to tell it of motion and release.
     reported: Option<MouseButton>,
     last_click: Option<(Instant, Point)>,
@@ -206,6 +208,7 @@ impl App {
             }
             (Part::Tab(index), BUTTON_LEFT) => {
                 self.show(index);
+                self.pointer.dragged_tab = self.terminal();
                 return;
             }
             (Part::SearchField, BUTTON_LEFT) => {
@@ -214,6 +217,10 @@ impl App {
             }
             (Part::Tab(index) | Part::CloseTab(index), BUTTON_MIDDLE) => {
                 self.close_tab(index);
+                return;
+            }
+            (Part::Tab(index) | Part::CloseTab(index), BUTTON_RIGHT) => {
+                self.tab_menu(index);
                 return;
             }
             _ => {}
@@ -481,6 +488,14 @@ impl PointerHandler for App {
                     self.draw();
                 }
                 PointerEventKind::Motion { .. } if dragging => self.moved(event.position),
+                PointerEventKind::Motion { .. } if self.pointer.dragged_tab.is_some() => {
+                    self.pointer.position = event.position;
+                    if let Some(terminal) = self.pointer.dragged_tab {
+                        let (x, _) = self.pointer_at();
+                        self.drag_tab(terminal, f64::from(x));
+                    }
+                    self.hover();
+                }
                 PointerEventKind::Motion { .. } => {
                     self.pointer.position = event.position;
                     self.hover();
@@ -500,6 +515,7 @@ impl PointerHandler for App {
                     }
                 }
                 PointerEventKind::Release { button, .. } => {
+                    self.pointer.dragged_tab = None;
                     if self.chrome.pressed.is_some() {
                         self.released_frame();
                     } else {

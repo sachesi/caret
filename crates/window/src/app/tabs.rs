@@ -94,6 +94,38 @@ impl App {
         self.retitle();
     }
 
+    /// Moves `terminal`'s tab to `index`, keeping the one shown.
+    pub(super) fn tab_moved(&mut self, terminal: TerminalId, index: u32) {
+        let Some(from) = self.tab_of(terminal) else {
+            return;
+        };
+        let shown = self.terminal();
+        let tab = self.tabs.remove(from);
+        let index =
+            usize::try_from(index).map_or(self.tabs.len(), |index| index.min(self.tabs.len()));
+        self.tabs.insert(index, tab);
+        if let Some(index) = shown.and_then(|shown| self.tab_of(shown)) {
+            self.selected = index;
+        }
+        self.retitle();
+    }
+
+    /// Moves `terminal`'s tab to where `x` is in the strip, as it is dragged there.
+    pub(super) fn drag_tab(&mut self, terminal: TerminalId, x: f64) {
+        let (Some(session), Some((width, _))) = (self.session, self.size) else {
+            return;
+        };
+        if let Some(target) = self.chrome.tab_at(x, width)
+            && Some(target) != self.tab_of(terminal)
+        {
+            self.server.send(&Request::MoveTab {
+                terminal,
+                session,
+                index: u32::try_from(target).unwrap_or(u32::MAX),
+            });
+        }
+    }
+
     pub(super) fn tab_named(&mut self, terminal: TerminalId, name: Option<String>) {
         if let Some(index) = self.tab_of(terminal) {
             self.tabs[index].name = name;

@@ -1,5 +1,6 @@
-//! Asking before what the user may not mean: closing a tab or the window while
-//! programs run in it, and pasting lines a program will run one by one.
+//! Dialogs: asking before what the user may not mean, closing a tab or the window while
+//! programs run in it and pasting lines a program will run one by one, and asking for
+//! a tab's name.
 
 use caret_protocol::{Answer, Bytes, Question, Request, TerminalId, encode};
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
@@ -7,11 +8,12 @@ use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 use super::{App, Asked};
 use crate::chrome::Dialog;
 
-/// What the dialog open asks to confirm.
+/// What the dialog open asks to confirm, or asks for.
 pub enum Confirm {
     CloseTab(TerminalId),
     CloseWindow,
     Paste { terminal: TerminalId, text: Vec<u8> },
+    Rename(TerminalId),
 }
 
 /// The tabs asked whether a program runs in them before the window closes.
@@ -31,7 +33,7 @@ impl App {
 
     /// Closes the dialog, doing what it asked if `accepted`.
     pub(super) fn respond(&mut self, accepted: bool) {
-        self.chrome.dialog = None;
+        let field = self.chrome.dialog.take().and_then(|dialog| dialog.field);
         let confirm = self.confirming.take();
         self.hover();
         self.dirty = true;
@@ -48,14 +50,32 @@ impl App {
                     bottom: true,
                 });
             }
+            Some(Confirm::Rename(terminal)) if accepted => {
+                let name = field
+                    .map(|field| field.text.trim().to_owned())
+                    .filter(|name| !name.is_empty());
+                self.server.send(&Request::NameTab { terminal, name });
+            }
             _ => {}
         }
+    }
+
+    /// Asks for a name for `terminal`'s tab, starting from the one it shows.
+    pub(super) fn rename_tab(&mut self, terminal: TerminalId) {
+        let dialog = Dialog::asking(
+            "Rename Tab",
+            "Without a name, the tab shows the program’s title.",
+            ["Cancel", "Rename"],
+            &self.tab_title(terminal),
+        );
+        self.confirm(dialog, Confirm::Rename(terminal));
     }
 
     /// Closes a dialog about `terminal`, which has gone.
     pub(super) fn forget_confirming(&mut self, terminal: TerminalId) {
         if let Some(
             Confirm::CloseTab(asked)
+            | Confirm::Rename(asked)
             | Confirm::Paste {
                 terminal: asked, ..
             },
@@ -67,19 +87,39 @@ impl App {
     }
 
     /// Takes a key while a dialog is open, which takes them all: Escape declines, Enter
-    /// presses the focused button, and Tab and the arrows move the focus.
+    /// presses the focused button or accepts the field's text, Tab moves the focus
+    /// round, and the rest edit the field while it has the keys.
     pub(super) fn dialog_key(&mut self, event: &KeyEvent) -> bool {
+        let typed = self.typed(event);
         let Some(dialog) = &mut self.chrome.dialog else {
             return false;
         };
-        match event.keysym {
-            Keysym::Escape => self.respond(false),
-            Keysym::Return | Keysym::KP_Enter | Keysym::space => {
-                let accepted = dialog.focused == 1;
-                self.respond(accepted);
+        let has_field = dialog.field.is_some();
+        match (event.keysym, dialog.focused, &mut dialog.field) {
+            (Keysym::Escape, ..) => self.respond(false),
+            (Keysym::Return | Keysym::KP_Enter, focused, _) => {
+                self.respond(focused.is_none_or(|focused| focused == 1));
             }
-            Keysym::Tab | Keysym::ISO_Left_Tab | Keysym::Left | Keysym::Right => {
-                dialog.focused = 1 - dialog.focused;
+            (Keysym::space, Some(focused), _) => self.respond(focused == 1),
+            (Keysym::Tab | Keysym::ISO_Left_Tab, ..)
+            | (Keysym::Left | Keysym::Right, Some(_), _) => {
+                let order: &[Option<usize>] = if has_field {
+                    &[None, Some(0), Some(1)]
+                } else {
+                    &[Some(0), Some(1)]
+                };
+                let at = order
+                    .iter()
+                    .position(|&focused| focused == dialog.focused)
+                    .unwrap_or(0);
+                let backwards = matches!(event.keysym, Keysym::ISO_Left_Tab | Keysym::Left);
+                let step = if backwards { order.len() - 1 } else { 1 };
+                dialog.focused = order[(at + step) % order.len()];
+                self.dirty = true;
+                self.draw();
+            }
+            (key, None, Some(field)) => {
+                field.key(key, typed.as_deref());
                 self.dirty = true;
                 self.draw();
             }

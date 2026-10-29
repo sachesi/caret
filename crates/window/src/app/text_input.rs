@@ -129,6 +129,18 @@ impl App {
         let Some(text) = commit.filter(|text| !text.is_empty()) else {
             return;
         };
+        if let Some(field) = self
+            .chrome
+            .dialog
+            .as_mut()
+            .filter(|dialog| dialog.focused.is_none())
+            .and_then(|dialog| dialog.field.as_mut())
+        {
+            field.type_text(&text);
+            self.dirty = true;
+            self.draw();
+            return;
+        }
         if self.search_type(&text) {
             return;
         }
