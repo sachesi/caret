@@ -171,7 +171,7 @@ impl App {
                     self.close_tab(index);
                 }
             }
-            Some(Choice::Profile(profile)) => super::new_window_with(Some(&profile)),
+            Some(Choice::Profile(profile)) => self.new_window(Some(&profile)),
             Some(Choice::Detach) => self.end(true),
             Some(Choice::Reattach) => {
                 let id = self.server.ask(Question::Sessions);
@@ -186,6 +186,12 @@ impl App {
         }
     }
 
+    /// Opens another window, with the settings of `profile` if one is named.
+    pub(super) fn new_window(&self, profile: Option<&str>) {
+        let arguments = profile.map(|profile| vec!["--profile".into(), profile.to_owned()]);
+        self.open_window(arguments.unwrap_or_default());
+    }
+
     /// Opens a window for each session no window shows, or says there is none.
     pub(super) fn reattach(&mut self, sessions: &[SessionInfo]) {
         let mut detached = sessions
@@ -196,7 +202,7 @@ impl App {
             self.toast("No windows were detached".to_owned());
         }
         for session in detached {
-            super::new_window(&["--session", &session.session.0.to_string()]);
+            self.open_window(vec!["--session".into(), session.session.0.to_string()]);
         }
     }
 

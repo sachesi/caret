@@ -12,9 +12,6 @@ use smithay_client_toolkit::reexports::client::{Connection, QueueHandle};
 use smithay_client_toolkit::reexports::protocols::xdg::system_bell::v1::client::xdg_system_bell_v1::{
     self, XdgSystemBellV1,
 };
-use smithay_client_toolkit::reexports::protocols::xdg::activation::v1::client::xdg_activation_v1::{
-    self, XdgActivationV1,
-};
 use smithay_client_toolkit::shell::WaylandSurface;
 
 use super::App;
@@ -25,11 +22,6 @@ const NOTIFY_AFTER: Duration = Duration::from_secs(10);
 
 /// The system bell, if the compositor rings one for clients.
 pub fn bind_bell(globals: &GlobalList, qh: &QueueHandle<App>) -> Option<XdgSystemBellV1> {
-    globals.bind(qh, 1..=1, Objects).ok()
-}
-
-/// What lets the window take the focus when a notification is clicked.
-pub fn bind_activation(globals: &GlobalList, qh: &QueueHandle<App>) -> Option<XdgActivationV1> {
     globals.bind(qh, 1..=1, Objects).ok()
 }
 
@@ -120,18 +112,6 @@ impl App {
 
 /// What the objects here carry, to be told their events.
 pub struct Objects;
-
-impl Dispatch2<XdgActivationV1, App> for Objects {
-    fn event(
-        &self,
-        _: &mut App,
-        _: &XdgActivationV1,
-        _: xdg_activation_v1::Event,
-        _: &Connection,
-        _: &QueueHandle<App>,
-    ) {
-    }
-}
 
 impl Dispatch2<XdgSystemBellV1, App> for Objects {
     fn event(

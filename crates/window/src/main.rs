@@ -67,10 +67,11 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         };
         for session in others {
-            app::new_window(&["--session", &session.0.to_string()]);
+            app::new_window(&["--session", &session.0.to_string()], None);
         }
         start.attach = cli::Attach::Session(*first);
     }
+    config::import();
     match app::run(start) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

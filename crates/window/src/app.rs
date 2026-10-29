@@ -2,6 +2,7 @@
 //! the server's frames, keys, and the loop that waits for all of them.
 
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::num::NonZeroU32;
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::process::CommandExt;
@@ -91,6 +92,7 @@ const DESKTOP_WAIT: Duration = Duration::from_millis(250);
 /// Logical pixels between the window's edge and the cells.
 const PADDING: u32 = 6;
 
+mod activation;
 mod attention;
 mod clipboard;
 mod confirm;
@@ -226,7 +228,7 @@ impl Offered {
             cursor_shapes: CursorShapeManager::bind(globals, qh).ok(),
             text_inputs: text_input::TextInput::bind(globals, qh),
             system_bell: attention::bind_bell(globals, qh),
-            activation: attention::bind_activation(globals, qh),
+            activation: activation::bind(globals, qh),
         }
     }
 }
@@ -268,7 +270,6 @@ pub fn run(start: Start) -> Result<(), AppError> {
     let (mut server, received) = connection::Connection::open(crate::APP_ID)?;
     let (desktop_changes, desktop_changed) = calloop::channel::channel();
     let first_desktop = desktop::follow(desktop_changes);
-    config::import();
     let profile = start.profile.clone();
     let config = Config::load(profile.as_deref());
 
@@ -355,6 +356,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         waiting: false,
         exit: false,
     };
+    app.activate_at_start();
 
     WaylandSource::new(connection, queue)
         .insert(events.handle())
@@ -391,21 +393,16 @@ fn begin(server: &mut connection::Connection, start: Start) -> (HashMap<u32, Ask
     (asked, first)
 }
 
-/// Opens another window, with the settings of `profile` if one is named.
-fn new_window_with(profile: Option<&str>) {
-    match profile {
-        Some(profile) => new_window(&["--profile", profile]),
-        None => new_window(&[]),
-    }
-}
-
-/// Opens another window, a program of its own.
-pub fn new_window(arguments: &[&str]) {
+/// Opens another window, a program of its own, which takes the focus with `token`.
+pub fn new_window(arguments: &[impl AsRef<OsStr>], token: Option<&str>) {
     let started = std::env::current_exe().and_then(|program| {
-        std::process::Command::new(program)
-            .args(arguments)
-            .process_group(0)
-            .spawn()
+        let mut command = std::process::Command::new(program);
+        command.args(arguments).process_group(0);
+        match token {
+            Some(token) => command.env("XDG_ACTIVATION_TOKEN", token),
+            None => command.env_remove("XDG_ACTIVATION_TOKEN"),
+        };
+        command.spawn()
     });
     match started {
         // Waited for, so that it leaves no zombie when it ends.
@@ -1022,7 +1019,7 @@ impl App {
 
     fn act(&mut self, action: Action) {
         match action {
-            Action::NewWindow => new_window_with(self.profile.as_deref()),
+            Action::NewWindow => self.new_window(self.profile.as_deref()),
             Action::CloseWindow => self.close(),
             Action::Copy => {
                 if let Some(terminal) = self.terminal() {
