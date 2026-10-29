@@ -11,6 +11,7 @@ pub const USAGE: &str = "\
 Usage: caret [OPTION…] [-e] [COMMAND [ARGUMENT…]]
 
   -w, --working-directory DIRECTORY   start in DIRECTORY
+      --profile NAME                  open with the settings of profile NAME
       --attach                        show the windows that were detached
       --version                       print the version and exit
   -h, --help                          print this and exit";
@@ -21,6 +22,8 @@ pub struct Start {
     /// The program the first tab runs, and its arguments; the shell when empty.
     pub command: Vec<String>,
     pub attach: Attach,
+    /// The profile whose settings the window takes over the others.
+    pub profile: Option<String>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -61,6 +64,10 @@ pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Parsed, St
                     .and_then(|session| session.to_str()?.parse().ok())
                     .ok_or("--session needs a session's number")?;
                 start.attach = Attach::Session(SessionId(session));
+            }
+            "--profile" => {
+                let profile = arguments.next().ok_or("--profile needs a profile's name")?;
+                start.profile = Some(lossy(profile));
             }
             "-w" | "--working-directory" => {
                 let directory = arguments
@@ -181,7 +188,12 @@ mod tests {
             started(&["--session", "4"]).attach,
             Attach::Session(SessionId(4))
         );
+        assert_eq!(
+            started(&["--profile", "work"]).profile.as_deref(),
+            Some("work")
+        );
         assert!(parsed(&["--frobnicate"]).is_err());
+        assert!(parsed(&["--profile"]).is_err());
         assert!(parsed(&["-w"]).is_err());
     }
 }

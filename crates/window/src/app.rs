@@ -157,6 +157,8 @@ struct App {
     opened: Option<TerminalId>,
     /// What the window's first tab runs, from the command line.
     first: Command,
+    /// The profile whose settings the window has over the others.
+    profile: Option<String>,
     /// Counts searches, so that answers to ones the window moved past are dropped.
     searches: u32,
     /// What the dialog open asks to confirm.
@@ -267,7 +269,8 @@ pub fn run(start: Start) -> Result<(), AppError> {
     let (desktop_changes, desktop_changed) = calloop::channel::channel();
     let first_desktop = desktop::follow(desktop_changes);
     config::import();
-    let config = Config::load();
+    let profile = start.profile.clone();
+    let config = Config::load(profile.as_deref());
 
     let window_state = WindowState::load();
     let window = toplevel(&compositor, &shell, &qh, &config, window_state);
@@ -315,6 +318,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         opening: false,
         opened: None,
         first,
+        profile,
         searches: 0,
         confirming: None,
         choices: Vec::new(),
@@ -385,6 +389,14 @@ fn begin(server: &mut connection::Connection, start: Start) -> (HashMap<u32, Ask
         env: Vec::new(),
     };
     (asked, first)
+}
+
+/// Opens another window, with the settings of `profile` if one is named.
+fn new_window_with(profile: Option<&str>) {
+    match profile {
+        Some(profile) => new_window(&["--profile", profile]),
+        None => new_window(&[]),
+    }
 }
 
 /// Opens another window, a program of its own.
@@ -472,7 +484,7 @@ fn listen(
             events
                 .insert_source(source, |_, watch, app| {
                     if config::changed(watch.as_ref()) {
-                        app.reconfigure(Config::load());
+                        app.reconfigure(Config::load(app.profile.as_deref()));
                     }
                     Ok(PostAction::Continue)
                 })
@@ -1003,7 +1015,7 @@ impl App {
 
     fn act(&mut self, action: Action) {
         match action {
-            Action::NewWindow => new_window(&[]),
+            Action::NewWindow => new_window_with(self.profile.as_deref()),
             Action::CloseWindow => self.close(),
             Action::Copy => {
                 if let Some(terminal) = self.terminal() {

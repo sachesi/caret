@@ -15,6 +15,8 @@ pub enum Choice {
     Act(Action),
     RenameTab(TerminalId),
     CloseTab(TerminalId),
+    /// A new window with the settings of a profile.
+    Profile(String),
     Detach,
     Reattach,
     Preferences,
@@ -56,18 +58,25 @@ impl App {
         let Some((width, _)) = self.size else {
             return;
         };
-        let sections = vec![
-            vec![
-                self.act_item("New Window", Action::NewWindow),
-                self.act_item("New Tab", Action::NewTab),
-            ],
+        let mut sections = vec![vec![
+            self.act_item("New Window", Action::NewWindow),
+            self.act_item("New Tab", Action::NewTab),
+        ]];
+        if !self.config.profiles.is_empty() {
+            let profiles = self.config.profiles.iter().map(|profile| {
+                let label = format!("New “{profile}” Window");
+                self.item(&label, Choice::Profile(profile.clone()), true)
+            });
+            sections.push(profiles.collect());
+        }
+        sections.extend([
             vec![
                 self.item("Detach Window", Choice::Detach, true),
                 self.item("Reattach Windows", Choice::Reattach, true),
             ],
             vec![self.act_item("Full Screen", Action::Fullscreen)],
             vec![self.item("Preferences", Choice::Preferences, true)],
-        ];
+        ]);
         self.show_menu(sections, Menu::under_main_button(width), true);
     }
 
@@ -158,6 +167,7 @@ impl App {
                     self.close_tab(index);
                 }
             }
+            Some(Choice::Profile(profile)) => super::new_window_with(Some(&profile)),
             Some(Choice::Detach) => self.end(true),
             Some(Choice::Reattach) => {
                 let id = self.server.ask(Question::Sessions);

@@ -10,7 +10,7 @@ use std::process::Command;
 use caret_protocol::CursorShape;
 use rustix::fs::inotify;
 use rustybuzz::Feature;
-use toml_edit::{DocumentMut, Item, Value};
+use toml_edit::{DocumentMut, Item, TableLike, Value};
 
 use crate::palette;
 use crate::shortcuts::{self, Action, Shortcut};
@@ -73,6 +73,9 @@ pub struct Config {
     pub server_side_decorations: bool,
     /// The keys of the actions bound to others than Caret's.
     pub keys: HashMap<Action, Vec<Shortcut>>,
+    /// The names of the profiles, sets of settings windows may be opened with, in the
+    /// file's order.
+    pub profiles: Vec<String>,
 }
 
 impl Default for Config {
@@ -98,19 +101,20 @@ impl Default for Config {
             title_bar: true,
             server_side_decorations: true,
             keys: HashMap::new(),
+            profiles: Vec::new(),
         }
     }
 }
 
 impl Config {
-    /// The settings in `config.toml`, defaults for those it lacks or gets wrong, and all
-    /// defaults when there is no such file.
-    pub fn load() -> Self {
+    /// The settings in `config.toml`, those of `profile` over the rest, defaults for
+    /// those it lacks or gets wrong, and all defaults when there is no such file.
+    pub fn load(profile: Option<&str>) -> Self {
         let Some(path) = path() else {
             return Self::default();
         };
         match std::fs::read_to_string(&path) {
-            Ok(text) => Self::parse(&path, &text),
+            Ok(text) => Self::parse(&path, &text, profile),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Self::default(),
             Err(error) => {
                 tracing::warn!("reading {}: {error}", path.display());
@@ -119,9 +123,9 @@ impl Config {
         }
     }
 
-    /// The settings in `text`, read from `path`; each one missing or wrong, warned of,
-    /// keeps its default.
-    fn parse(path: &Path, text: &str) -> Self {
+    /// The settings in `text`, read from `path`, with those of `profile` over the rest;
+    /// each one missing or wrong, warned of, keeps its default.
+    fn parse(path: &Path, text: &str, profile: Option<&str>) -> Self {
         let mut config = Self::default();
         let document = match text.parse::<DocumentMut>() {
             Ok(document) => document,
@@ -130,26 +134,52 @@ impl Config {
                 return config;
             }
         };
-        for (key, item) in document.iter() {
-            if key == "keys" {
-                config.bind(path, item);
-            } else if let Err(expected) = config.set(key, item) {
-                tracing::warn!("{}: `{key}` is not {expected}", path.display());
-            }
+        let profiles = document.get("profiles").and_then(Item::as_table_like);
+        if let Some(profiles) = profiles {
+            config.profiles = profiles.iter().map(|(name, _)| name.to_owned()).collect();
+        } else if document.contains_key("profiles") {
+            tracing::warn!("{}: `profiles` is not a table", path.display());
+        }
+        config.take(path, "", document.as_table());
+        let Some(profile) = profile else {
+            return config;
+        };
+        if let Some(settings) = profiles.and_then(|profiles| profiles.get(profile)?.as_table_like())
+        {
+            config.take(path, &format!("profiles.{profile}."), settings);
+        } else {
+            tracing::warn!("{}: there is no profile `{profile}`", path.display());
         }
         config
     }
 
+    /// Takes the settings in `table` of the file at `path`, whose keys start with
+    /// `prefix` there.
+    fn take(&mut self, path: &Path, prefix: &str, table: &dyn TableLike) {
+        for (key, item) in table.iter() {
+            match key {
+                "keys" => self.bind(path, prefix, item),
+                // Read apart, by `parse`.
+                "profiles" if prefix.is_empty() => {}
+                _ => {
+                    if let Err(expected) = self.set(key, item) {
+                        tracing::warn!("{}: `{prefix}{key}` is not {expected}", path.display());
+                    }
+                }
+            }
+        }
+    }
+
     /// Binds the actions in the `[keys]` table `item` of the file at `path` to the keys
     /// it gives them, a key or a list of them; an empty list leaves an action unbound.
-    fn bind(&mut self, path: &Path, item: &Item) {
+    fn bind(&mut self, path: &Path, prefix: &str, item: &Item) {
         let Some(table) = item.as_table_like() else {
-            tracing::warn!("{}: `keys` is not a table", path.display());
+            tracing::warn!("{}: `{prefix}keys` is not a table", path.display());
             return;
         };
         for (name, keys) in table.iter() {
             let Some(action) = Action::named(name) else {
-                tracing::warn!("{}: `keys.{name}` is not an action", path.display());
+                tracing::warn!("{}: `{prefix}keys.{name}` is not an action", path.display());
                 continue;
             };
             let written: Option<Vec<&str>> = match keys.as_value() {
@@ -163,7 +193,7 @@ impl Config {
                 self.keys.insert(action, shortcuts);
             } else {
                 tracing::warn!(
-                    "{}: `keys.{name}` is not a key such as \"Ctrl+Shift+T\" or a list of them",
+                    "{}: `{prefix}keys.{name}` is not a key such as \"Ctrl+Shift+T\" or a list of them",
                     path.display()
                 );
             }
@@ -322,6 +352,13 @@ const STARTER: &str = r##"# Caret's settings. Take the # off a setting to change
 #title-bar = true
 # Whether the compositor draws the window's frame, where it offers to.
 #server-side-decorations = true
+
+# Profiles are settings of their own for the windows opened with them, from the
+# main menu or with caret --profile NAME. Each is a table of the settings above,
+# such as:
+# [profiles.work]
+# font = "Adwaita Mono 13"
+# custom-command = "ssh work"
 
 # The keys of each action: a key such as "Ctrl+Shift+T", a list of them, or []
 # for none.
@@ -548,7 +585,7 @@ mod tests {
     use super::*;
 
     fn parse(text: &str) -> Config {
-        Config::parse(Path::new("config.toml"), text)
+        Config::parse(Path::new("config.toml"), text, None)
     }
 
     fn family_and_size(choice: FontChoice) -> (Option<String>, f32) {
@@ -589,6 +626,23 @@ mod tests {
         assert_eq!(font("Monaco"), (Some("Monaco".into()), None));
         assert_eq!(font("14"), (None, Some(14.0)));
         assert_eq!(font(""), (None, None));
+    }
+
+    #[test]
+    fn a_profile_s_settings_go_over_the_rest() {
+        let text = "font = \"Adwaita Mono 13\"\nopacity = 0.5\n\
+            [profiles.work]\nfont = \"Fira Code 10\"\nkeys = { copy = \"Ctrl+Insert\" }\n\
+            [profiles.home]\ncustom-command = \"fish\"\n";
+        let base = parse(text);
+        assert_eq!(base.profiles, ["work", "home"]);
+        assert_eq!(base.font.as_deref(), Some("Adwaita Mono"));
+        assert!(base.keys.is_empty());
+        let work = Config::parse(Path::new("config.toml"), text, Some("work"));
+        assert_eq!(work.font.as_deref(), Some("Fira Code"));
+        assert!((work.opacity - 0.5).abs() < f32::EPSILON);
+        assert_eq!(work.keys[&Action::Copy].len(), 1);
+        let missing = Config::parse(Path::new("config.toml"), text, Some("away"));
+        assert_eq!(missing, base);
     }
 
     #[test]
