@@ -52,6 +52,8 @@ pub struct Pointer {
     clicks: u32,
     /// Part of a line scrolled but not yet sent.
     scrolled: f64,
+    /// Part of a notch of the wheel turned with Ctrl held, in 120ths, not yet zoomed by.
+    zoomed: i32,
 }
 
 impl App {
@@ -471,6 +473,20 @@ impl PointerHandler for App {
                     }
                 }
                 PointerEventKind::Axis { .. } if self.chrome.hovered.is_some() => {}
+                // Only a wheel zooms: a touchpad's scrolling would zoom by the pixel.
+                PointerEventKind::Axis { vertical, .. } if self.modifiers.ctrl => {
+                    let turned = if vertical.value120 != 0 {
+                        vertical.value120
+                    } else {
+                        vertical.discrete * 120
+                    };
+                    self.pointer.zoomed += turned;
+                    let notches = self.pointer.zoomed / 120;
+                    self.pointer.zoomed %= 120;
+                    if notches != 0 {
+                        self.zoom(Some(-notches));
+                    }
+                }
                 PointerEventKind::Axis { vertical, .. } => {
                     let lines = if vertical.value120 != 0 {
                         f64::from(vertical.value120) / 120.0 * NOTCH
