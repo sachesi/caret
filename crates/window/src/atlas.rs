@@ -77,10 +77,21 @@ pub struct Atlas {
     indices: HashMap<Glyph, u32>,
     pub entries: Vec<GpuGlyph>,
     pub uploads: Vec<Upload>,
-    full: bool,
+    /// A glyph did not fit: the atlas is to be started again with what is on screen.
+    pub full: bool,
+    /// Counts the atlases started, so the GPU's copy knows to start again too.
+    pub generation: u64,
 }
 
 impl Atlas {
+    /// An empty atlas that follows this one.
+    pub fn next(&self) -> Self {
+        Self {
+            generation: self.generation + 1,
+            ..Self::default()
+        }
+    }
+
     /// The number the cells refer to `glyph` by, rasterising it the first time: zero
     /// for one that draws nothing.
     pub fn index(&mut self, glyph: &Glyph, fonts: &mut Fonts) -> u32 {
@@ -97,10 +108,7 @@ impl Atlas {
 
     fn insert(&mut self, raster: Raster) -> Option<u32> {
         let Some((x, y)) = self.shelves.place(raster.width, raster.height) else {
-            if !self.full {
-                tracing::warn!("the glyph atlas is full; glyphs from now on are left out");
-                self.full = true;
-            }
+            self.full = true;
             return None;
         };
         let halves = |low: u32, high: u32| (low & 0xffff) | (high << 16);

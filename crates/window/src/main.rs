@@ -2,6 +2,7 @@
 
 mod app;
 mod atlas;
+mod box_drawing;
 mod connection;
 mod fonts;
 mod gpu;

@@ -75,6 +75,8 @@ pub struct Renderer {
     atlas_ready: bool,
     glyphs: Buffer,
     glyphs_written: usize,
+    /// The atlas the texture and the table hold glyphs of.
+    generation: u64,
     cells: Vec<Option<Buffer>>,
     staging: Vec<Option<Buffer>>,
 }
@@ -163,6 +165,7 @@ impl Renderer {
             atlas_ready: false,
             glyphs,
             glyphs_written: 0,
+            generation: 0,
             cells: (0..frames).map(|_| None).collect(),
             staging: (0..frames).map(|_| None).collect(),
         };
@@ -184,6 +187,13 @@ impl Renderer {
         extent: vk::Extent2D,
         scene: &mut Scene,
     ) -> Result<(), GpuError> {
+        if scene.atlas.generation != self.generation {
+            // Frames in flight sample the old glyphs, which the new ones overwrite.
+            // SAFETY: the device is live.
+            unsafe { device.device_wait_idle() }.during("vkDeviceWaitIdle")?;
+            self.generation = scene.atlas.generation;
+            self.glyphs_written = 0;
+        }
         self.copy_cells(device, frame, scene.grid)?;
         self.copy_glyphs(device, &scene.atlas.entries)?;
         self.upload(device, commands, frame, scene.atlas)?;

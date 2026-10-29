@@ -288,6 +288,18 @@ impl App {
                 self.frame_asked = false;
                 let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
                 self.grid.apply(frame, |glyph| atlas.index(glyph, fonts));
+                if self.atlas.full {
+                    // Glyphs scrolled away fill it: it starts again with those on screen.
+                    tracing::debug!("starting the glyph atlas again");
+                    self.atlas = self.atlas.next();
+                    let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
+                    self.grid.refill(|glyph| atlas.index(glyph, fonts));
+                    if self.atlas.full {
+                        tracing::warn!("the glyphs on screen do not fit the atlas");
+                        // Left set, every frame would start the atlas again to no avail.
+                        self.atlas.full = false;
+                    }
+                }
                 self.dirty = true;
                 self.draw();
             }
@@ -531,7 +543,7 @@ impl CompositorHandler for App {
             Ok(fonts) => {
                 self.fonts = fonts;
                 // Every glyph is rasterised again at the new size.
-                self.atlas = Atlas::default();
+                self.atlas = self.atlas.next();
                 let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
                 self.grid.refill(|glyph| atlas.index(glyph, fonts));
             }

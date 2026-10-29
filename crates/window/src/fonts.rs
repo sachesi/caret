@@ -76,6 +76,8 @@ struct Face {
     index: u32,
     /// Drawn heavier, standing in for a bold face the family lacks.
     embolden: bool,
+    /// The weight a variable face is drawn at, from its own axis.
+    weight: Option<f32>,
     /// Slanted, standing in for an italic face the family lacks.
     slant: bool,
 }
@@ -92,7 +94,25 @@ impl Face {
     fn has(&self, c: char) -> bool {
         self.font().is_some_and(|font| font.charmap().map(c) != 0)
     }
+
+    /// Draws the face at `weight`: from its weight axis if it has one that reaches it,
+    /// else heavier than it is. Drawing heavier would garble the overlapping outlines
+    /// variable faces have.
+    fn weigh(&mut self, weight: fontdb::Weight) {
+        let weight = f32::from(weight.0);
+        let reaches = self.font().is_some_and(|font| {
+            font.variations()
+                .any(|axis| axis.tag() == WEIGHT_AXIS && axis.max_value() >= weight)
+        });
+        if reaches {
+            self.weight = Some(weight);
+        } else {
+            self.embolden = true;
+        }
+    }
 }
+
+const WEIGHT_AXIS: swash::Tag = swash::tag_from_bytes(b"wght");
 
 pub struct Fonts {
     database: fontdb::Database,
@@ -149,6 +169,12 @@ impl Fonts {
             GlyphText::Char(c) => c.to_string(),
             GlyphText::Cluster(text) => text.to_string(),
         };
+        let cells = if glyph.wide { 2 } else { 1 };
+        if let GlyphText::Char(c) = glyph.text
+            && let Some(raster) = self.drawn(c, cells)
+        {
+            return Some(raster);
+        }
         let first = text.chars().next()?;
         let style = usize::from(glyph.style & (BOLD | ITALIC));
         let face = self.styles[style].clone();
@@ -156,11 +182,12 @@ impl Fonts {
             face
         } else {
             let mut fallback = self.fallback(first)?;
-            fallback.embolden = glyph.style & BOLD != 0;
+            if glyph.style & BOLD != 0 {
+                fallback.weigh(fontdb::Weight::BOLD);
+            }
             fallback.slant = glyph.style & ITALIC != 0;
             fallback
         };
-        let cells = if glyph.wide { 2 } else { 1 };
         let placed = self.shape_and_render(&face, &text)?;
         let mut raster = compose(&placed)?;
         // Colour bitmaps come at the size they were drawn at; they are fitted to their
@@ -178,9 +205,37 @@ impl Fonts {
         Some(raster)
     }
 
+    /// A box-drawing or block character, drawn to fill its cells.
+    fn drawn(&self, c: char, cells: i32) -> Option<Raster> {
+        let width = self.cell.width * cells;
+        let light = (self.cell.width / 8)
+            .max(self.cell.underline_thickness)
+            .max(1);
+        let cover = crate::box_drawing::coverage(
+            c,
+            width.unsigned_abs(),
+            self.cell.height.unsigned_abs(),
+            light.unsigned_abs(),
+        )?;
+        Some(Raster {
+            width: width.unsigned_abs(),
+            height: self.cell.height.unsigned_abs(),
+            left: 0,
+            top: 0,
+            pixels: cover.iter().flat_map(|&a| [a, a, a, a]).collect(),
+            color: false,
+        })
+    }
+
     /// Each glyph `text` shapes to in `face`, rendered and placed against the baseline.
     fn shape_and_render(&mut self, face: &Face, text: &str) -> Option<Vec<(i32, i32, Image)>> {
-        let shaper = rustybuzz::Face::from_slice(face.bytes(), face.index)?;
+        let mut shaper = rustybuzz::Face::from_slice(face.bytes(), face.index)?;
+        if let Some(weight) = face.weight {
+            shaper.set_variations(&[rustybuzz::Variation {
+                tag: rustybuzz::ttf_parser::Tag::from_bytes(b"wght"),
+                value: weight,
+            }]);
+        }
         let units = f32::from(u16::try_from(shaper.units_per_em()).ok()?);
         let to_pixels = self.size / units;
         let mut buffer = rustybuzz::UnicodeBuffer::new();
@@ -193,6 +248,7 @@ impl Fonts {
             .builder(font)
             .size(self.size)
             .hint(true)
+            .variations(face.weight.map(|weight| ("wght", weight)))
             .build();
         let mut render = Render::new(&[
             Source::ColorOutline(0),
@@ -310,7 +366,9 @@ fn face(
     let embolden = weight >= fontdb::Weight::SEMIBOLD && info.weight < fontdb::Weight::SEMIBOLD;
     let slant = style != fontdb::Style::Normal && info.style == fontdb::Style::Normal;
     let mut face = shared(database, id)?;
-    face.embolden = embolden;
+    if embolden {
+        face.weigh(weight);
+    }
     face.slant = slant;
     Some(face)
 }
@@ -325,6 +383,7 @@ fn shared(database: &mut fontdb::Database, id: fontdb::ID) -> Option<Face> {
         data,
         index,
         embolden: false,
+        weight: None,
         slant: false,
     })
 }
@@ -522,5 +581,21 @@ mod tests {
         assert!(!m.color && m.left >= 0 && m.top >= 0);
         assert!(m.width as i32 <= cell.width + 1 && m.top + m.height as i32 <= cell.baseline + 1);
         assert_eq!(fonts.raster(&letter(' ')), None);
+    }
+
+    #[test]
+    fn a_variable_face_is_made_bold_by_its_weight_axis() {
+        let mut database = fontdb::Database::new();
+        database.load_system_fonts();
+        let bold = face(
+            &mut database,
+            "Adwaita Sans",
+            fontdb::Weight::BOLD,
+            fontdb::Style::Normal,
+        );
+        let Some(bold) = bold else {
+            return;
+        };
+        assert_eq!((bold.weight, bold.embolden), (Some(700.0), false));
     }
 }
