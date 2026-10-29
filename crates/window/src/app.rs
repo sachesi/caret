@@ -53,6 +53,7 @@ use crate::grid::{Grid, packed};
 use crate::palette::Palette;
 use crate::renderer::{CURSOR_FOCUSED, CURSOR_WIDE, Constants, Scene};
 use crate::shortcuts::{Action, Shortcuts};
+use crate::state::WindowState;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
@@ -72,8 +73,8 @@ pub enum AppError {
     Server(#[from] caret_protocol::client::ConnectError),
 }
 
-/// The size a window opens at before the compositor picks one, in logical pixels.
-const DEFAULT_SIZE: (u32, u32) = (800, 500);
+/// The cells a window fits when it opens without a size of its own to open at.
+const DEFAULT_CELLS: (u32, u32) = (80, 24);
 
 /// How much larger the font is for each step it is zoomed in, and the most steps.
 const ZOOM: f32 = 1.1;
@@ -171,6 +172,9 @@ struct App {
     /// The window's size in logical pixels, as the compositor configures it, without
     /// the room around it for a shadow; none before the first configure.
     size: Option<(u32, u32)>,
+    /// The size it last had neither maximized nor tiled, to go back to and to keep
+    /// for the next window.
+    floating_size: Option<(u32, u32)>,
     /// Device pixels to the logical one, in 120ths.
     scale: u32,
     /// Fractional scaling, where the compositor offers it.
@@ -195,14 +199,16 @@ struct App {
     exit: bool,
 }
 
-/// The window's toplevel, its frame drawn by the compositor if `server_side` and it can.
+/// The window's toplevel, its frame drawn by the compositor if the settings ask and it
+/// can, maximized if the last window was.
 fn toplevel(
     compositor: &CompositorState,
     shell: &XdgShell,
     qh: &QueueHandle<App>,
-    server_side: bool,
+    config: &Config,
+    state: WindowState,
 ) -> Window {
-    let decorations = if server_side {
+    let decorations = if config.server_side_decorations {
         WindowDecorations::RequestServer
     } else {
         WindowDecorations::RequestClient
@@ -211,6 +217,9 @@ fn toplevel(
     window.set_title("Caret");
     window.set_app_id(crate::APP_ID);
     window.set_min_size(Some((360, 200)));
+    if state.maximized {
+        window.set_maximized();
+    }
     window
 }
 
@@ -230,7 +239,8 @@ pub fn run() -> Result<(), AppError> {
     config::import();
     let config = Config::load();
 
-    let window = toplevel(&compositor, &shell, &qh, config.server_side_decorations);
+    let window_state = WindowState::load();
+    let window = toplevel(&compositor, &shell, &qh, &config, window_state);
     let fractional = scale::Fractional::new(&globals, &qh, window.wl_surface());
     window.commit();
 
@@ -256,8 +266,6 @@ pub fn run() -> Result<(), AppError> {
         PrimarySelectionManagerState::bind(&globals, &qh).ok(),
         pastes,
     );
-    let cursor_shapes = CursorShapeManager::bind(&globals, &qh).ok();
-    let text_inputs = text_input::TextInput::bind(&globals, &qh);
     let mut app = App {
         registry: RegistryState::new(&globals),
         compositor,
@@ -267,6 +275,8 @@ pub fn run() -> Result<(), AppError> {
         gpu,
         window,
         connection: connection.clone(),
+        cursor_shapes: CursorShapeManager::bind(&globals, &qh).ok(),
+        text_inputs: text_input::TextInput::bind(&globals, &qh),
         qh,
         events: events.handle(),
         server,
@@ -297,16 +307,15 @@ pub fn run() -> Result<(), AppError> {
         config,
         desktop,
         size: None,
+        floating_size: window_state.size,
         scale: scale::WHOLE,
         fractional,
         grid_size: None,
         keyboard: None,
-        text_inputs,
         text_input: None,
         modifiers: Modifiers::default(),
         serial: 0,
         pointer: pointer::Pointer::default(),
-        cursor_shapes,
         clipboard,
         focused: false,
         dirty: true,
@@ -575,6 +584,11 @@ impl App {
     /// Ends the window, and its session unless the settings keep it running.
     /// Closes the window, and with it the session's tabs unless closing detaches it.
     fn end(&mut self) {
+        WindowState {
+            size: self.floating_size,
+            maximized: self.chrome.maximized,
+        }
+        .save();
         if let Some(session) = self.session {
             if self.config.close_detaches {
                 self.server.send(&Request::Detach { session });
@@ -638,6 +652,16 @@ impl App {
             });
         }
         self.open_first_tab();
+    }
+
+    /// The size in logical pixels that fits `columns` by `lines` cells.
+    fn fitting(&self, (columns, lines): (u32, u32)) -> (u32, u32) {
+        let cell = self.fonts.cell();
+        let logical = |device: u32| (f64::from(device) / self.factor()).ceil() as u32;
+        (
+            logical(columns * cell.width.unsigned_abs()) + 2 * PADDING,
+            logical(lines * cell.height.unsigned_abs()) + 2 * PADDING + self.chrome.top(),
+        )
     }
 
     /// Device pixels to the logical one.
@@ -1021,11 +1045,19 @@ impl WindowHandler for App {
         self.chrome.maximized = configure.is_maximized();
         self.chrome.active = configure.is_activated();
         let (width, height) = configure.new_size;
-        let (old_width, old_height) = self.size.unwrap_or(DEFAULT_SIZE);
+        let earlier = if self.chrome.floating {
+            self.floating_size.or(self.size)
+        } else {
+            self.size
+        };
+        let (old_width, old_height) = earlier.unwrap_or_else(|| self.fitting(DEFAULT_CELLS));
         self.size = Some((
             width.map_or(old_width, NonZeroU32::get),
             height.map_or(old_height, NonZeroU32::get),
         ));
+        if self.chrome.floating {
+            self.floating_size = self.size;
+        }
         self.place();
         self.fit();
         self.dirty = true;
