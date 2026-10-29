@@ -231,21 +231,36 @@ class Caret:
             start_new_session=True,
         )
         session.wait(lambda: session.windows() > 0 or self.process.poll() is not None, "the window")
+        self.server: int | None = None
         self.peak_rss = 0
+        self.peak_server_rss = 0
 
-    def caret_pid(self) -> int | None:
+    def find(self, name: str) -> int | None:
         for pid in process_tree(self.process.pid):
             try:
-                if Path(f"/proc/{pid}/comm").read_text().strip() == "caret":
+                if Path(f"/proc/{pid}/comm").read_text().strip() == name:
                     return pid
             except OSError:
                 pass
         return None
 
+    def caret_pid(self) -> int | None:
+        return self.find("caret")
+
+    def server_pid(self) -> int | None:
+        """The terminal server the window started, found while it is still the window's
+        child and remembered after."""
+        if self.server is None:
+            self.server = self.find("caret-server")
+        return self.server
+
     def sample(self) -> None:
         pid = self.caret_pid()
         if pid:
             self.peak_rss = max(self.peak_rss, status(pid, "VmRSS"))
+        server = self.server_pid()
+        if server and Path(f"/proc/{server}").exists():
+            self.peak_server_rss = max(self.peak_server_rss, status(server, "VmRSS"))
 
     def wait(self, timeout: float) -> None:
         deadline = time.monotonic() + timeout
@@ -255,8 +270,10 @@ class Caret:
                 raise TimeoutError
             self.sample()
             time.sleep(0.1)
+        self.end_server()
 
     def stop(self) -> None:
+        self.server_pid()
         if self.process.poll() is None:
             os.killpg(self.process.pid, signal.SIGTERM)
             try:
@@ -264,6 +281,21 @@ class Caret:
             except subprocess.TimeoutExpired:
                 os.killpg(self.process.pid, signal.SIGKILL)
                 self.process.wait()
+        self.end_server()
+
+    def end_server(self) -> None:
+        """Waits for the server to end, as it does once its last window closed; one whose
+        window was killed keeps the detached tab, and is ended here."""
+        if self.server is None:
+            return
+        proc = Path(f"/proc/{self.server}")
+        deadline = time.monotonic() + 5
+        while proc.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if proc.exists():
+            os.kill(self.server, signal.SIGTERM)
+            while proc.exists():
+                time.sleep(0.05)
 
 
 def read_timings(path: Path) -> tuple[list[int], list[int]]:
@@ -297,6 +329,7 @@ def throughput(session, caret, schemas, out, name, path) -> dict:
         "frame p50 µs": percentile(frames, 0.5),
         "frame p99 µs": percentile(frames, 0.99),
         "peak RSS MB": run.peak_rss / 1024,
+        "server RSS MB": run.peak_server_rss / 1024,
     }
 
 
@@ -321,16 +354,21 @@ def idle(session, caret, schemas, out) -> dict:
     run = Caret(session, caret, schemas, out / "idle.timings", ["sleep", "60"])
     # GTK's cursor stops blinking ten seconds after the last key.
     time.sleep(12)
-    pid = run.caret_pid()
-    if pid is None:
+    pid, server = run.caret_pid(), run.server_pid()
+    if pid is None or server is None:
         run.stop()
-        sys.exit("caret did not start for the idle run")
-    before = switches(pid)
+        sys.exit("caret or its server did not start for the idle run")
+    before, server_before = switches(pid), switches(server)
     time.sleep(10)
-    after = switches(pid)
-    rss = status(pid, "VmRSS")
+    after, server_after = switches(pid), switches(server)
+    rss, server_rss = status(pid, "VmRSS"), status(server, "VmRSS")
     run.stop()
-    return {"wakeups/s": woken(before, after) / 10, "idle RSS MB": rss / 1024}
+    return {
+        "wakeups/s": woken(before, after) / 10,
+        "server wakeups/s": woken(server_before, server_after) / 10,
+        "idle RSS MB": rss / 1024,
+        "server RSS MB": server_rss / 1024,
+    }
 
 
 def main() -> None:
