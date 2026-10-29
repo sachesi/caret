@@ -20,6 +20,12 @@ pub enum Action {
     ZoomReset,
     Fullscreen,
     TitleBar,
+    NewTab,
+    CloseTab,
+    NextTab,
+    PreviousTab,
+    /// Shows the tab of this number, counted from one.
+    ShowTab(u8),
 }
 
 /// Each action, its name in `config.toml`, and the keys it has unless bound to others.
@@ -43,6 +49,23 @@ const ACTIONS: &[(Action, &str, &[&str])] = &[
     (Action::ZoomReset, "zoom-reset", &["Ctrl+0", "Ctrl+KP_0"]),
     (Action::Fullscreen, "fullscreen", &["F11"]),
     (Action::TitleBar, "title-bar", &["Ctrl+Shift+H"]),
+    (Action::NewTab, "new-tab", &["Ctrl+Shift+T"]),
+    (Action::CloseTab, "close-tab", &["Ctrl+Shift+W"]),
+    (Action::NextTab, "next-tab", &["Ctrl+Page_Down", "Ctrl+Tab"]),
+    (
+        Action::PreviousTab,
+        "previous-tab",
+        &["Ctrl+Page_Up", "Ctrl+Shift+ISO_Left_Tab"],
+    ),
+    (Action::ShowTab(1), "tab-1", &["Alt+1"]),
+    (Action::ShowTab(2), "tab-2", &["Alt+2"]),
+    (Action::ShowTab(3), "tab-3", &["Alt+3"]),
+    (Action::ShowTab(4), "tab-4", &["Alt+4"]),
+    (Action::ShowTab(5), "tab-5", &["Alt+5"]),
+    (Action::ShowTab(6), "tab-6", &["Alt+6"]),
+    (Action::ShowTab(7), "tab-7", &["Alt+7"]),
+    (Action::ShowTab(8), "tab-8", &["Alt+8"]),
+    (Action::ShowTab(9), "tab-9", &["Alt+9"]),
 ];
 
 impl Action {

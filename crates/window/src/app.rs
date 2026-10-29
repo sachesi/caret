@@ -3,7 +3,6 @@
 
 use std::collections::HashMap;
 use std::num::NonZeroU32;
-use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::CommandExt;
 use std::time::Duration;
 
@@ -88,12 +87,15 @@ const PADDING: u32 = 6;
 mod clipboard;
 mod pointer;
 mod scale;
+mod tabs;
 
 /// A question the window is waiting for the answer to.
 enum Asked {
     Session,
-    /// The window's tab, opened at this size.
+    /// A tab, opened at this size.
     Tab(Size),
+    /// What a new tab runs.
+    NextCommand,
     /// The selected text, to offer as the clipboard or the primary selection.
     Copy {
         primary: bool,
@@ -122,11 +124,12 @@ struct App {
     server: connection::Connection,
     asked: HashMap<u32, Asked>,
     session: Option<SessionId>,
-    terminal: Option<TerminalId>,
+    tabs: Vec<tabs::Tab>,
+    selected: usize,
     /// A tab has been asked for and not yet opened.
     opening: bool,
-    /// A frame has been asked of the server and not yet come.
-    frame_asked: bool,
+    /// The tab the window opened, to show when the server tells of it.
+    opened: Option<TerminalId>,
     fonts: Fonts,
     /// Steps the font is zoomed in, or out for fewer than none.
     zoom: i32,
@@ -227,9 +230,10 @@ pub fn run() -> Result<(), AppError> {
         server,
         asked,
         session: None,
-        terminal: None,
+        tabs: Vec::new(),
+        selected: 0,
         opening: false,
-        frame_asked: false,
+        opened: None,
         fonts,
         zoom: 0,
         shortcuts: Shortcuts::new(&config.keys),
@@ -372,8 +376,10 @@ impl App {
                 (Some(Asked::Session), Answer::Session { session }) => {
                     self.session = Some(session);
                     self.server.send(&Request::Attach { session });
-                    self.open_tab();
+                    self.open_first_tab();
                 }
+                (Some(Asked::NextCommand), Answer::Command { command }) => self.open_tab(command),
+                (Some(Asked::NextCommand), _) => self.open_tab(Command::default()),
                 (Some(Asked::Copy { primary }), Answer::Text { text }) => {
                     if let Some(text) = text.filter(|text| !text.is_empty()) {
                         self.copy(text, primary);
@@ -381,7 +387,7 @@ impl App {
                 }
                 (Some(Asked::Tab(size)), Answer::Opened { terminal }) => {
                     self.opening = false;
-                    self.terminal = Some(terminal);
+                    self.opened = Some(terminal);
                     // The window may have changed size while the tab was opening.
                     if let Some(now) = self.grid_size.filter(|&now| now != size) {
                         self.server.send(&Request::Resize {
@@ -389,7 +395,6 @@ impl App {
                             size: now,
                         });
                     }
-                    self.ask_frame();
                 }
                 (Some(Asked::Copy { .. }) | None, _) => {}
                 (Some(_), answer) => {
@@ -397,29 +402,26 @@ impl App {
                     self.exit = true;
                 }
             },
-            Message::Frame { terminal, frame } if Some(terminal) == self.terminal => {
-                self.frame_asked = false;
-                let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
-                self.grid.apply(frame, |glyph| atlas.index(glyph, fonts));
-                self.renew_full_atlas();
-                self.dirty = true;
-                self.draw();
-            }
+            Message::Frame { terminal, frame } => self.tab_frame(terminal, frame),
             Message::Clipboard {
                 terminal,
                 primary,
                 text,
-            } if Some(terminal) == self.terminal => self.copy(text, primary),
-            Message::Title { terminal, title } if Some(terminal) == self.terminal => {
-                self.window.set_title(title.clone());
-                self.chrome.title = title;
-                self.dirty = true;
-                self.draw();
+            } if self.tab_of(terminal).is_some() => self.copy(text, primary),
+            Message::Title { terminal, title } => self.tab_titled(terminal, title),
+            Message::TabNamed { terminal, name } => self.tab_named(terminal, name),
+            Message::Attached { session, tabs } if Some(session) == self.session => {
+                for (index, tab) in (0..).zip(tabs) {
+                    self.tab_opened(index, tab);
+                }
             }
-            Message::Ended { terminal, .. } | Message::TabClosed { terminal, .. }
-                if Some(terminal) == self.terminal =>
-            {
-                self.exit = true;
+            Message::TabOpened {
+                session,
+                index,
+                tab,
+            } if Some(session) == self.session => self.tab_opened(index, tab),
+            Message::TabClosed { session, terminal } if Some(session) == self.session => {
+                self.tab_closed(terminal);
             }
             Message::SessionClosed { session } if Some(session) == self.session => {
                 self.exit = true;
@@ -514,39 +516,27 @@ impl App {
         self.exit = true;
     }
 
-    /// Asks for the window's tab once there is a session and a size to give it.
-    fn open_tab(&mut self) {
-        let (Some(session), Some(size)) = (self.session, self.grid_size) else {
-            return;
-        };
-        if self.opening || self.terminal.is_some() {
+    /// Asks for the window's first tab once there is a session and a size to give it.
+    fn open_first_tab(&mut self) {
+        if self.session.is_none() || self.grid_size.is_none() {
             return;
         }
-        let directory = std::env::current_dir()
-            .ok()
-            .map(|path| Bytes(path.as_os_str().as_bytes().to_vec()));
-        let command = Command {
-            argv: self.config.argv(),
-            directory,
-            env: std::env::vars().collect(),
-            hold: false,
-        };
-        let id = self.server.ask(Question::OpenTab {
-            session,
-            index: 0,
-            command,
-            size,
-        });
-        self.asked.insert(id, Asked::Tab(size));
+        if self.opening || !self.tabs.is_empty() {
+            return;
+        }
+        self.open_tab(Command::default());
         self.opening = true;
     }
 
+    /// Asks for the next frame of the tab shown.
     fn ask_frame(&mut self) {
-        if let Some(terminal) = self.terminal
-            && !self.frame_asked
+        if let Some(tab) = self.tabs.get_mut(self.selected)
+            && !tab.frame_asked
         {
-            self.server.send(&Request::Frame { terminal });
-            self.frame_asked = true;
+            self.server.send(&Request::Frame {
+                terminal: tab.terminal,
+            });
+            tab.frame_asked = true;
         }
     }
 
@@ -561,7 +551,7 @@ impl App {
             let cells = pixels.saturating_sub(2 * padding) / cell.max(1).unsigned_abs();
             u16::try_from(cells.max(1)).unwrap_or(u16::MAX)
         };
-        let height = height.saturating_sub(self.chrome.header());
+        let height = height.saturating_sub(self.chrome.top());
         let size = Size {
             columns: fit(self.device(width), cell.width),
             lines: fit(self.device(height), cell.height),
@@ -572,10 +562,13 @@ impl App {
             return;
         }
         self.grid_size = Some(size);
-        match self.terminal {
-            Some(terminal) => self.server.send(&Request::Resize { terminal, size }),
-            None => self.open_tab(),
+        for tab in &self.tabs {
+            self.server.send(&Request::Resize {
+                terminal: tab.terminal,
+                size,
+            });
         }
+        self.open_first_tab();
     }
 
     /// Device pixels to the logical one.
@@ -592,7 +585,7 @@ impl App {
     fn origin(&self) -> (i32, i32) {
         let margin = self.chrome.margin();
         let x = self.device(margin + PADDING);
-        let y = self.device(margin + self.chrome.header() + PADDING);
+        let y = self.device(margin + self.chrome.top() + PADDING);
         (x as i32, y as i32)
     }
 
@@ -683,15 +676,15 @@ impl App {
         }
         // Around the window's frame, the surface is clear; without one, it is the
         // terminal's to its edges.
-        let clear = if quads.is_empty() {
+        let clear = if self.chrome.framed() {
+            [0.0; 4]
+        } else {
             [
                 f32::from(background.r) / 255.0,
                 f32::from(background.g) / 255.0,
                 f32::from(background.b) / 255.0,
                 1.0,
             ]
-        } else {
-            [0.0; 4]
         };
         let mut scene = Scene {
             grid: &mut self.grid,
@@ -709,31 +702,26 @@ impl App {
         self.ask_frame();
     }
 
-    /// The window's frame for a window `size` big, its title and icon put in the atlas.
+    /// The window's frame and bars for a window `size` big, their text and icons put in
+    /// the atlas.
     fn frame_quads(&mut self, size: (u32, u32)) -> Vec<chrome::Quad> {
-        if !self.chrome.drawn {
-            return Vec::new();
-        }
         let scale = self.factor() as f32;
         let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
-        let title = (!self.chrome.title.is_empty()).then(|| {
-            let width = Chrome::title_width(size.0, scale);
-            let text = &self.chrome.title;
-            let drawing = Drawing::Title {
-                text: text.clone(),
-                width,
-            };
-            atlas.drawing(&drawing, || fonts.label(text, width))
-        });
-        let close = atlas.drawing(&Drawing::Close, || Some(chrome::close_icon(scale)));
-        let entry = |index: u32| Some((index, atlas.entry(index)?));
+        let line = fonts.label_height();
         self.chrome.quads(
             size,
             scale,
             (packed(self.grid.background) << 8) | 0xff,
-            title.and_then(entry),
-            fonts.label_height(),
-            entry(close),
+            line,
+            |drawing| {
+                let index = atlas.drawing(drawing, || match drawing {
+                    Drawing::Title { text, width } => fonts.label(text, *width, true),
+                    Drawing::Tab { text, width } => fonts.label(text, *width, false),
+                    Drawing::Close => Some(chrome::close_icon(scale)),
+                    Drawing::NewTab => Some(chrome::new_tab_icon(scale)),
+                });
+                Some((index, atlas.entry(index)?))
+            },
         )
     }
 
@@ -772,7 +760,7 @@ impl App {
             self.act(action);
             return;
         }
-        let Some(terminal) = self.terminal else {
+        let Some(terminal) = self.terminal() else {
             return;
         };
         let Modifiers { ctrl, alt, .. } = self.modifiers;
@@ -811,7 +799,7 @@ impl App {
             Action::NewWindow => new_window(),
             Action::CloseWindow => self.close(),
             Action::Copy => {
-                if let Some(terminal) = self.terminal {
+                if let Some(terminal) = self.terminal() {
                     let id = self.server.ask(Question::SelectionText { terminal });
                     self.asked.insert(id, Asked::Copy { primary: false });
                 }
@@ -831,6 +819,15 @@ impl App {
             }
             // The file being watched, the window takes the change from there.
             Action::TitleBar => config::write("title-bar", !self.config.title_bar),
+            Action::NewTab => self.new_tab(),
+            Action::CloseTab => self.close_tab(self.selected),
+            Action::NextTab => self.step_tab(1),
+            Action::PreviousTab => self.step_tab(-1),
+            Action::ShowTab(number) => {
+                if let Some(index) = usize::from(number).checked_sub(1) {
+                    self.show(index);
+                }
+            }
         }
     }
 
@@ -847,7 +844,7 @@ impl App {
 
     fn set_focus(&mut self, focused: bool) {
         self.focused = focused;
-        if let Some(terminal) = self.terminal {
+        if let Some(terminal) = self.terminal() {
             self.server.send(&Request::Focus { terminal, focused });
         }
         self.dirty = true;

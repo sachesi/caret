@@ -156,7 +156,7 @@ impl App {
 
     /// Types text read from a selection, marked as pasted for a program that asks.
     pub(super) fn pasted(&mut self, bytes: &[u8]) {
-        let Some(terminal) = self.terminal else {
+        let Some(terminal) = self.terminal() else {
             return;
         };
         let bracketed = self.grid.mode.contains(Mode::BRACKETED_PASTE);

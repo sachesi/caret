@@ -14,7 +14,7 @@ use smithay_client_toolkit::reexports::protocols::wp::cursor_shape::v1::client::
 use smithay_client_toolkit::seat::pointer::{PointerEvent, PointerEventKind, PointerHandler};
 
 use super::{App, Asked};
-use crate::chrome::Part;
+use crate::chrome::{Chrome, Part};
 
 /// Linux's button codes.
 const BUTTON_LEFT: u32 = 0x110;
@@ -80,8 +80,7 @@ impl App {
         if part == self.chrome.hovered {
             return;
         }
-        let shown = |part: Option<Part>| part.filter(|&part| part == Part::Close);
-        let redraw = shown(part) != shown(self.chrome.hovered);
+        let redraw = Chrome::hover_shows(self.chrome.hovered, part);
         self.chrome.hovered = part;
         if let Some(shape) = &self.pointer.shape {
             shape.set_shape(self.pointer.entered, cursor(part));
@@ -93,15 +92,27 @@ impl App {
     }
 
     fn pressed_frame(&mut self, part: Part, button: u32, serial: u32) {
+        match (part, button) {
+            (Part::Close | Part::NewTab | Part::CloseTab(_), BUTTON_LEFT) => {
+                self.chrome.pressed = Some(part);
+                self.dirty = true;
+                self.draw();
+                return;
+            }
+            (Part::Tab(index), BUTTON_LEFT) => {
+                self.show(index);
+                return;
+            }
+            (Part::Tab(index) | Part::CloseTab(index), BUTTON_MIDDLE) => {
+                self.close_tab(index);
+                return;
+            }
+            _ => {}
+        }
         let Some(seat) = self.seat.clone() else {
             return;
         };
         match (part, button) {
-            (Part::Close, BUTTON_LEFT) => {
-                self.chrome.pressed = Some(part);
-                self.dirty = true;
-                self.draw();
-            }
             (Part::Edge(edge), BUTTON_LEFT) => self.window.resize(&seat, serial, edge),
             (Part::Header, BUTTON_LEFT) => {
                 let now = Instant::now();
@@ -134,15 +145,21 @@ impl App {
         }
     }
 
+    /// Clicks the button the pointer was pressed on, if it is still over it.
     fn released_frame(&mut self) {
-        if self.chrome.pressed.take() == Some(Part::Close) {
-            if self.chrome.hovered == Some(Part::Close) {
-                self.close();
-            } else {
-                self.dirty = true;
-                self.draw();
+        let Some(pressed) = self.chrome.pressed.take() else {
+            return;
+        };
+        self.dirty = true;
+        if self.chrome.hovered == Some(pressed) {
+            match pressed {
+                Part::Close => self.close(),
+                Part::NewTab => self.new_tab(),
+                Part::CloseTab(index) => self.close_tab(index),
+                _ => {}
             }
         }
+        self.draw();
     }
 
     /// Whether the program gets the mouse: it asked, and Shift is not held to select
@@ -153,7 +170,7 @@ impl App {
 
     fn report(&mut self, button: MouseButton, action: MouseAction) {
         let (Some(terminal), Some((point, _))) =
-            (self.terminal, self.cell_at(self.pointer.position))
+            (self.terminal(), self.cell_at(self.pointer.position))
         else {
             return;
         };
@@ -175,7 +192,7 @@ impl App {
     }
 
     pub(super) fn select(&mut self, select: Select) {
-        if let Some(terminal) = self.terminal {
+        if let Some(terminal) = self.terminal() {
             self.server.send(&Request::Select { terminal, select });
         }
     }
@@ -231,7 +248,7 @@ impl App {
             return;
         }
         if button == BUTTON_LEFT && std::mem::take(&mut self.pointer.selecting) {
-            let Some(terminal) = self.terminal else {
+            let Some(terminal) = self.terminal() else {
                 return;
             };
             let id = self.server.ask(Question::SelectionText { terminal });
@@ -266,7 +283,7 @@ impl App {
         let whole = total.trunc();
         self.pointer.scrolled = total - whole;
         let whole = whole as i32;
-        let Some(terminal) = self.terminal else {
+        let Some(terminal) = self.terminal() else {
             return;
         };
         if whole == 0 {
@@ -327,7 +344,7 @@ impl PointerHandler for App {
                     self.chrome.hovered = self.part();
                 }
                 PointerEventKind::Leave { .. } => {
-                    if self.chrome.hovered.take() == Some(Part::Close) {
+                    if Chrome::hover_shows(self.chrome.hovered.take(), None) {
                         self.dirty = true;
                         self.draw();
                     }
@@ -378,7 +395,9 @@ impl PointerHandler for App {
 fn cursor(part: Option<Part>) -> Shape {
     match part {
         None => Shape::Text,
-        Some(Part::Header | Part::Close) => Shape::Default,
+        Some(Part::Header | Part::Close | Part::NewTab | Part::Tab(_) | Part::CloseTab(_)) => {
+            Shape::Default
+        }
         Some(Part::Edge(edge)) => match edge {
             ResizeEdge::Top => Shape::NResize,
             ResizeEdge::Bottom => Shape::SResize,

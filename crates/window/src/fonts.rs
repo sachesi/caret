@@ -139,9 +139,9 @@ pub struct Fonts {
     cell: CellMetrics,
     context: ScaleContext,
     fallbacks: HashMap<char, Option<Face>>,
-    /// The bold sans-serif face of the window's own text, its size in pixels to the em,
-    /// and its line's ascent and height.
-    label: Option<Face>,
+    /// The sans-serif faces of the window's own text, regular and bold, their size in
+    /// pixels to the em, and their line's ascent and height.
+    labels: [Option<Face>; 2],
     label_size: f32,
     label_ascent: i32,
     label_height: i32,
@@ -172,8 +172,11 @@ impl Fonts {
         let size = points * 96.0 / 72.0 * scale;
         let cell = measure(&regular, size).ok_or(FontError::NoFont)?;
         let label_size = LABEL_POINTS * 96.0 / 72.0 * scale;
-        let label = label_face(&mut database);
-        let (label_ascent, label_height) = label
+        let labels = [
+            label_face(&mut database, fontdb::Weight::NORMAL),
+            label_face(&mut database, fontdb::Weight::BOLD),
+        ];
+        let (label_ascent, label_height) = labels[1]
             .as_ref()
             .and_then(|face| {
                 let metrics = face.font()?.metrics(&[]).scale(label_size);
@@ -188,7 +191,7 @@ impl Fonts {
             cell,
             context: ScaleContext::new(),
             fallbacks: HashMap::new(),
-            label,
+            labels,
             label_size,
             label_ascent,
             label_height,
@@ -204,10 +207,10 @@ impl Fonts {
         self.label_height
     }
 
-    /// `text` in the window's own face, from the top of its line, cut short with an
-    /// ellipsis to fit `width` pixels; none if nothing in it draws.
-    pub fn label(&mut self, text: &str, width: u32) -> Option<Raster> {
-        let face = self.label.clone()?;
+    /// `text` in the window's own face, bold or not, from the top of its line, cut short
+    /// with an ellipsis to fit `width` pixels; none if nothing in it draws.
+    pub fn label(&mut self, text: &str, width: u32, bold: bool) -> Option<Raster> {
+        let face = self.labels[usize::from(bold)].clone()?;
         let size = self.label_size;
         let (mut glyphs, advance) = shape(&face, text, size)?;
         if advance > width as f32 {
@@ -413,9 +416,9 @@ fn shape(face: &Face, text: &str, size: f32) -> Option<(Vec<Shaped>, f32)> {
     Some((glyphs, pen))
 }
 
-/// The bold face of the first of [`LABEL_FAMILIES`] installed, else of the sans-serif
-/// family.
-fn label_face(database: &mut fontdb::Database) -> Option<Face> {
+/// The face at `weight` of the first of [`LABEL_FAMILIES`] installed, else of the
+/// sans-serif family.
+fn label_face(database: &mut fontdb::Database, weight: fontdb::Weight) -> Option<Face> {
     let mut families: Vec<fontdb::Family> = LABEL_FAMILIES
         .iter()
         .map(|&name| fontdb::Family::Name(name))
@@ -423,14 +426,14 @@ fn label_face(database: &mut fontdb::Database) -> Option<Face> {
     families.push(fontdb::Family::SansSerif);
     let id = database.query(&fontdb::Query {
         families: &families,
-        weight: fontdb::Weight::BOLD,
+        weight,
         style: fontdb::Style::Normal,
         stretch: fontdb::Stretch::Normal,
     })?;
     let light = database.face(id)?.weight < fontdb::Weight::SEMIBOLD;
     let mut face = shared(database, id)?;
-    if light {
-        face.weigh(fontdb::Weight::BOLD);
+    if light && weight >= fontdb::Weight::SEMIBOLD {
+        face.weigh(weight);
     }
     Some(face)
 }
