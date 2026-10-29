@@ -21,6 +21,8 @@ pub enum Choice {
     Reattach,
     Preferences,
     About,
+    /// The main menu, for a window without its header bar.
+    MainMenu,
     OpenLink(String),
     CopyLink(String),
 }
@@ -55,7 +57,8 @@ impl App {
         self.draw();
     }
 
-    pub(super) fn open_main_menu(&mut self) {
+    /// The main menu: under its button in the header bar, or at `at` without one.
+    pub(super) fn open_main_menu(&mut self, at: Option<(f32, f32)>) {
         let Some((width, _)) = self.size else {
             return;
         };
@@ -81,7 +84,10 @@ impl App {
                 self.item("About Caret", Choice::About, true),
             ],
         ]);
-        self.show_menu(sections, Menu::under_main_button(width), true);
+        match at {
+            Some(at) => self.show_menu(sections, at, false),
+            None => self.show_menu(sections, Menu::under_main_button(width), true),
+        }
     }
 
     /// Asks for the link under the pointer, to open the terminal's menu with it.
@@ -125,7 +131,10 @@ impl App {
                 self.act_item("Title Bar", Action::TitleBar),
                 self.act_item("Full Screen", Action::Fullscreen),
             ]);
-            sections.push(vec![self.act_item("Close Window", Action::CloseWindow)]);
+            sections.push(vec![
+                self.act_item("Close Window", Action::CloseWindow),
+                self.item("Main Menu", Choice::MainMenu, true),
+            ]);
         }
         self.show_menu(sections, at, false);
     }
@@ -160,6 +169,7 @@ impl App {
             .and_then(|menu| menu.items().nth(index))
             .is_some_and(|item| item.enabled);
         let choice = self.choices.get(index).cloned();
+        let at = self.chrome.menu.as_ref().map(|menu| menu.at);
         self.close_menu();
         match choice.filter(|_| enabled) {
             Some(Choice::Act(action)) => self.act(action),
@@ -182,6 +192,7 @@ impl App {
                 None => self.toast("Could not make the settings file".to_owned()),
             },
             Some(Choice::About) => self.about(),
+            Some(Choice::MainMenu) => self.open_main_menu(at),
             None => {}
         }
     }

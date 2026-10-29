@@ -187,7 +187,7 @@ impl App {
         }
         match (part, button) {
             (Part::MainMenu, BUTTON_LEFT) => {
-                self.open_main_menu();
+                self.open_main_menu(None);
                 return;
             }
             (Part::Menu | Part::Dialog, _) => return,
