@@ -1,5 +1,6 @@
 //! The settings in `config.toml`, in Caret's directory of the user's configuration.
 
+use std::collections::HashMap;
 use std::mem::MaybeUninit;
 use std::os::fd::{AsFd, OwnedFd};
 use std::path::{Path, PathBuf};
@@ -8,6 +9,8 @@ use std::process::Command;
 use caret_protocol::CursorShape;
 use rustix::fs::inotify;
 use toml_edit::{DocumentMut, Item, Value};
+
+use crate::shortcuts::{Action, Shortcut};
 
 /// The font size when neither the settings nor the desktop name one.
 const POINTS: f32 = 11.0;
@@ -43,6 +46,8 @@ pub struct Config {
     pub title_bar: bool,
     /// The compositor draws the window's frame where it offers to.
     pub server_side_decorations: bool,
+    /// The keys of the actions bound to others than Caret's.
+    pub keys: HashMap<Action, Vec<Shortcut>>,
 }
 
 impl Default for Config {
@@ -60,6 +65,7 @@ impl Default for Config {
             close_detaches: false,
             title_bar: true,
             server_side_decorations: true,
+            keys: HashMap::new(),
         }
     }
 }
@@ -93,11 +99,43 @@ impl Config {
             }
         };
         for (key, item) in document.iter() {
-            if let Err(expected) = config.set(key, item) {
+            if key == "keys" {
+                config.bind(path, item);
+            } else if let Err(expected) = config.set(key, item) {
                 tracing::warn!("{}: `{key}` is not {expected}", path.display());
             }
         }
         config
+    }
+
+    /// Binds the actions in the `[keys]` table `item` of the file at `path` to the keys
+    /// it gives them, a key or a list of them; an empty list leaves an action unbound.
+    fn bind(&mut self, path: &Path, item: &Item) {
+        let Some(table) = item.as_table_like() else {
+            tracing::warn!("{}: `keys` is not a table", path.display());
+            return;
+        };
+        for (name, keys) in table.iter() {
+            let Some(action) = Action::named(name) else {
+                tracing::warn!("{}: `keys.{name}` is not an action", path.display());
+                continue;
+            };
+            let written: Option<Vec<&str>> = match keys.as_value() {
+                Some(Value::String(key)) => Some(vec![key.value().as_str()]),
+                Some(Value::Array(keys)) => keys.iter().map(Value::as_str).collect(),
+                _ => None,
+            };
+            let shortcuts: Option<Vec<Shortcut>> =
+                written.and_then(|keys| keys.into_iter().map(Shortcut::parse).collect());
+            if let Some(shortcuts) = shortcuts {
+                self.keys.insert(action, shortcuts);
+            } else {
+                tracing::warn!(
+                    "{}: `keys.{name}` is not a key such as \"Ctrl+Shift+T\" or a list of them",
+                    path.display()
+                );
+            }
+        }
     }
 
     /// Sets setting `key` to `item`, or says what it should have been.
@@ -258,6 +296,36 @@ fn quoted(value: &str) -> Option<String> {
     Some(text)
 }
 
+/// Sets `key` to `value` in `config.toml`, keeping the rest of the file as it is.
+pub fn write(key: &str, value: impl Into<Value>) {
+    let Some(path) = path() else {
+        return;
+    };
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => {
+            tracing::warn!("reading {}: {error}", path.display());
+            return;
+        }
+    };
+    let mut document = match text.parse::<DocumentMut>() {
+        Ok(document) => document,
+        Err(error) => {
+            tracing::warn!("not changing {}: {error}", path.display());
+            return;
+        }
+    };
+    document[key] = toml_edit::value(value);
+    // Written beside it and renamed over it, so that no reader sees half a file.
+    let written = path.with_extension("toml.new");
+    let saved = std::fs::write(&written, document.to_string())
+        .and_then(|()| std::fs::rename(&written, &path));
+    if let Err(error) = saved {
+        tracing::warn!("writing {}: {error}", path.display());
+    }
+}
+
 /// Watches the directory `config.toml` is in, made if it is missing, so that changes
 /// to the file are seen however an editor saves it.
 pub fn watch() -> std::io::Result<OwnedFd> {
@@ -383,6 +451,18 @@ mod tests {
         assert_eq!(config.custom_command, "tmux new -s 'it'");
         assert!(config.close_detaches);
         assert!(!document.contains("title-bar") && !document.contains("color-scheme"));
+    }
+
+    #[test]
+    fn keys_bind_actions_to_one_key_a_list_or_none() {
+        let config = parse(
+            "[keys]\ncopy = \"Ctrl+Insert\"\npaste = [\"Shift+Insert\", \"Ctrl+Shift+V\"]\n\
+             fullscreen = []\nfly = \"F1\"\nzoom-in = \"Ctrl+Nothing\"\n",
+        );
+        assert_eq!(config.keys[&Action::Copy].len(), 1);
+        assert_eq!(config.keys[&Action::Paste].len(), 2);
+        assert!(config.keys[&Action::Fullscreen].is_empty());
+        assert!(!config.keys.contains_key(&Action::ZoomIn));
     }
 
     #[test]

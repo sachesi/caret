@@ -4,11 +4,13 @@
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::process::CommandExt;
 use std::time::Duration;
 
 use caret_protocol::encode::{self, Modifiers};
 use caret_protocol::{
-    Answer, Bytes, Command, Message, Options, Question, Request, SessionId, Size, TerminalId,
+    Answer, Bytes, Command, Message, Options, Question, Request, Select, SessionId, Size,
+    TerminalId,
 };
 use smithay_client_toolkit::compositor::{
     CompositorHandler, CompositorState, FrameCallbackData, Region,
@@ -50,6 +52,7 @@ use crate::gpu::{FRAMES_IN_FLIGHT, Gpu, GpuError};
 use crate::grid::{Grid, packed};
 use crate::palette::Palette;
 use crate::renderer::{CURSOR_FOCUSED, CURSOR_WIDE, Constants, Scene};
+use crate::shortcuts::{Action, Shortcuts};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
@@ -71,6 +74,10 @@ pub enum AppError {
 
 /// The size a window opens at before the compositor picks one, in logical pixels.
 const DEFAULT_SIZE: (u32, u32) = (800, 500);
+
+/// How much larger the font is for each step it is zoomed in, and the most steps.
+const ZOOM: f32 = 1.1;
+const ZOOM_STEPS: i32 = 12;
 
 /// How long the window waits, before its first frame, for the desktop's preferences.
 const DESKTOP_WAIT: Duration = Duration::from_millis(250);
@@ -121,6 +128,9 @@ struct App {
     /// A frame has been asked of the server and not yet come.
     frame_asked: bool,
     fonts: Fonts,
+    /// Steps the font is zoomed in, or out for fewer than none.
+    zoom: i32,
+    shortcuts: Shortcuts,
     atlas: Atlas,
     grid: Grid,
     palette: Palette,
@@ -221,6 +231,8 @@ pub fn run() -> Result<(), AppError> {
         opening: false,
         frame_asked: false,
         fonts,
+        zoom: 0,
+        shortcuts: Shortcuts::new(&config.keys),
         atlas: Atlas::default(),
         grid: Grid::new(FRAMES_IN_FLIGHT),
         palette,
@@ -259,6 +271,19 @@ pub fn run() -> Result<(), AppError> {
         }
     })?;
     Ok(())
+}
+
+/// Opens another window, a program of its own.
+fn new_window() {
+    let started = std::env::current_exe()
+        .and_then(|program| std::process::Command::new(program).process_group(0).spawn());
+    match started {
+        // Waited for, so that it leaves no zombie when it ends.
+        Ok(mut window) => {
+            std::thread::spawn(move || window.wait());
+        }
+        Err(error) => tracing::warn!("opening a window: {error}"),
+    }
 }
 
 /// The palette of the style the settings and the desktop choose.
@@ -433,6 +458,7 @@ impl App {
                 }));
         }
         self.chrome.header_bar = self.config.title_bar;
+        self.shortcuts = Shortcuts::new(&self.config.keys);
         self.restyle(&before);
     }
 
@@ -464,6 +490,7 @@ impl App {
     /// again.
     fn load_fonts(&mut self) {
         let (family, points) = self.config.font_for(self.desktop.monospace.as_deref());
+        let points = points * ZOOM.powi(self.zoom);
         match Fonts::new(family.as_deref(), points, self.factor() as f32) {
             Ok(fonts) => {
                 self.fonts = fonts;
@@ -741,24 +768,14 @@ impl App {
     }
 
     fn key(&mut self, event: &KeyEvent) {
+        if let Some(action) = self.shortcuts.action(event.keysym, self.modifiers) {
+            self.act(action);
+            return;
+        }
         let Some(terminal) = self.terminal else {
             return;
         };
-        let Modifiers { shift, ctrl, alt } = self.modifiers;
-        if ctrl && shift && !alt {
-            match event.keysym {
-                Keysym::C | Keysym::c => {
-                    let id = self.server.ask(Question::SelectionText { terminal });
-                    self.asked.insert(id, Asked::Copy { primary: false });
-                    return;
-                }
-                Keysym::V | Keysym::v => {
-                    self.paste(false);
-                    return;
-                }
-                _ => {}
-            }
-        }
+        let Modifiers { ctrl, alt, .. } = self.modifiers;
         // Text as the keymap and compose sequences make it, dead keys included; with Ctrl
         // or Alt the key itself counts.
         let typed = event
@@ -787,6 +804,45 @@ impl App {
                 bottom: self.config.scroll_on_keystroke,
             });
         }
+    }
+
+    fn act(&mut self, action: Action) {
+        match action {
+            Action::NewWindow => new_window(),
+            Action::CloseWindow => self.close(),
+            Action::Copy => {
+                if let Some(terminal) = self.terminal {
+                    let id = self.server.ask(Question::SelectionText { terminal });
+                    self.asked.insert(id, Asked::Copy { primary: false });
+                }
+            }
+            Action::Paste => self.paste(false),
+            Action::SelectAll => self.select(Select::All),
+            Action::Deselect => self.select(Select::Clear),
+            Action::ZoomIn => self.zoom(Some(1)),
+            Action::ZoomOut => self.zoom(Some(-1)),
+            Action::ZoomReset => self.zoom(None),
+            Action::Fullscreen => {
+                if self.chrome.fullscreen {
+                    self.window.unset_fullscreen();
+                } else {
+                    self.window.set_fullscreen(None);
+                }
+            }
+            // The file being watched, the window takes the change from there.
+            Action::TitleBar => config::write("title-bar", !self.config.title_bar),
+        }
+    }
+
+    /// Makes the font `steps` larger or smaller, or its size again.
+    fn zoom(&mut self, steps: Option<i32>) {
+        self.zoom = steps.map_or(0, |steps| {
+            (self.zoom + steps).clamp(-ZOOM_STEPS, ZOOM_STEPS)
+        });
+        self.load_fonts();
+        self.fit();
+        self.dirty = true;
+        self.draw();
     }
 
     fn set_focus(&mut self, focused: bool) {

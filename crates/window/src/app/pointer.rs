@@ -174,7 +174,7 @@ impl App {
         }
     }
 
-    fn select(&mut self, select: Select) {
+    pub(super) fn select(&mut self, select: Select) {
         if let Some(terminal) = self.terminal {
             self.server.send(&Request::Select { terminal, select });
         }

@@ -13,6 +13,7 @@ mod grid;
 mod keys;
 mod palette;
 mod renderer;
+mod shortcuts;
 
 use std::process::ExitCode;
 
