@@ -1,10 +1,13 @@
 //! The pointer: selecting, reporting the mouse to programs that ask, scrolling, and
 //! pasting the primary selection.
 
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use caret_protocol::encode::{self, MouseAction, MouseButton};
-use caret_protocol::{Bytes, Mode, Point, Question, Request, Scroll, Select, SelectionKind};
+use caret_protocol::{
+    Bytes, Mode, Point, Question, Request, Scroll, Select, SelectionKind, TerminalId,
+};
 use smithay_client_toolkit::reexports::client::protocol::wl_pointer::WlPointer;
 use smithay_client_toolkit::reexports::client::{Connection, QueueHandle};
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_toplevel::ResizeEdge;
@@ -31,8 +34,12 @@ const NOTCH: f64 = 3.0;
 pub struct Pointer {
     pub proxy: Option<WlPointer>,
     pub shape: Option<WpCursorShapeDeviceV1>,
-    /// The serial of the pointer's entering the window, which setting its shape needs.
+    /// The serial of the pointer's entering the window, which setting its shape needs,
+    /// and the shape set since.
     entered: u32,
+    shown: Option<Shape>,
+    /// The cell under the pointer, as the terminal was told.
+    cell: Option<Point>,
     /// The last click on the header bar, which a second soon after maximizes the window.
     header_click: Option<Instant>,
     /// Logical pixels from the surface's corner.
@@ -82,13 +89,75 @@ impl App {
         }
         let redraw = Chrome::hover_shows(self.chrome.hovered, part);
         self.chrome.hovered = part;
-        if let Some(shape) = &self.pointer.shape {
-            shape.set_shape(self.pointer.entered, cursor(part));
-        }
+        self.set_cursor();
         if redraw {
             self.dirty = true;
             self.draw();
         }
+    }
+
+    /// The cursor's shape where the pointer is.
+    fn set_cursor(&mut self) {
+        let shape = match self.chrome.hovered {
+            Some(part) => cursor(part),
+            None if self.modifiers.ctrl && self.chrome.link.is_some() => Shape::Pointer,
+            None if self.grid.mode.intersects(Mode::MOUSE_MODE) => Shape::Default,
+            None => Shape::Text,
+        };
+        if let Some(device) = &self.pointer.shape
+            && self.pointer.shown != Some(shape)
+        {
+            device.set_shape(self.pointer.entered, shape);
+            self.pointer.shown = Some(shape);
+        }
+    }
+
+    /// Tells the terminal which cell the pointer is over, for it to mark the address
+    /// there.
+    fn hover_cell(&mut self) {
+        let cell = if self.chrome.hovered.is_none() {
+            self.cell_at(self.pointer.position).map(|(point, _)| point)
+        } else {
+            None
+        };
+        if cell != self.pointer.cell
+            && let Some(terminal) = self.terminal()
+        {
+            self.pointer.cell = cell;
+            self.server.send(&Request::Hover {
+                terminal,
+                point: cell,
+            });
+        }
+        self.show_link();
+    }
+
+    /// Tells `terminal` the pointer is over none of its cells.
+    pub(super) fn unhover(&mut self, terminal: TerminalId) {
+        if self.pointer.cell.take().is_some() {
+            self.server.send(&Request::Hover {
+                terminal,
+                point: None,
+            });
+        }
+    }
+
+    /// Shows the address of the link under the pointer, as the last frame found it, and
+    /// the cursor that opens it. With Ctrl held any address shows; without, a program's
+    /// link still does, since its text may say otherwise.
+    pub(super) fn show_link(&mut self) {
+        let link = self
+            .grid
+            .hovered
+            .as_ref()
+            .filter(|link| self.pointer.cell.is_some() && (self.modifiers.ctrl || link.marked))
+            .map(|link| link.uri.clone());
+        if link != self.chrome.link {
+            self.chrome.link = link;
+            self.dirty = true;
+            self.draw();
+        }
+        self.set_cursor();
     }
 
     fn pressed_frame(&mut self, part: Part, button: u32, serial: u32) {
@@ -226,6 +295,14 @@ impl App {
             return;
         }
         match button {
+            MouseButton::Left if self.modifiers.ctrl => {
+                if let (Some(terminal), Some((point, _))) =
+                    (self.terminal(), self.cell_at(self.pointer.position))
+                {
+                    let id = self.server.ask(Question::LinkAt { terminal, point });
+                    self.asked.insert(id, Asked::Link);
+                }
+            }
             MouseButton::Left => {
                 let Some((point, right)) = self.cell_at(self.pointer.position) else {
                     return;
@@ -353,21 +430,25 @@ impl PointerHandler for App {
                 PointerEventKind::Enter { serial } => {
                     self.pointer.position = event.position;
                     self.pointer.entered = serial;
-                    if let Some(shape) = &self.pointer.shape {
-                        shape.set_shape(serial, cursor(self.part()));
-                    }
+                    self.pointer.shown = None;
                     self.chrome.hovered = self.part();
+                    self.hover_cell();
                 }
                 PointerEventKind::Leave { .. } => {
                     if Chrome::hover_shows(self.chrome.hovered.take(), None) {
                         self.dirty = true;
-                        self.draw();
                     }
+                    if let Some(terminal) = self.terminal() {
+                        self.unhover(terminal);
+                    }
+                    self.show_link();
+                    self.draw();
                 }
                 PointerEventKind::Motion { .. } if dragging => self.moved(event.position),
                 PointerEventKind::Motion { .. } => {
                     self.pointer.position = event.position;
                     self.hover();
+                    self.hover_cell();
                     if self.chrome.hovered.is_none() {
                         self.moved(event.position);
                     }
@@ -406,20 +487,45 @@ impl PointerHandler for App {
     }
 }
 
+/// Opens `uri` with the program the desktop has for it.
+pub(super) fn open(uri: &str) {
+    let mut opener = match Command::new("xdg-open")
+        .arg(uri)
+        .stdin(Stdio::null())
+        .spawn()
+    {
+        Ok(opener) => opener,
+        Err(error) => {
+            tracing::warn!("opening {uri}: {error}");
+            return;
+        }
+    };
+    let uri = uri.to_owned();
+    // Waited for elsewhere, so that the window goes on meanwhile and it leaves no zombie.
+    let waited = std::thread::Builder::new()
+        .name("open".into())
+        .spawn(move || match opener.wait() {
+            Ok(status) if !status.success() => tracing::warn!("opening {uri}: {status}"),
+            Ok(_) => {}
+            Err(error) => tracing::warn!("opening {uri}: {error}"),
+        });
+    if let Err(error) = waited {
+        tracing::warn!("waiting for a link to open: {error}");
+    }
+}
+
 /// The cursor over `part` of the window.
-fn cursor(part: Option<Part>) -> Shape {
+fn cursor(part: Part) -> Shape {
     match part {
-        None | Some(Part::SearchField) => Shape::Text,
-        Some(
-            Part::Header
-            | Part::Close
-            | Part::NewTab
-            | Part::Tab(_)
-            | Part::CloseTab(_)
-            | Part::FindUp
-            | Part::FindDown,
-        ) => Shape::Default,
-        Some(Part::Edge(edge)) => match edge {
+        Part::SearchField => Shape::Text,
+        Part::Header
+        | Part::Close
+        | Part::NewTab
+        | Part::Tab(_)
+        | Part::CloseTab(_)
+        | Part::FindUp
+        | Part::FindDown => Shape::Default,
+        Part::Edge(edge) => match edge {
             ResizeEdge::Top => Shape::NResize,
             ResizeEdge::Bottom => Shape::SResize,
             ResizeEdge::Left => Shape::WResize,

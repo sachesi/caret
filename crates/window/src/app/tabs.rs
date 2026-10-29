@@ -117,6 +117,7 @@ impl App {
         let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
         self.grid.apply(frame, |glyph| atlas.index(glyph, fonts));
         self.renew_full_atlas();
+        self.show_link();
         self.dirty = true;
         self.draw();
     }
@@ -132,6 +133,7 @@ impl App {
                     terminal,
                     focused: false,
                 });
+                self.unhover(terminal);
             }
             std::mem::swap(&mut self.grid, &mut self.tabs[self.selected].grid);
             self.selected = index;
@@ -147,6 +149,7 @@ impl App {
         let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
         self.grid.refill(|glyph| atlas.index(glyph, fonts));
         self.renew_full_atlas();
+        self.show_link();
         if let Some(terminal) = self.terminal() {
             self.server.send(&Request::Focus {
                 terminal,

@@ -2,7 +2,7 @@
 //! cells of one size that index the glyph atlas, and which rows each copy on the GPU
 //! still lacks.
 
-use caret_protocol::{Cell, Cursor, Frame, Glyph, Mode, Rgb, Selection};
+use caret_protocol::{Cell, Cursor, Frame, Glyph, Hovered, Mode, Rgb, Selection};
 
 /// One cell as the shaders read it.
 #[repr(C)]
@@ -34,6 +34,8 @@ pub struct Grid {
     pub background: Rgb,
     pub cursor_color: Rgb,
     pub mode: Mode,
+    /// The link under the pointer.
+    pub hovered: Option<Hovered>,
     selection: Option<Selection>,
     /// Each line's cells as the server sent them, to resolve again when the atlas is.
     rows: Vec<Vec<Cell>>,
@@ -52,6 +54,7 @@ impl Grid {
             background: Rgb::default(),
             cursor_color: Rgb::default(),
             mode: Mode::empty(),
+            hovered: None,
             selection: None,
             rows: Vec::new(),
             stale: vec![Vec::new(); copies],
@@ -99,6 +102,7 @@ impl Grid {
         self.cursor = frame.cursor;
         self.cursor_color = frame.cursor_color;
         self.mode = frame.mode;
+        self.hovered = frame.hovered;
     }
 
     /// Resolves every cell again, with `glyph` giving glyphs' entries in a new atlas.

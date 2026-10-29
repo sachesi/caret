@@ -41,6 +41,10 @@ const FIELD_PADDING: f32 = 9.0;
 /// The icons' square, and the strokes drawn in it.
 const ICON: f32 = 16.0;
 const STROKE: f32 = 1.5;
+/// The bubble showing a link's address: how far it is from the window's corner, and the
+/// room around its text.
+const BUBBLE_INSET: f32 = 6.0;
+const BUBBLE_PADDING: (f32, f32) = (8.0, 4.0);
 
 /// Colours as 0xRRGGBBAA, not premultiplied.
 const OUTLINE: u32 = 0x0000_063b;
@@ -189,6 +193,8 @@ pub struct Chrome {
     pub selected: usize,
     /// The find bar, while it is open.
     pub search: Option<Search>,
+    /// The address of the link under the pointer, shown over the terminal.
+    pub link: Option<String>,
     pub hovered: Option<Part>,
     pub pressed: Option<Part>,
 }
@@ -304,9 +310,10 @@ impl Chrome {
         (0..self.tabs.len()).map(move |index| (TAB_INSET + index as f32 * share, share))
     }
 
-    /// The frame of a window `size` big at `scale`, in the order it is drawn, under the
-    /// terminal's cells. `draw` gives the atlas entry of a drawing and the glyph it
-    /// indexes, and `line` is the height of a line of text, in device pixels.
+    /// The frame of a window `size` big at `scale`, in the order it is drawn, and how
+    /// many of its quads go under the terminal's cells; the rest go over them. `draw`
+    /// gives the atlas entry of a drawing and the glyph it indexes, and `line` is the
+    /// height of a line of text, in device pixels.
     pub fn quads(
         &self,
         size: (u32, u32),
@@ -314,7 +321,7 @@ impl Chrome {
         background: u32,
         line: i32,
         mut draw: impl FnMut(&Drawing) -> Option<(u32, GpuGlyph)>,
-    ) -> Vec<Quad> {
+    ) -> (Vec<Quad>, usize) {
         let mut quads = Vec::new();
         let framed = self.framed();
         if framed {
@@ -369,7 +376,11 @@ impl Chrome {
         if let Some(search) = &self.search {
             painter.search(&mut quads, search, &mut draw);
         }
-        quads
+        let under = quads.len();
+        if let Some(link) = &self.link {
+            painter.link(&mut quads, link, size.1 as f32 * scale, &mut draw);
+        }
+        (quads, under)
     }
 
     /// The shadow, the outline and the window's background.
@@ -651,6 +662,58 @@ impl Painter<'_> {
         }
     }
 
+    /// A link's address in a bubble at the bottom left of a window `height` high.
+    fn link(
+        &self,
+        quads: &mut Vec<Quad>,
+        link: &str,
+        height: f32,
+        draw: &mut impl FnMut(&Drawing) -> Option<(u32, GpuGlyph)>,
+    ) {
+        let (chrome, scale, margin) = (self.chrome, self.scale, self.margin);
+        let colors = chrome.colors();
+        let (inset, padding) = (BUBBLE_INSET * scale, BUBBLE_PADDING.0 * scale);
+        let room = (self.width / 2.0 - 2.0 * padding).max(0.0);
+        let label = Drawing::Label {
+            text: link.to_owned(),
+            width: room as u32,
+            bold: false,
+        };
+        let Some((index, glyph)) = draw(&label) else {
+            return;
+        };
+        let (width, _) = halves(glyph.size);
+        let bubble = (
+            (margin + inset).round(),
+            self.line as f32 + 2.0 * BUBBLE_PADDING.1 * scale,
+        );
+        let top = (margin + height - inset - bubble.1).round();
+        quads.push(rounded(
+            bubble.0 - scale,
+            top - scale,
+            width as f32 + 2.0 * padding + 2.0 * scale,
+            bubble.1 + 2.0 * scale,
+            FLAT_RADIUS * scale + scale,
+            OUTLINE,
+        ));
+        quads.push(rounded(
+            bubble.0,
+            top,
+            width as f32 + 2.0 * padding,
+            bubble.1,
+            FLAT_RADIUS * scale,
+            colors.header,
+        ));
+        let (left, y) = offset(glyph);
+        quads.push(entry(
+            bubble.0 + padding + left as f32,
+            top + BUBBLE_PADDING.1 * scale + y as f32,
+            index,
+            glyph,
+            colors.foreground,
+        ));
+    }
+
     /// A line of text centred on `(x, middle)`, placed by its line so that it does not
     /// shift with the letters in it.
     fn label(&self, x: f32, middle: f32, (index, glyph): (u32, GpuGlyph), color: u32) -> Quad {
@@ -835,7 +898,7 @@ mod tests {
         chrome.fullscreen = true;
         assert_eq!((chrome.margin(), chrome.header()), (0, 0));
         assert_eq!(chrome.part_at((5.0, 5.0), (800, 500)), None);
-        assert!(chrome.quads((800, 500), 1.0, 0, 0, |_| None).is_empty());
+        assert!(chrome.quads((800, 500), 1.0, 0, 0, |_| None).0.is_empty());
     }
 
     #[test]

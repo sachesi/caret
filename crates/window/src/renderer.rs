@@ -5,6 +5,7 @@
 #![expect(unsafe_code, reason = "Vulkan is only reached through ash's raw calls")]
 
 use std::io::Cursor;
+use std::ops::Range;
 
 use ash::vk;
 
@@ -48,8 +49,10 @@ pub struct Scene<'a> {
     pub grid: &'a mut Grid,
     pub atlas: &'a mut Atlas,
     pub constants: Constants,
-    /// The window's frame, drawn under the cells.
+    /// The window's frame: the first `under` quads drawn under the cells, the rest over
+    /// them.
     pub quads: &'a [Quad],
+    pub under: usize,
     /// What the frame is cleared to, premultiplied.
     pub background: [f32; 4],
 }
@@ -247,7 +250,10 @@ impl Renderer {
                 &[self.sets[frame]],
                 &[],
             );
-            if !scene.quads.is_empty() {
+            let draw_quads = |quads: Range<usize>| {
+                if quads.is_empty() {
+                    return;
+                }
                 device.cmd_bind_pipeline(
                     commands,
                     vk::PipelineBindPoint::GRAPHICS,
@@ -260,8 +266,10 @@ impl Renderer {
                     0,
                     bytes_of(&scene.constants),
                 );
-                device.cmd_draw(commands, 6, scene.quads.len() as u32, 0, 0);
-            }
+                device.cmd_draw(commands, 6, quads.len() as u32, 0, quads.start as u32);
+            };
+            let under = scene.under.min(scene.quads.len());
+            draw_quads(0..under);
             if cells > 0 {
                 device.cmd_bind_pipeline(commands, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
                 for pass in 0..2 {
@@ -279,6 +287,7 @@ impl Renderer {
                     device.cmd_draw(commands, 6, cells, 0, 0);
                 }
             }
+            draw_quads(under..scene.quads.len());
             device.cmd_end_rendering(commands);
         }
         Ok(())

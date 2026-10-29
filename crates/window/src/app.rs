@@ -103,6 +103,8 @@ enum Asked {
     Copy {
         primary: bool,
     },
+    /// The address under the pointer, to open.
+    Link,
 }
 
 /// Fields drop in order: the device before the surface it draws to, and both before
@@ -403,7 +405,12 @@ impl App {
                         });
                     }
                 }
-                (Some(Asked::Copy { .. } | Asked::Find(_)) | None, _) => {}
+                (Some(Asked::Link), Answer::Link { uri }) => {
+                    if let Some(uri) = uri {
+                        pointer::open(&uri);
+                    }
+                }
+                (Some(Asked::Copy { .. } | Asked::Find(_) | Asked::Link) | None, _) => {}
                 (Some(_), answer) => {
                     tracing::error!("the server answered {answer:?}");
                     self.exit = true;
@@ -681,10 +688,10 @@ impl App {
             (self.device(width + margin), self.device(height + margin));
         let constants = self.constants(surface_width, surface_height);
         let background = self.grid.background;
-        let mut quads = self.frame_quads((width, height));
+        let (mut quads, mut under) = self.frame_quads((width, height));
         if self.atlas.full {
             self.renew_full_atlas();
-            quads = self.frame_quads((width, height));
+            (quads, under) = self.frame_quads((width, height));
         }
         // Around the window's frame, the surface is clear; without one, it is the
         // terminal's to its edges.
@@ -703,6 +710,7 @@ impl App {
             atlas: &mut self.atlas,
             constants,
             quads: &quads,
+            under,
             background: clear,
         };
         if let Err(error) = self.gpu.draw(surface_width, surface_height, &mut scene) {
@@ -716,7 +724,7 @@ impl App {
 
     /// The window's frame and bars for a window `size` big, their text and icons put in
     /// the atlas.
-    fn frame_quads(&mut self, size: (u32, u32)) -> Vec<chrome::Quad> {
+    fn frame_quads(&mut self, size: (u32, u32)) -> (Vec<chrome::Quad>, usize) {
         let scale = self.factor() as f32;
         if let Some(search) = &mut self.chrome.search {
             search.caret = self
@@ -1025,6 +1033,7 @@ impl KeyboardHandler for App {
             alt: modifiers.alt,
             ctrl: modifiers.ctrl,
         };
+        self.show_link();
     }
 }
 
