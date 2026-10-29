@@ -12,6 +12,8 @@ use crate::fonts::Raster;
 pub const HEADER: u32 = 47;
 /// The strip of tabs under the header, shown while there are two or more.
 pub const TAB_BAR: u32 = 38;
+/// The bar to find text in, under them while it is open.
+pub const SEARCH_BAR: u32 = 46;
 /// Room around a floating window for its shadow and the edges that resize it.
 pub const MARGIN: u32 = 24;
 /// How far outside the window its edges reach.
@@ -33,10 +35,11 @@ const TAB_INSET: f32 = 3.0;
 const TAB_RADIUS: f32 = 9.0;
 /// From a tab's right edge to its close button's centre.
 const TAB_CLOSE_END: f32 = 19.0;
+/// Between the find bar's edges, its field and its buttons; the field's padding.
+const SEARCH_INSET: f32 = 6.0;
+const FIELD_PADDING: f32 = 9.0;
 /// The icons' square, and the strokes drawn in it.
 const ICON: f32 = 16.0;
-const CROSS: (f32, f32) = (4.0, 12.0);
-const PLUS: (f32, f32) = (3.0, 13.0);
 const STROKE: f32 = 1.5;
 
 /// Colours as 0xRRGGBBAA, not premultiplied.
@@ -57,6 +60,8 @@ struct Colors {
     button: [u32; 3],
     /// A flat button or tab hovered, then pressed.
     flat: [u32; 2],
+    /// Text that was not found.
+    error: u32,
 }
 
 const DARK: Colors = Colors {
@@ -66,6 +71,7 @@ const DARK: Colors = Colors {
     foreground: 0xffff_ffff,
     button: [0xffff_ff1a, 0xffff_ff26, 0xffff_ff4d],
     flat: [0xffff_ff12, 0xffff_ff29],
+    error: 0xff7b_63ff,
 };
 
 const LIGHT: Colors = Colors {
@@ -75,6 +81,7 @@ const LIGHT: Colors = Colors {
     foreground: 0x0000_06cc,
     button: [0x0000_0614, 0x0000_061f, 0x0000_063d],
     flat: [0x0000_060e, 0x0000_0621],
+    error: 0xc01c_28ff,
 };
 
 pub const TOP_LEFT: u32 = 1;
@@ -107,18 +114,35 @@ pub struct Quad {
 /// What the frame keeps in the atlas.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Drawing {
-    /// The title, in bold, cut to fit this many device pixels.
-    Title {
+    /// A line of text, bold or not, cut to fit this many device pixels.
+    Label {
         text: String,
         width: u32,
+        bold: bool,
     },
-    /// A tab's title, the same in the regular weight.
-    Tab {
-        text: String,
-        width: u32,
-    },
+    Icon(Icon),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Icon {
     Close,
     NewTab,
+    Up,
+    Down,
+}
+
+/// The bar to find text in the history with.
+#[derive(Debug, Default)]
+pub struct Search {
+    pub text: String,
+    /// Where typing goes in the text, in bytes.
+    pub cursor: usize,
+    /// Keys go to the field, not the terminal.
+    pub focused: bool,
+    /// The text was found, or there is none to find.
+    pub found: bool,
+    /// How far the cursor is from the start of the text, in device pixels.
+    pub caret: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,12 +154,15 @@ pub enum Part {
     /// The tab at this index, and its close button.
     Tab(usize),
     CloseTab(usize),
+    SearchField,
+    FindUp,
+    FindDown,
 }
 
 impl Part {
     /// The part looks different while the pointer is over it.
     fn shows_hover(self) -> bool {
-        !matches!(self, Self::Edge(_) | Self::Header)
+        !matches!(self, Self::Edge(_) | Self::Header | Self::SearchField)
     }
 }
 
@@ -160,6 +187,8 @@ pub struct Chrome {
     /// The tabs' titles, and which one is shown.
     pub tabs: Vec<String>,
     pub selected: usize,
+    /// The find bar, while it is open.
+    pub search: Option<Search>,
     pub hovered: Option<Part>,
     pub pressed: Option<Part>,
 }
@@ -192,9 +221,13 @@ impl Chrome {
         if self.tabs.len() > 1 { TAB_BAR } else { 0 }
     }
 
+    pub fn search_bar(&self) -> u32 {
+        if self.search.is_some() { SEARCH_BAR } else { 0 }
+    }
+
     /// The height of the bars above the terminal.
     pub fn top(&self) -> u32 {
-        self.header() + self.tab_bar()
+        self.header() + self.tab_bar() + self.search_bar()
     }
 
     /// Whether a change of the part under the pointer from `old` to `new` changes how
@@ -235,8 +268,20 @@ impl Chrome {
                 },
             );
         }
-        if y >= header + f64::from(self.tab_bar()) {
-            return None;
+        let tabs = header + f64::from(self.tab_bar());
+        if y >= tabs {
+            if y >= tabs + f64::from(self.search_bar()) {
+                return None;
+            }
+            let side = f64::from(FLAT_BUTTON.1);
+            let buttons = width - f64::from(SEARCH_INSET) - 2.0 * side;
+            return Some(if x < buttons - f64::from(SEARCH_INSET) {
+                Part::SearchField
+            } else if x < buttons + side {
+                Part::FindUp
+            } else {
+                Part::FindDown
+            });
         }
         let (index, (left, share)) = self
             .shares(width as f32)
@@ -320,6 +365,9 @@ impl Chrome {
         }
         if self.tab_bar() > 0 {
             painter.tabs(&mut quads, &mut draw);
+        }
+        if let Some(search) = &self.search {
+            painter.search(&mut quads, search, &mut draw);
         }
         quads
     }
@@ -423,7 +471,7 @@ impl Painter<'_> {
                 chrome.dim(shade),
             ));
         }
-        if let Some(icon) = draw(&Drawing::NewTab) {
+        if let Some(icon) = draw(&Drawing::Icon(Icon::NewTab)) {
             quads.push(centred(
                 left + side / 2.0,
                 middle,
@@ -433,9 +481,10 @@ impl Painter<'_> {
         }
         let room = width - 2.0 * (BUTTON_END + BUTTON_HIT / 2.0 + 6.0) * scale;
         if !chrome.title.is_empty() && room > 0.0 {
-            let title = Drawing::Title {
+            let title = Drawing::Label {
                 text: chrome.title.clone(),
                 width: room as u32,
+                bold: true,
             };
             if let Some(label) = draw(&title) {
                 quads.push(self.label(margin + width / 2.0, middle, label, colors.foreground));
@@ -451,7 +500,7 @@ impl Painter<'_> {
         };
         let diameter = BUTTON * scale;
         quads.push(circle(centre, middle, diameter, chrome.dim(shade)));
-        if let Some(icon) = draw(&Drawing::Close) {
+        if let Some(icon) = draw(&Drawing::Icon(Icon::Close)) {
             quads.push(centred(centre, middle, icon, chrome.dim(colors.foreground)));
         }
     }
@@ -491,9 +540,10 @@ impl Painter<'_> {
             }
             let room = share - 2.0 * (inset + TAB_CLOSE_END * scale + BUTTON * scale / 2.0);
             if let Some(text) = chrome.tabs.get(index).filter(|_| room > 0.0) {
-                let tab = Drawing::Tab {
+                let tab = Drawing::Label {
                     text: text.clone(),
                     width: room as u32,
+                    bold: false,
                 };
                 if let Some(label) = draw(&tab) {
                     quads.push(self.label(left + share / 2.0, middle, label, colors.foreground));
@@ -505,9 +555,98 @@ impl Painter<'_> {
                     let shade = colors.flat[usize::from(chrome.over(Part::CloseTab(index), true))];
                     quads.push(circle(centre, middle, BUTTON * scale, chrome.dim(shade)));
                 }
-                if let Some(icon) = draw(&Drawing::Close) {
+                if let Some(icon) = draw(&Drawing::Icon(Icon::Close)) {
                     quads.push(centred(centre, middle, icon, chrome.dim(colors.foreground)));
                 }
+            }
+        }
+    }
+
+    /// The field to type what to find in, and the buttons that find it upwards and
+    /// downwards.
+    fn search(
+        &self,
+        quads: &mut Vec<Quad>,
+        search: &Search,
+        draw: &mut impl FnMut(&Drawing) -> Option<(u32, GpuGlyph)>,
+    ) {
+        let (chrome, scale, margin, width) = (self.chrome, self.scale, self.margin, self.width);
+        let colors = chrome.colors();
+        let top = margin + (chrome.header() + chrome.tab_bar()) as f32 * scale;
+        let middle = top + SEARCH_BAR as f32 * scale / 2.0;
+        let (inset, side) = (SEARCH_INSET * scale, FLAT_BUTTON.1 * scale);
+        let field_top = (middle - side / 2.0).round();
+        let buttons = (margin + width - inset - 2.0 * side).round();
+        let field = (margin + inset).round();
+        let field_width = buttons - inset - field;
+        let radius = FLAT_RADIUS * scale;
+        quads.push(rounded(
+            field,
+            field_top,
+            field_width,
+            side,
+            radius,
+            colors.button[0],
+        ));
+        let padding = FIELD_PADDING * scale;
+        let room = (field_width - 2.0 * padding).max(0.0);
+        let (text, color) = if search.text.is_empty() {
+            ("Find in the history", (colors.foreground & !0xff) | 0x80)
+        } else if search.found {
+            (search.text.as_str(), colors.foreground)
+        } else {
+            (search.text.as_str(), colors.error)
+        };
+        let label = Drawing::Label {
+            text: text.to_owned(),
+            width: room as u32,
+            bold: false,
+        };
+        let start = field + padding;
+        if let Some((index, glyph)) = draw(&label) {
+            let (left, top) = offset(glyph);
+            let y = (middle - self.line as f32 / 2.0).floor() + top as f32;
+            quads.push(entry(
+                start + left as f32,
+                y,
+                index,
+                glyph,
+                chrome.dim(color),
+            ));
+        }
+        if search.focused && chrome.active {
+            let height = self.line as f32;
+            quads.push(Quad {
+                x: (start + search.caret.min(room)).round(),
+                y: (middle - height / 2.0).floor(),
+                width: scale.round().max(1.0),
+                height,
+                color: colors.foreground,
+                ..Quad::default()
+            });
+        }
+        for (index, (part, icon, corners)) in [
+            (Part::FindUp, Icon::Up, TOP_LEFT | BOTTOM_LEFT),
+            (Part::FindDown, Icon::Down, TOP_RIGHT | BOTTOM_RIGHT),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let left = buttons + index as f32 * side;
+            let shade = if chrome.over(part, true) {
+                colors.button[2]
+            } else if chrome.over(part, false) {
+                colors.button[1]
+            } else {
+                colors.button[0]
+            };
+            quads.push(Quad {
+                corners,
+                ..rounded(left, field_top, side, side, radius, chrome.dim(shade))
+            });
+            if let Some(icon) = draw(&Drawing::Icon(icon)) {
+                let shown = chrome.dim(colors.foreground);
+                quads.push(centred(left + side / 2.0, middle, icon, shown));
             }
         }
     }
@@ -516,7 +655,7 @@ impl Painter<'_> {
     /// shift with the letters in it.
     fn label(&self, x: f32, middle: f32, (index, glyph): (u32, GpuGlyph), color: u32) -> Quad {
         let (width, _) = halves(glyph.size);
-        let top = i32::from((glyph.offset >> 16) as u16 as i16);
+        let (_, top) = offset(glyph);
         let left = (x - width as f32 / 2.0).floor();
         let y = (middle - self.line as f32 / 2.0).floor() + top as f32;
         entry(left, y, index, glyph, self.chrome.dim(color))
@@ -589,29 +728,30 @@ fn halves(packed: u32) -> (u32, u32) {
     (packed & 0xffff, packed >> 16)
 }
 
-/// The close buttons' cross at `scale`.
-pub fn close_icon(scale: f32) -> Raster {
-    let (from, to) = CROSS;
-    icon(scale, &[[from, from, to, to], [to, from, from, to]])
+/// Where a glyph's pixels go from its pen and line, left and down.
+fn offset(glyph: GpuGlyph) -> (i32, i32) {
+    let half = |bits: u32| i32::from(bits as u16 as i16);
+    (half(glyph.offset), half(glyph.offset >> 16))
 }
 
-/// The new tab button's plus sign at `scale`.
-pub fn new_tab_icon(scale: f32) -> Raster {
-    let (from, to) = PLUS;
-    let middle = ICON / 2.0;
-    icon(
-        scale,
-        &[[from, middle, to, middle], [middle, from, middle, to]],
-    )
-}
-
-/// An icon of `lines`, each from one point to another in a square [`ICON`] wide.
-fn icon(scale: f32, lines: &[[f32; 4]]) -> Raster {
+/// `icon`'s pixels at `scale`.
+pub fn icon(icon: Icon, scale: f32) -> Raster {
+    let lines: &[&[[f32; 2]]] = match icon {
+        Icon::Close => &[&[[4.0, 4.0], [12.0, 12.0]], &[[12.0, 4.0], [4.0, 12.0]]],
+        Icon::NewTab => &[&[[3.0, 8.0], [13.0, 8.0]], &[[8.0, 3.0], [8.0, 13.0]]],
+        Icon::Up => &[&[[3.0, 10.5], [8.0, 5.5], [13.0, 10.5]]],
+        Icon::Down => &[&[[3.0, 5.5], [8.0, 10.5], [13.0, 5.5]]],
+    };
     let size = (ICON * scale).round() as u32;
     let mut path = Vec::new();
-    for &[x0, y0, x1, y1] in lines {
-        path.move_to([x0 * scale, y0 * scale])
-            .line_to([x1 * scale, y1 * scale]);
+    for line in lines {
+        let mut points = line.iter().map(|&[x, y]| [x * scale, y * scale]);
+        if let Some(first) = points.next() {
+            path.move_to(first);
+        }
+        for point in points {
+            path.line_to(point);
+        }
     }
     let mut stroke = Stroke::new(STROKE * scale);
     stroke.cap(Cap::Butt);
@@ -722,7 +862,7 @@ mod tests {
 
     #[test]
     fn the_close_icon_is_a_cross() {
-        let icon = close_icon(1.0);
+        let icon = icon(Icon::Close, 1.0);
         assert_eq!((icon.width, icon.height), (16, 16));
         let alpha = |x: u32, y: u32| icon.pixels[((y * 16 + x) * 4 + 3) as usize];
         assert!(alpha(8, 8) > 200 && alpha(5, 5) > 100 && alpha(10, 5) > 100);

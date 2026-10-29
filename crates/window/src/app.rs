@@ -87,6 +87,7 @@ const PADDING: u32 = 6;
 mod clipboard;
 mod pointer;
 mod scale;
+mod search;
 mod tabs;
 
 /// A question the window is waiting for the answer to.
@@ -96,6 +97,8 @@ enum Asked {
     Tab(Size),
     /// What a new tab runs.
     NextCommand,
+    /// Whether the text of the search this counts was found.
+    Find(u32),
     /// The selected text, to offer as the clipboard or the primary selection.
     Copy {
         primary: bool,
@@ -130,6 +133,8 @@ struct App {
     opening: bool,
     /// The tab the window opened, to show when the server tells of it.
     opened: Option<TerminalId>,
+    /// Counts searches, so that answers to ones the window moved past are dropped.
+    searches: u32,
     fonts: Fonts,
     /// Steps the font is zoomed in, or out for fewer than none.
     zoom: i32,
@@ -234,6 +239,7 @@ pub fn run() -> Result<(), AppError> {
         selected: 0,
         opening: false,
         opened: None,
+        searches: 0,
         fonts,
         zoom: 0,
         shortcuts: Shortcuts::new(&config.keys),
@@ -380,6 +386,7 @@ impl App {
                 }
                 (Some(Asked::NextCommand), Answer::Command { command }) => self.open_tab(command),
                 (Some(Asked::NextCommand), _) => self.open_tab(Command::default()),
+                (Some(Asked::Find(search)), Answer::Found { found }) => self.found(search, found),
                 (Some(Asked::Copy { primary }), Answer::Text { text }) => {
                     if let Some(text) = text.filter(|text| !text.is_empty()) {
                         self.copy(text, primary);
@@ -396,7 +403,7 @@ impl App {
                         });
                     }
                 }
-                (Some(Asked::Copy { .. }) | None, _) => {}
+                (Some(Asked::Copy { .. } | Asked::Find(_)) | None, _) => {}
                 (Some(_), answer) => {
                     tracing::error!("the server answered {answer:?}");
                     self.exit = true;
@@ -611,7 +618,12 @@ impl App {
                 if cursor.wide {
                     shape |= CURSOR_WIDE;
                 }
-                if self.focused {
+                let typing_in_bar = self
+                    .chrome
+                    .search
+                    .as_ref()
+                    .is_some_and(|search| search.focused);
+                if self.focused && !typing_in_bar {
                     shape |= CURSOR_FOCUSED;
                 }
                 (
@@ -706,6 +718,11 @@ impl App {
     /// the atlas.
     fn frame_quads(&mut self, size: (u32, u32)) -> Vec<chrome::Quad> {
         let scale = self.factor() as f32;
+        if let Some(search) = &mut self.chrome.search {
+            search.caret = self
+                .fonts
+                .label_advance(&search.text[..search.cursor], false);
+        }
         let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
         let line = fonts.label_height();
         self.chrome.quads(
@@ -715,10 +732,8 @@ impl App {
             line,
             |drawing| {
                 let index = atlas.drawing(drawing, || match drawing {
-                    Drawing::Title { text, width } => fonts.label(text, *width, true),
-                    Drawing::Tab { text, width } => fonts.label(text, *width, false),
-                    Drawing::Close => Some(chrome::close_icon(scale)),
-                    Drawing::NewTab => Some(chrome::new_tab_icon(scale)),
+                    Drawing::Label { text, width, bold } => fonts.label(text, *width, *bold),
+                    Drawing::Icon(icon) => Some(chrome::icon(*icon, scale)),
                 });
                 Some((index, atlas.entry(index)?))
             },
@@ -758,6 +773,9 @@ impl App {
     fn key(&mut self, event: &KeyEvent) {
         if let Some(action) = self.shortcuts.action(event.keysym, self.modifiers) {
             self.act(action);
+            return;
+        }
+        if self.search_key(event) {
             return;
         }
         let Some(terminal) = self.terminal() else {
@@ -820,6 +838,7 @@ impl App {
             // The file being watched, the window takes the change from there.
             Action::TitleBar => config::write("title-bar", !self.config.title_bar),
             Action::NewTab => self.new_tab(),
+            Action::Find => self.open_search(),
             Action::CloseTab => self.close_tab(self.selected),
             Action::NextTab => self.step_tab(1),
             Action::PreviousTab => self.step_tab(-1),

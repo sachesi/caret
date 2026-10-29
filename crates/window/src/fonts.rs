@@ -207,6 +207,14 @@ impl Fonts {
         self.label_height
     }
 
+    /// How far `text` moves the pen in the window's own face, bold or not, in pixels.
+    pub fn label_advance(&self, text: &str, bold: bool) -> f32 {
+        self.labels[usize::from(bold)]
+            .as_ref()
+            .and_then(|face| shape(face, text, self.label_size))
+            .map_or(0.0, |(_, advance)| advance)
+    }
+
     /// `text` in the window's own face, bold or not, from the top of its line, cut short
     /// with an ellipsis to fit `width` pixels; none if nothing in it draws.
     pub fn label(&mut self, text: &str, width: u32, bold: bool) -> Option<Raster> {

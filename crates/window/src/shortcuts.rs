@@ -22,6 +22,7 @@ pub enum Action {
     TitleBar,
     NewTab,
     CloseTab,
+    Find,
     NextTab,
     PreviousTab,
     /// Shows the tab of this number, counted from one.
@@ -51,6 +52,7 @@ const ACTIONS: &[(Action, &str, &[&str])] = &[
     (Action::TitleBar, "title-bar", &["Ctrl+Shift+H"]),
     (Action::NewTab, "new-tab", &["Ctrl+Shift+T"]),
     (Action::CloseTab, "close-tab", &["Ctrl+Shift+W"]),
+    (Action::Find, "find", &["Ctrl+Shift+F"]),
     (Action::NextTab, "next-tab", &["Ctrl+Page_Down", "Ctrl+Tab"]),
     (
         Action::PreviousTab,

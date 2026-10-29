@@ -93,7 +93,10 @@ impl App {
 
     fn pressed_frame(&mut self, part: Part, button: u32, serial: u32) {
         match (part, button) {
-            (Part::Close | Part::NewTab | Part::CloseTab(_), BUTTON_LEFT) => {
+            (
+                Part::Close | Part::NewTab | Part::CloseTab(_) | Part::FindUp | Part::FindDown,
+                BUTTON_LEFT,
+            ) => {
                 self.chrome.pressed = Some(part);
                 self.dirty = true;
                 self.draw();
@@ -101,6 +104,10 @@ impl App {
             }
             (Part::Tab(index), BUTTON_LEFT) => {
                 self.show(index);
+                return;
+            }
+            (Part::SearchField, BUTTON_LEFT) => {
+                self.open_search();
                 return;
             }
             (Part::Tab(index) | Part::CloseTab(index), BUTTON_MIDDLE) => {
@@ -156,6 +163,8 @@ impl App {
                 Part::Close => self.close(),
                 Part::NewTab => self.new_tab(),
                 Part::CloseTab(index) => self.close_tab(index),
+                Part::FindUp => self.find(true),
+                Part::FindDown => self.find(false),
                 _ => {}
             }
         }
@@ -199,6 +208,12 @@ impl App {
 
     fn pressed(&mut self, button: u32, serial: u32) {
         self.serial = serial;
+        // A click in the terminal gives it the keys back from the find bar.
+        if let Some(search) = self.chrome.search.as_mut().filter(|search| search.focused) {
+            search.focused = false;
+            self.dirty = true;
+            self.draw();
+        }
         let button = match button {
             BUTTON_LEFT => MouseButton::Left,
             BUTTON_MIDDLE => MouseButton::Middle,
@@ -394,10 +409,16 @@ impl PointerHandler for App {
 /// The cursor over `part` of the window.
 fn cursor(part: Option<Part>) -> Shape {
     match part {
-        None => Shape::Text,
-        Some(Part::Header | Part::Close | Part::NewTab | Part::Tab(_) | Part::CloseTab(_)) => {
-            Shape::Default
-        }
+        None | Some(Part::SearchField) => Shape::Text,
+        Some(
+            Part::Header
+            | Part::Close
+            | Part::NewTab
+            | Part::Tab(_)
+            | Part::CloseTab(_)
+            | Part::FindUp
+            | Part::FindDown,
+        ) => Shape::Default,
         Some(Part::Edge(edge)) => match edge {
             ResizeEdge::Top => Shape::NResize,
             ResizeEdge::Bottom => Shape::SResize,
