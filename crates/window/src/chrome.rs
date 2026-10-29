@@ -8,6 +8,10 @@ use swash::zeno::{Cap, Mask, PathBuilder, Stroke};
 use crate::atlas::GpuGlyph;
 use crate::fonts::Raster;
 
+mod dialog;
+
+pub use dialog::{Dialog, wrap};
+
 /// The header bar's height, in logical pixels as all sizes here are.
 pub const HEADER: u32 = 47;
 /// The strip of tabs under the header, shown while there are two or more.
@@ -66,6 +70,12 @@ struct Colors {
     flat: [u32; 2],
     /// Text that was not found.
     error: u32,
+    /// What dims the window under a dialog, the dialog, and its button that warns.
+    scrim: u32,
+    dialog: u32,
+    destructive: u32,
+    /// The ring around what the keys act on.
+    focus: u32,
 }
 
 const DARK: Colors = Colors {
@@ -76,6 +86,10 @@ const DARK: Colors = Colors {
     button: [0xffff_ff1a, 0xffff_ff26, 0xffff_ff4d],
     flat: [0xffff_ff12, 0xffff_ff29],
     error: 0xff7b_63ff,
+    scrim: 0x0000_0666,
+    dialog: 0x3636_3aff,
+    destructive: 0xc01c_28ff,
+    focus: 0x3584_e480,
 };
 
 const LIGHT: Colors = Colors {
@@ -86,6 +100,10 @@ const LIGHT: Colors = Colors {
     button: [0x0000_0614, 0x0000_061f, 0x0000_063d],
     flat: [0x0000_060e, 0x0000_0621],
     error: 0xc01c_28ff,
+    scrim: 0x0000_0640,
+    dialog: 0xffff_ffff,
+    destructive: 0xe01b_24ff,
+    focus: 0x3584_e480,
 };
 
 pub const TOP_LEFT: u32 = 1;
@@ -124,6 +142,11 @@ pub enum Drawing {
         width: u32,
         bold: bool,
     },
+    /// A line of larger bold text, cut to fit.
+    Heading {
+        text: String,
+        width: u32,
+    },
     Icon(Icon),
 }
 
@@ -161,12 +184,18 @@ pub enum Part {
     SearchField,
     FindUp,
     FindDown,
+    /// A dialog's button, and the rest of the window under the dialog.
+    Response(usize),
+    Dialog,
 }
 
 impl Part {
     /// The part looks different while the pointer is over it.
     fn shows_hover(self) -> bool {
-        !matches!(self, Self::Edge(_) | Self::Header | Self::SearchField)
+        !matches!(
+            self,
+            Self::Edge(_) | Self::Header | Self::SearchField | Self::Dialog
+        )
     }
 }
 
@@ -195,6 +224,8 @@ pub struct Chrome {
     pub search: Option<Search>,
     /// The address of the link under the pointer, shown over the terminal.
     pub link: Option<String>,
+    /// A dialog over the window, which takes all input while it is open.
+    pub dialog: Option<Dialog>,
     pub hovered: Option<Part>,
     pub pressed: Option<Part>,
 }
@@ -254,6 +285,9 @@ impl Chrome {
             } else {
                 None
             };
+        }
+        if let Some(dialog) = &self.dialog {
+            return Some(dialog.part_at((x, y), size));
         }
         let header = f64::from(self.header());
         if y < header {
@@ -379,6 +413,9 @@ impl Chrome {
         let under = quads.len();
         if let Some(link) = &self.link {
             painter.link(&mut quads, link, size.1 as f32 * scale, &mut draw);
+        }
+        if let Some(dialog) = &self.dialog {
+            painter.dialog(&mut quads, dialog, size.1 as f32 * scale, &mut draw);
         }
         (quads, under)
     }

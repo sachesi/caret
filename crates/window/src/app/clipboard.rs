@@ -3,8 +3,7 @@
 
 use std::io::{Read, Write};
 
-use caret_protocol::encode;
-use caret_protocol::{Bytes, Mode, Request};
+use caret_protocol::Mode;
 use smithay_client_toolkit::data_device_manager::data_device::{DataDevice, DataDeviceHandler};
 use smithay_client_toolkit::data_device_manager::data_offer::{DataOfferHandler, DragOffer};
 use smithay_client_toolkit::data_device_manager::data_source::{
@@ -160,11 +159,7 @@ impl App {
             return;
         };
         let bracketed = self.grid.mode.contains(Mode::BRACKETED_PASTE);
-        self.server.send(&Request::Input {
-            terminal,
-            bytes: Bytes(encode::paste(bytes, bracketed)),
-            bottom: true,
-        });
+        self.paste_into(terminal, bytes, bracketed);
     }
 }
 

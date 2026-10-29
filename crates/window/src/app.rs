@@ -42,7 +42,7 @@ use smithay_client_toolkit::primary_selection::PrimarySelectionManagerState;
 use smithay_client_toolkit::seat::pointer::cursor_shape::CursorShapeManager;
 
 use crate::atlas::Atlas;
-use crate::chrome::{self, Chrome, Drawing};
+use crate::chrome::{self, Chrome, Dialog, Drawing};
 use crate::config::{self, Config};
 use crate::connection::{self, Received};
 use crate::desktop::{self, Desktop};
@@ -85,6 +85,7 @@ const DESKTOP_WAIT: Duration = Duration::from_millis(250);
 const PADDING: u32 = 6;
 
 mod clipboard;
+mod confirm;
 mod pointer;
 mod scale;
 mod search;
@@ -105,6 +106,10 @@ enum Asked {
     },
     /// The address under the pointer, to open.
     Link,
+    /// Whether a program runs in the terminal, to close its tab or ask first.
+    Busy(TerminalId),
+    /// Whether a program runs in one of the tabs, to close the window or ask first.
+    Closing,
 }
 
 /// Fields drop in order: the device before the surface it draws to, and both before
@@ -137,6 +142,10 @@ struct App {
     opened: Option<TerminalId>,
     /// Counts searches, so that answers to ones the window moved past are dropped.
     searches: u32,
+    /// What the dialog open asks to confirm.
+    confirming: Option<confirm::Confirm>,
+    /// The window is about to close once its tabs say whether programs run in them.
+    closing: Option<confirm::Closing>,
     fonts: Fonts,
     /// Steps the font is zoomed in, or out for fewer than none.
     zoom: i32,
@@ -172,6 +181,25 @@ struct App {
     exit: bool,
 }
 
+/// The window's toplevel, its frame drawn by the compositor if `server_side` and it can.
+fn toplevel(
+    compositor: &CompositorState,
+    shell: &XdgShell,
+    qh: &QueueHandle<App>,
+    server_side: bool,
+) -> Window {
+    let decorations = if server_side {
+        WindowDecorations::RequestServer
+    } else {
+        WindowDecorations::RequestClient
+    };
+    let window = shell.create_window(compositor.create_surface(qh), decorations, qh);
+    window.set_title("Caret");
+    window.set_app_id(crate::APP_ID);
+    window.set_min_size(Some((360, 200)));
+    window
+}
+
 #[expect(
     unsafe_code,
     reason = "Vulkan draws to the surface through its raw pointers"
@@ -188,16 +216,7 @@ pub fn run() -> Result<(), AppError> {
     config::import();
     let config = Config::load();
 
-    let surface = compositor.create_surface(&qh);
-    let decorations = if config.server_side_decorations {
-        WindowDecorations::RequestServer
-    } else {
-        WindowDecorations::RequestClient
-    };
-    let window = shell.create_window(surface, decorations, &qh);
-    window.set_title("Caret");
-    window.set_app_id(crate::APP_ID);
-    window.set_min_size(Some((360, 200)));
+    let window = toplevel(&compositor, &shell, &qh, config.server_side_decorations);
     let fractional = scale::Fractional::new(&globals, &qh, window.wl_surface());
     window.commit();
 
@@ -242,6 +261,8 @@ pub fn run() -> Result<(), AppError> {
         opening: false,
         opened: None,
         searches: 0,
+        confirming: None,
+        closing: None,
         fonts,
         zoom: 0,
         shortcuts: Shortcuts::new(&config.keys),
@@ -410,6 +431,8 @@ impl App {
                         pointer::open(&uri);
                     }
                 }
+                (Some(Asked::Busy(terminal)), answer) => self.busy(terminal, answer),
+                (Some(Asked::Closing), answer) => self.closing_busy(&answer),
                 (Some(Asked::Copy { .. } | Asked::Find(_) | Asked::Link) | None, _) => {}
                 (Some(_), answer) => {
                     tracing::error!("the server answered {answer:?}");
@@ -519,7 +542,8 @@ impl App {
     }
 
     /// Ends the window, and its session unless the settings keep it running.
-    fn close(&mut self) {
+    /// Closes the window, and with it the session's tabs unless closing detaches it.
+    fn end(&mut self) {
         if let Some(session) = self.session {
             if self.config.close_detaches {
                 self.server.send(&Request::Detach { session });
@@ -731,6 +755,13 @@ impl App {
                 .fonts
                 .label_advance(&search.text[..search.cursor], false);
         }
+        if let Some(dialog) = &mut self.chrome.dialog {
+            let fonts = &self.fonts;
+            let width = Dialog::text_width(size.0 as f32) * scale;
+            dialog.lines =
+                chrome::wrap(&dialog.body, width, |text| fonts.label_advance(text, false));
+            dialog.line = fonts.label_height() as f32 / scale;
+        }
         let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
         let line = fonts.label_height();
         self.chrome.quads(
@@ -741,6 +772,7 @@ impl App {
             |drawing| {
                 let index = atlas.drawing(drawing, || match drawing {
                     Drawing::Label { text, width, bold } => fonts.label(text, *width, *bold),
+                    Drawing::Heading { text, width } => fonts.heading(text, *width),
                     Drawing::Icon(icon) => Some(chrome::icon(*icon, scale)),
                 });
                 Some((index, atlas.entry(index)?))
@@ -779,6 +811,9 @@ impl App {
     }
 
     fn key(&mut self, event: &KeyEvent) {
+        if self.dialog_key(event) {
+            return;
+        }
         if let Some(action) = self.shortcuts.action(event.keysym, self.modifiers) {
             self.act(action);
             return;

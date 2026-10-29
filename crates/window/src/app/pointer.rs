@@ -84,7 +84,7 @@ impl App {
     }
 
     /// Follows the pointer over the frame: the button it hovers and the cursor's shape.
-    fn hover(&mut self) {
+    pub(super) fn hover(&mut self) {
         let part = self.part();
         if part == self.chrome.hovered {
             return;
@@ -165,7 +165,12 @@ impl App {
     fn pressed_frame(&mut self, part: Part, button: u32, serial: u32) {
         match (part, button) {
             (
-                Part::Close | Part::NewTab | Part::CloseTab(_) | Part::FindUp | Part::FindDown,
+                Part::Close
+                | Part::NewTab
+                | Part::CloseTab(_)
+                | Part::FindUp
+                | Part::FindDown
+                | Part::Response(_),
                 BUTTON_LEFT,
             ) => {
                 self.chrome.pressed = Some(part);
@@ -236,6 +241,7 @@ impl App {
                 Part::CloseTab(index) => self.close_tab(index),
                 Part::FindUp => self.find(true),
                 Part::FindDown => self.find(false),
+                Part::Response(index) => self.respond(index == 1),
                 _ => {}
             }
         }
@@ -540,7 +546,9 @@ fn cursor(part: Part) -> Shape {
         | Part::Tab(_)
         | Part::CloseTab(_)
         | Part::FindUp
-        | Part::FindDown => Shape::Default,
+        | Part::FindDown
+        | Part::Response(_)
+        | Part::Dialog => Shape::Default,
         Part::Edge(edge) => match edge {
             ResizeEdge::Top => Shape::NResize,
             ResizeEdge::Bottom => Shape::SResize,

@@ -74,6 +74,7 @@ impl App {
         let Some(index) = self.tab_of(terminal) else {
             return;
         };
+        self.forget_confirming(terminal);
         let closed = self.tabs.remove(index);
         if self.tabs.is_empty() {
             return;
@@ -179,14 +180,6 @@ impl App {
                 self.asked.insert(id, Asked::NextCommand);
             }
             None => self.open_tab(Command::default()),
-        }
-    }
-
-    pub(super) fn close_tab(&mut self, index: usize) {
-        if let Some(tab) = self.tabs.get(index) {
-            self.server.send(&Request::CloseTab {
-                terminal: tab.terminal,
-            });
         }
     }
 

@@ -39,8 +39,9 @@ const FALLBACKS: &[&str] = &[
 /// Families tried in order for the window's own text, before any sans-serif face.
 const LABEL_FAMILIES: &[&str] = &["Adwaita Sans", "Cantarell", "Noto Sans", "DejaVu Sans"];
 
-/// The size of the window's own text.
+/// The size of the window's own text, and of a heading against the rest.
 const LABEL_POINTS: f32 = 11.0;
+pub const HEADING: f32 = 1.36;
 
 /// How far a face without italics is slanted to stand in for one, as a tangent.
 const SLANT: f32 = 0.2;
@@ -219,10 +220,27 @@ impl Fonts {
     /// with an ellipsis to fit `width` pixels; none if nothing in it draws.
     pub fn label(&mut self, text: &str, width: u32, bold: bool) -> Option<Raster> {
         let face = self.labels[usize::from(bold)].clone()?;
-        let size = self.label_size;
-        let (mut glyphs, advance) = shape(&face, text, size)?;
+        self.line(&face, text, width, self.label_size, self.label_ascent)
+    }
+
+    /// `text` as a heading: a bold label [`HEADING`] times as large.
+    pub fn heading(&mut self, text: &str, width: u32) -> Option<Raster> {
+        let face = self.labels[1].clone()?;
+        let ascent = (self.label_ascent as f32 * HEADING).ceil() as i32;
+        self.line(&face, text, width, self.label_size * HEADING, ascent)
+    }
+
+    fn line(
+        &mut self,
+        face: &Face,
+        text: &str,
+        width: u32,
+        size: f32,
+        ascent: i32,
+    ) -> Option<Raster> {
+        let (mut glyphs, advance) = shape(face, text, size)?;
         if advance > width as f32 {
-            let (dots, dots_advance) = shape(&face, "\u{2026}", size)?;
+            let (dots, dots_advance) = shape(face, "\u{2026}", size)?;
             let room = width as f32 - dots_advance;
             let kept = glyphs
                 .iter()
@@ -236,7 +254,7 @@ impl Fonts {
                 ..dot
             }));
         }
-        let placed = self.render(&face, size, &glyphs, self.label_ascent);
+        let placed = self.render(face, size, &glyphs, ascent);
         compose(&placed)
     }
 
