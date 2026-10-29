@@ -55,7 +55,7 @@ impl App {
         if columns == 0 || lines == 0 {
             return None;
         }
-        let scale = f64::from(self.scale);
+        let scale = self.factor();
         let cell = self.fonts.cell();
         let (origin_x, origin_y) = self.origin();
         let x = (x * scale - f64::from(origin_x)) / f64::from(cell.width);
@@ -364,7 +364,7 @@ impl PointerHandler for App {
                     } else if vertical.discrete != 0 {
                         f64::from(vertical.discrete) * NOTCH
                     } else {
-                        let height = f64::from(self.fonts.cell().height) / f64::from(self.scale);
+                        let height = f64::from(self.fonts.cell().height) / self.factor();
                         vertical.absolute / height
                     };
                     self.scrolled(lines);

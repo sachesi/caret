@@ -80,6 +80,7 @@ const PADDING: u32 = 6;
 
 mod clipboard;
 mod pointer;
+mod scale;
 
 /// A question the window is waiting for the answer to.
 enum Asked {
@@ -129,7 +130,10 @@ struct App {
     /// The window's size in logical pixels, as the compositor configures it, without
     /// the room around it for a shadow; none before the first configure.
     size: Option<(u32, u32)>,
-    scale: i32,
+    /// Device pixels to the logical one, in 120ths.
+    scale: u32,
+    /// Fractional scaling, where the compositor offers it.
+    fractional: Option<scale::Fractional>,
     /// The size of the grid the window fits, as last told to the server.
     grid_size: Option<Size>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
@@ -174,6 +178,7 @@ pub fn run() -> Result<(), AppError> {
     window.set_title("Caret");
     window.set_app_id(crate::APP_ID);
     window.set_min_size(Some((360, 200)));
+    let fractional = scale::Fractional::new(&globals, &qh, window.wl_surface());
     window.commit();
 
     let display = connection.backend().display_ptr().cast();
@@ -228,7 +233,8 @@ pub fn run() -> Result<(), AppError> {
         config,
         desktop,
         size: None,
-        scale: 1,
+        scale: scale::WHOLE,
+        fractional,
         grid_size: None,
         keyboard: None,
         modifiers: Modifiers::default(),
@@ -458,14 +464,14 @@ impl App {
     /// again.
     fn load_fonts(&mut self) {
         let (family, points) = self.config.font_for(self.desktop.monospace.as_deref());
-        match Fonts::new(family.as_deref(), points, self.scale as f32) {
+        match Fonts::new(family.as_deref(), points, self.factor() as f32) {
             Ok(fonts) => {
                 self.fonts = fonts;
                 self.atlas = self.atlas.next();
                 let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
                 self.grid.refill(|glyph| atlas.index(glyph, fonts));
             }
-            Err(error) => tracing::error!("loading fonts at scale {}: {error}", self.scale),
+            Err(error) => tracing::error!("loading fonts at scale {}: {error}", self.factor()),
         }
     }
 
@@ -522,17 +528,16 @@ impl App {
         let Some((width, height)) = self.size else {
             return;
         };
-        let scale = self.scale.unsigned_abs();
         let cell = self.fonts.cell();
-        let padding = PADDING * scale;
+        let padding = self.device(PADDING);
         let fit = |pixels: u32, cell: i32| {
             let cells = pixels.saturating_sub(2 * padding) / cell.max(1).unsigned_abs();
             u16::try_from(cells.max(1)).unwrap_or(u16::MAX)
         };
         let height = height.saturating_sub(self.chrome.header());
         let size = Size {
-            columns: fit(width * scale, cell.width),
-            lines: fit(height * scale, cell.height),
+            columns: fit(self.device(width), cell.width),
+            lines: fit(self.device(height), cell.height),
             cell_width: u16::try_from(cell.width).unwrap_or(u16::MAX),
             cell_height: u16::try_from(cell.height).unwrap_or(u16::MAX),
         };
@@ -546,13 +551,35 @@ impl App {
         }
     }
 
+    /// Device pixels to the logical one.
+    fn factor(&self) -> f64 {
+        f64::from(self.scale) / f64::from(scale::WHOLE)
+    }
+
+    /// The device pixels `logical` pixels take.
+    fn device(&self, logical: u32) -> u32 {
+        (f64::from(logical) * self.factor()).round() as u32
+    }
+
     /// Where the first cell's top left is, in device pixels from the surface's.
     fn origin(&self) -> (i32, i32) {
-        let scale = self.scale.unsigned_abs();
         let margin = self.chrome.margin();
-        let x = (margin + PADDING) * scale;
-        let y = (margin + self.chrome.header() + PADDING) * scale;
+        let x = self.device(margin + PADDING);
+        let y = self.device(margin + self.chrome.header() + PADDING);
         (x as i32, y as i32)
+    }
+
+    /// Takes the scale the compositor prefers, in 120ths, and draws at it.
+    fn set_scale(&mut self, scale: u32) {
+        let scale = scale.max(1);
+        if scale == self.scale {
+            return;
+        }
+        self.scale = scale;
+        self.load_fonts();
+        self.fit();
+        self.dirty = true;
+        self.draw();
     }
 
     fn constants(&self, width: u32, height: u32) -> Constants {
@@ -606,14 +633,20 @@ impl App {
         if !self.dirty || self.waiting {
             return;
         }
+        let margin = 2 * self.chrome.margin();
         let surface = self.window.wl_surface();
         surface.frame(&self.qh, FrameCallbackData(surface.clone()));
-        surface.set_buffer_scale(self.scale);
+        match &self.fractional {
+            Some(fractional) => {
+                let (width, height) = ((width + margin) as i32, (height + margin) as i32);
+                fractional.viewport.set_destination(width, height);
+            }
+            None => surface.set_buffer_scale((self.scale / scale::WHOLE).max(1) as i32),
+        }
         self.waiting = true;
         self.dirty = false;
-        let scale = self.scale.unsigned_abs();
-        let margin = 2 * self.chrome.margin();
-        let (surface_width, surface_height) = ((width + margin) * scale, (height + margin) * scale);
+        let (surface_width, surface_height) =
+            (self.device(width + margin), self.device(height + margin));
         let constants = self.constants(surface_width, surface_height);
         let background = self.grid.background;
         let mut quads = self.frame_quads((width, height));
@@ -654,7 +687,7 @@ impl App {
         if !self.chrome.drawn {
             return Vec::new();
         }
-        let scale = self.scale as f32;
+        let scale = self.factor() as f32;
         let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
         let title = (!self.chrome.title.is_empty()).then(|| {
             let width = Chrome::title_width(size.0, scale);
@@ -774,15 +807,10 @@ impl CompositorHandler for App {
         _: &wl_surface::WlSurface,
         factor: i32,
     ) {
-        let factor = factor.max(1);
-        if factor == self.scale {
-            return;
+        // A fractional scale, where there is one, is the finer.
+        if self.fractional.is_none() {
+            self.set_scale(factor.unsigned_abs() * scale::WHOLE);
         }
-        self.scale = factor;
-        self.load_fonts();
-        self.fit();
-        self.dirty = true;
-        self.draw();
     }
 
     fn transform_changed(
