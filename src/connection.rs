@@ -4,14 +4,9 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::io::{self, Write};
-use std::os::unix::net::UnixStream;
-use std::os::unix::process::CommandExt;
-use std::path::{Path, PathBuf};
-use std::process;
+use std::io::Write;
 use std::rc::Rc;
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
 
 use caret_protocol::{Answer, Message, Question, Request, SessionId, TerminalId};
 use gtk::glib;
@@ -20,8 +15,6 @@ use gtk::prelude::*;
 use crate::config;
 use crate::terminal_view::TerminalView;
 use crate::window::Window;
-
-const SERVER: &str = "caret-server";
 
 /// What is called with the server's answer to a question.
 type Answered = Box<dyn FnOnce(Answer)>;
@@ -51,64 +44,10 @@ pub fn connection() -> Result<Rc<Connection>, String> {
     })
 }
 
-/// The server binary: beside this one, where builds and installs put it, else on the
-/// path.
-fn server_program() -> PathBuf {
-    std::env::current_exe()
-        .ok()
-        .and_then(|exe| Some(exe.parent()?.join(SERVER)))
-        .filter(|path| path.is_file())
-        .unwrap_or_else(|| PathBuf::from(SERVER))
-}
-
-/// Connects to the server at `path`, starting one there when none listens: systemd
-/// starts it for the socket where its units are installed, this does elsewhere.
-fn connect(path: &Path) -> Result<UnixStream, String> {
-    let refused = match UnixStream::connect(path) {
-        Ok(stream) => return Ok(stream),
-        Err(error) => error,
-    };
-    if !matches!(
-        refused.kind(),
-        io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
-    ) {
-        return Err(format!("connecting to {}: {refused}", path.display()));
-    }
-    let program = server_program();
-    let mut server = process::Command::new(&program)
-        .arg("--socket")
-        .arg(path)
-        .stdin(process::Stdio::null())
-        .stdout(process::Stdio::null())
-        // Out of the window's process group, so that a signal to it leaves the terminals.
-        .process_group(0)
-        .spawn()
-        .map_err(|error| format!("starting {}: {error}", program.display()))?;
-    let started = Instant::now();
-    let stream = loop {
-        match UnixStream::connect(path) {
-            Ok(stream) => break Ok(stream),
-            Err(_) if started.elapsed() < Duration::from_secs(5) => {}
-            Err(error) => break Err(format!("connecting to {}: {error}", path.display())),
-        }
-        if let Ok(Some(status)) = server.try_wait() {
-            break Err(format!("{} ended: {status}", program.display()));
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    };
-    // Reaped when it ends, so that it does not linger as a zombie of this process.
-    let _ = std::thread::Builder::new()
-        .name("server reaper".to_owned())
-        .spawn(move || server.wait());
-    stream
-}
-
 impl Connection {
     fn open() -> Result<Self, String> {
-        let path = caret_protocol::socket_path(config::APPLICATION_ID)
-            .ok_or_else(|| "XDG_RUNTIME_DIR is not set".to_owned())?;
-        let mut stream = connect(&path)?;
-        caret_protocol::greet(&mut stream).map_err(|error| error.to_string())?;
+        let mut stream = caret_protocol::client::connect(config::APPLICATION_ID)
+            .map_err(|error| error.to_string())?;
         let mut out = stream.try_clone().map_err(|error| error.to_string())?;
 
         let (writer, written) = mpsc::channel::<Vec<u8>>();

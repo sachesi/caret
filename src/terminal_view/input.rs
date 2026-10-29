@@ -6,7 +6,7 @@ use caret_protocol::SelectionKind;
 use gettextrs::gettext;
 
 use super::*;
-use crate::encode::{self, Key, Modifiers, MouseAction, MouseButton};
+use caret_protocol::encode::{self, Key, Modifiers, MouseAction, MouseButton};
 
 fn modifiers(state: gdk::ModifierType) -> Modifiers {
     Modifiers {

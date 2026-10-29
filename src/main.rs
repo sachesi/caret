@@ -2,7 +2,6 @@ mod application;
 mod box_drawing;
 mod config;
 mod connection;
-mod encode;
 mod fonts;
 mod frame;
 mod i18n;

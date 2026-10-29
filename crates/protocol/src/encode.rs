@@ -3,7 +3,7 @@
 
 use std::fmt::Write as _;
 
-use caret_protocol::Mode;
+use crate::Mode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -40,6 +40,7 @@ impl Modifiers {
 }
 
 /// The bytes for a key, or nothing for a key the terminal has no sequence for.
+#[must_use]
 pub fn key(key: Key, modifiers: Modifiers, mode: Mode) -> Option<Vec<u8>> {
     let parameter = modifiers.parameter();
     let bytes: Vec<u8> = match key {
@@ -158,6 +159,7 @@ pub enum MouseAction {
 
 /// A mouse event for a program that asked for them, at a 0-based cell. Nothing when the
 /// modes in force do not report it, or the cell is past what the old encoding can say.
+#[must_use]
 pub fn mouse(
     button: MouseButton,
     action: MouseAction,
@@ -223,6 +225,7 @@ pub fn mouse(
 /// Text from the clipboard as it goes to the program. Bracketed, it is stripped of escapes
 /// (ESC, and CSI as UTF-8) so it cannot end the bracket early and run as keys; otherwise
 /// newlines become the carriage returns Enter sends.
+#[must_use]
 pub fn paste(text: &[u8], bracketed: bool) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(text.len() + 12);
     if bracketed {
@@ -255,6 +258,7 @@ pub fn paste(text: &[u8], bracketed: bool) -> Vec<u8> {
 
 /// A path dropped on the terminal, quoted for a POSIX shell when it needs to be. Bytes,
 /// since a file's name need not be UTF-8.
+#[must_use]
 pub fn shell_quoted(path: &[u8]) -> Vec<u8> {
     let plain = !path.is_empty()
         && path

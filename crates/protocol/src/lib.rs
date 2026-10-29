@@ -9,6 +9,8 @@
 //! A newer version only adds: new variants with new tags, never new fields in old ones.
 //! Each side sends the other only what the agreed version has.
 
+pub mod client;
+pub mod encode;
 mod messages;
 mod screen;
 pub mod wire;

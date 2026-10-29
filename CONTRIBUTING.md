@@ -29,14 +29,14 @@ Before a change goes in:
                               and accessible text
     src/connection.rs         the connection to the terminal server, started if none
                               listens, and what it sends routed to windows and tabs
-    src/encode.rs             keys, mouse events and pastes as bytes for the program
     src/frame.rs              the screen as the server sent it, turned into quads
     src/renderer.rs           OpenGL: shaders, the glyph atlas, the textures GTK composites
     src/fonts.rs              cell metrics and glyphs rasterised by Pango and cairo
     src/box_drawing.rs        box drawing and block characters drawn to fill their cells
     src/palette.rs            the default colours, sent to the server
     crates/protocol           what clients and the server send each other, and how it
-                              is written on the socket
+                              is written on the socket; in encode.rs, keys, mouse
+                              events and pastes as bytes for the program
     crates/server             caret-server: terminals, their screens and history, the
                               sessions windows attach to, links and search
 

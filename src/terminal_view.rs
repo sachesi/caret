@@ -104,7 +104,7 @@ mod imp {
         /// Ctrl was held at the pointer's last move.
         pub ctrl: Cell<bool>,
         /// The button whose press went to the program, whose release must follow it.
-        pub reported_button: Cell<Option<crate::encode::MouseButton>>,
+        pub reported_button: Cell<Option<caret_protocol::encode::MouseButton>>,
         pub reported_cell: Cell<Option<(usize, usize)>>,
         pub selecting: Cell<bool>,
         /// The shell is running a command it marked.
@@ -1085,7 +1085,7 @@ impl TerminalView {
         let bracketed = self.mode().contains(Mode::BRACKETED_PASTE);
         let lines = text.iter().any(|&byte| byte == b'\n' || byte == b'\r');
         if bracketed || !lines {
-            self.input(crate::encode::paste(text, bracketed));
+            self.input(caret_protocol::encode::paste(text, bracketed));
             return;
         }
         // Without brackets every line is entered as it arrives, a command run for each.
@@ -1111,7 +1111,7 @@ impl TerminalView {
                 self,
                 move |response| {
                     if response == "paste" {
-                        view.input(crate::encode::paste(&text, false));
+                        view.input(caret_protocol::encode::paste(&text, false));
                     }
                     view.grab_focus();
                 }
