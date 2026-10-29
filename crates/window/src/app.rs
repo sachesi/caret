@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::num::NonZeroU32;
+use std::os::unix::ffi::OsStringExt;
 use std::os::unix::process::CommandExt;
 use std::time::Duration;
 
@@ -46,6 +47,7 @@ use smithay_client_toolkit::seat::pointer::cursor_shape::CursorShapeManager;
 
 use crate::atlas::Atlas;
 use crate::chrome::{self, Chrome, Dialog, Drawing};
+use crate::cli::{Attach, Start};
 use crate::config::{self, Config};
 use crate::connection::{self, Received};
 use crate::desktop::{self, Desktop};
@@ -151,6 +153,8 @@ struct App {
     opening: bool,
     /// The tab the window opened, to show when the server tells of it.
     opened: Option<TerminalId>,
+    /// What the window's first tab runs, from the command line.
+    first: Command,
     /// Counts searches, so that answers to ones the window moved past are dropped.
     searches: u32,
     /// What the dialog open asks to confirm.
@@ -251,7 +255,7 @@ fn toplevel(
     unsafe_code,
     reason = "Vulkan draws to the surface through its raw pointers"
 )]
-pub fn run() -> Result<(), AppError> {
+pub fn run(start: Start) -> Result<(), AppError> {
     let connection = Connection::connect_to_env()?;
     let (globals, queue) = registry_queue_init::<App>(&connection)?;
     let qh = queue.handle();
@@ -279,8 +283,7 @@ pub fn run() -> Result<(), AppError> {
     let fonts = Fonts::new(family.as_deref(), points, 1.0)?;
     let palette = palette(&config, &desktop);
     server.send(&look(&config, &palette));
-    let mut asked = HashMap::new();
-    asked.insert(server.ask(Question::NewSession), Asked::Session);
+    let (asked, first) = begin(&mut server, start);
 
     let mut events: EventLoop<App> = EventLoop::try_new()?;
     let (pastes, pasted) = calloop::channel::channel();
@@ -310,6 +313,7 @@ pub fn run() -> Result<(), AppError> {
         selected: 0,
         opening: false,
         opened: None,
+        first,
         searches: 0,
         confirming: None,
         choices: Vec::new(),
@@ -360,10 +364,36 @@ pub fn run() -> Result<(), AppError> {
     Ok(())
 }
 
+/// Asks the server for a new session, or to show the one `start` names, and what the
+/// first tab of a new one runs.
+fn begin(server: &mut connection::Connection, start: Start) -> (HashMap<u32, Asked>, Command) {
+    let mut asked = HashMap::new();
+    if let Attach::Session(session) = start.attach {
+        server.send(&Request::Attach { session });
+        return (asked, Command::default());
+    }
+    asked.insert(server.ask(Question::NewSession), Asked::Session);
+    let directory = start.directory.map(|directory| {
+        let directory = std::env::current_dir().unwrap_or_default().join(directory);
+        Bytes(directory.into_os_string().into_vec())
+    });
+    let first = Command {
+        hold: !start.command.is_empty(),
+        argv: start.command,
+        directory,
+        env: Vec::new(),
+    };
+    (asked, first)
+}
+
 /// Opens another window, a program of its own.
-fn new_window() {
-    let started = std::env::current_exe()
-        .and_then(|program| std::process::Command::new(program).process_group(0).spawn());
+pub fn new_window(arguments: &[&str]) {
+    let started = std::env::current_exe().and_then(|program| {
+        std::process::Command::new(program)
+            .args(arguments)
+            .process_group(0)
+            .spawn()
+    });
     match started {
         // Waited for, so that it leaves no zombie when it ends.
         Ok(mut window) => {
@@ -522,10 +552,15 @@ impl App {
                 status,
             } => self.command_finished(terminal, seconds, status),
             Message::TabNamed { terminal, name } => self.tab_named(terminal, name),
-            Message::Attached { session, tabs } if Some(session) == self.session => {
+            // A window started on a session it was handed learns it is shown here.
+            Message::Attached { session, tabs }
+                if self.session.is_none_or(|own| own == session) =>
+            {
+                self.session = Some(session);
                 for (index, tab) in (0..).zip(tabs) {
                     self.tab_opened(index, tab);
                 }
+                self.open_first_tab();
             }
             Message::TabOpened {
                 session,
@@ -617,7 +652,6 @@ impl App {
     }
 
     /// Ends the window, and its session unless the settings keep it running.
-    /// Closes the window, and with it the session's tabs unless closing detaches it.
     fn end(&mut self) {
         WindowState {
             size: self.floating_size,
@@ -642,7 +676,8 @@ impl App {
         if self.opening || !self.tabs.is_empty() {
             return;
         }
-        self.open_tab(Command::default());
+        let first = std::mem::take(&mut self.first);
+        self.open_tab(first);
         self.opening = true;
     }
 
@@ -953,7 +988,7 @@ impl App {
 
     fn act(&mut self, action: Action) {
         match action {
-            Action::NewWindow => new_window(),
+            Action::NewWindow => new_window(&[]),
             Action::CloseWindow => self.close(),
             Action::Copy => {
                 if let Some(terminal) = self.terminal() {
