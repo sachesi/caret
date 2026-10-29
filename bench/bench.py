@@ -213,13 +213,17 @@ def woken(before: dict[str, int], after: dict[str, int]) -> int:
 
 
 class Caret:
-    """One Caret with its own bus and in-memory settings, running `command`."""
+    """One Caret with its own bus and settings, running `command`."""
 
     def __init__(self, session: Session, caret: Path, schemas: Path, timings: Path, command: list[str]):
         self.timings = timings
+        # The kernel keeps the first 15 bytes of a program's name.
+        self.name = caret.name[:15]
         env = session.env | {
             "GSETTINGS_SCHEMA_DIR": str(schemas),
             "GSETTINGS_BACKEND": "memory",
+            "XDG_CONFIG_HOME": str(session.state / "config"),
+            "XDG_STATE_HOME": str(session.state / "state"),
             "CARET_TIMINGS": str(timings),
             "GTK_A11Y": "none",
         }
@@ -245,7 +249,7 @@ class Caret:
         return None
 
     def caret_pid(self) -> int | None:
-        return self.find("caret")
+        return self.find(self.name)
 
     def server_pid(self) -> int | None:
         """The terminal server the window started, found while it is still the window's

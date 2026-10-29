@@ -151,6 +151,9 @@ impl App {
             self.tabs[index].grid.apply(frame, Unresolved);
             return;
         }
+        // The server sends a frame only once something changed, if only the cursor, as
+        // after a typed space.
+        crate::timings::output();
         self.grid.apply(frame, self.atlas.lookup(&mut self.fonts));
         self.renew_full_atlas();
         self.show_link();

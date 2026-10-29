@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::process::CommandExt;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use caret_protocol::encode::{self, Modifiers};
 use caret_protocol::{
@@ -852,6 +852,7 @@ impl App {
         }
         self.waiting = true;
         self.dirty = false;
+        let started = Instant::now();
         let (surface_width, surface_height) =
             (self.device(width + margin), self.device(height + margin));
         let constants = self.constants(surface_width, surface_height);
@@ -884,10 +885,14 @@ impl App {
             under,
             background: clear,
         };
+        let rendering = Instant::now();
         if let Err(error) = self.gpu.draw(surface_width, surface_height, &mut scene) {
             tracing::error!("drawing the window: {error}");
             self.exit = true;
             return;
+        }
+        if crate::timings::enabled() {
+            crate::timings::frame(rendering - started, rendering.elapsed());
         }
         // Drawn, so ready for the next.
         self.ask_frame();
@@ -999,6 +1004,7 @@ impl App {
                 bytes: Bytes(text.as_bytes().to_vec()),
                 bottom: self.config.scroll_on_keystroke,
             });
+            crate::timings::key();
             return;
         }
         let Some(key) = crate::keys::key(event.keysym) else {
@@ -1010,6 +1016,7 @@ impl App {
                 bytes: Bytes(bytes),
                 bottom: self.config.scroll_on_keystroke,
             });
+            crate::timings::key();
         }
     }
 

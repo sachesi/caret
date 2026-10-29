@@ -17,6 +17,7 @@ mod palette;
 mod renderer;
 mod shortcuts;
 mod state;
+mod timings;
 
 use std::process::ExitCode;
 
