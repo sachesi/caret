@@ -1,12 +1,15 @@
 //! Dialogs: asking before what the user may not mean, closing a tab or the window while
-//! programs run in it and pasting lines a program will run one by one, and asking for
-//! a tab's name.
+//! programs run in it and pasting lines a program will run one by one, asking for a
+//! tab's name, and saying what Caret is.
 
 use caret_protocol::{Answer, Bytes, Question, Request, TerminalId, encode};
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
-use super::{App, Asked};
-use crate::chrome::Dialog;
+use super::{App, Asked, pointer};
+use crate::chrome::{Appearance, Dialog};
+
+/// Where Caret is made, which About offers to open.
+const WEBSITE: &str = "https://github.com/sachesi/caret";
 
 /// What the dialog open asks to confirm, or asks for.
 pub enum Confirm {
@@ -14,6 +17,7 @@ pub enum Confirm {
     CloseWindow,
     Paste { terminal: TerminalId, text: Vec<u8> },
     Rename(TerminalId),
+    About,
 }
 
 /// The tabs asked whether a program runs in them before the window closes.
@@ -50,6 +54,7 @@ impl App {
                     bottom: true,
                 });
             }
+            Some(Confirm::About) if accepted => pointer::open(WEBSITE, &self.toaster),
             Some(Confirm::Rename(terminal)) if accepted => {
                 let name = field
                     .map(|field| field.text.trim().to_owned())
@@ -69,6 +74,20 @@ impl App {
             &self.tab_title(terminal),
         );
         self.confirm(dialog, Confirm::Rename(terminal));
+    }
+
+    /// Says what Caret is, which version, and under which licence, offering its website.
+    pub(super) fn about(&mut self) {
+        let body = format!(
+            "A terminal drawn by the GPU. Version {}, by sachesi, free software under the \
+             GNU General Public License, version 3 or later.",
+            env!("CARGO_PKG_VERSION")
+        );
+        let dialog = Dialog {
+            appearance: Appearance::Suggested,
+            ..Dialog::new("Caret", &body, ["Close", "Website"])
+        };
+        self.confirm(dialog, Confirm::About);
     }
 
     /// Closes a dialog about `terminal`, which has gone.

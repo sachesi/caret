@@ -20,6 +20,7 @@ pub enum Choice {
     Detach,
     Reattach,
     Preferences,
+    About,
     OpenLink(String),
     CopyLink(String),
 }
@@ -75,7 +76,10 @@ impl App {
                 self.item("Reattach Windows", Choice::Reattach, true),
             ],
             vec![self.act_item("Full Screen", Action::Fullscreen)],
-            vec![self.item("Preferences", Choice::Preferences, true)],
+            vec![
+                self.item("Preferences", Choice::Preferences, true),
+                self.item("About Caret", Choice::About, true),
+            ],
         ]);
         self.show_menu(sections, Menu::under_main_button(width), true);
     }
@@ -177,6 +181,7 @@ impl App {
                 Some(path) => pointer::open(&path.to_string_lossy(), &self.toaster),
                 None => self.toast("Could not make the settings file".to_owned()),
             },
+            Some(Choice::About) => self.about(),
             None => {}
         }
     }

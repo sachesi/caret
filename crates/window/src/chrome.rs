@@ -12,7 +12,7 @@ use crate::fonts::Raster;
 mod dialog;
 mod menu;
 
-pub use dialog::{Dialog, wrap};
+pub use dialog::{Appearance, Dialog, wrap};
 pub use menu::{Item, Menu};
 
 /// The header bar's height, in logical pixels as all sizes here are.
