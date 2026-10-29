@@ -89,6 +89,20 @@ impl App {
         true
     }
 
+    /// Types `typed` into the field if it has the keys, saying whether it took it.
+    pub(super) fn search_type(&mut self, typed: &str) -> bool {
+        let Some(search) = self.chrome.search.as_mut().filter(|search| search.focused) else {
+            return false;
+        };
+        search.text.insert_str(search.cursor, typed);
+        search.cursor += typed.len();
+        self.select(Select::Clear);
+        self.find(true);
+        self.dirty = true;
+        self.draw();
+        true
+    }
+
     /// Finds the field's text upwards or downwards from the selection.
     pub(super) fn find(&mut self, upwards: bool) {
         let terminal = self.terminal();

@@ -158,6 +158,17 @@ pub enum Icon {
     Down,
 }
 
+/// Text an input method is composing, over the cursor's cell.
+#[derive(Debug, Default)]
+pub struct Preedit {
+    pub text: String,
+    /// The cell's top left and height, in device pixels from the surface's corner.
+    pub at: (f32, f32),
+    pub height: f32,
+    /// The terminal's text colour.
+    pub color: u32,
+}
+
 /// The bar to find text in the history with.
 #[derive(Debug, Default)]
 pub struct Search {
@@ -222,6 +233,8 @@ pub struct Chrome {
     pub selected: usize,
     /// The find bar, while it is open.
     pub search: Option<Search>,
+    /// Text being composed, shown over the terminal.
+    pub preedit: Option<Preedit>,
     /// The address of the link under the pointer, shown over the terminal.
     pub link: Option<String>,
     /// A dialog over the window, which takes all input while it is open.
@@ -411,6 +424,9 @@ impl Chrome {
             painter.search(&mut quads, search, &mut draw);
         }
         let under = quads.len();
+        if let Some(preedit) = &self.preedit {
+            painter.preedit(&mut quads, preedit, background, &mut draw);
+        }
         if let Some(link) = &self.link {
             painter.link(&mut quads, link, size.1 as f32 * scale, &mut draw);
         }
@@ -697,6 +713,48 @@ impl Painter<'_> {
                 quads.push(centred(left + side / 2.0, middle, icon, shown));
             }
         }
+    }
+
+    /// Text being composed, on the terminal's background and underlined, so that it
+    /// hides the cells it covers.
+    fn preedit(
+        &self,
+        quads: &mut Vec<Quad>,
+        preedit: &Preedit,
+        background: u32,
+        draw: &mut impl FnMut(&Drawing) -> Option<(u32, GpuGlyph)>,
+    ) {
+        let label = Drawing::Label {
+            text: preedit.text.clone(),
+            width: (self.margin + self.width - preedit.at.0).max(0.0) as u32,
+            bold: false,
+        };
+        let Some((index, glyph)) = draw(&label) else {
+            return;
+        };
+        let (width, _) = halves(glyph.size);
+        let ((x, y), height) = (preedit.at, preedit.height);
+        let width = width as f32;
+        quads.push(Quad {
+            x,
+            y,
+            width,
+            height,
+            color: background,
+            ..Quad::default()
+        });
+        let (_, top) = offset(glyph);
+        let text_y = (y + (height - self.line as f32) / 2.0).floor() + top as f32;
+        quads.push(entry(x, text_y, index, glyph, preedit.color));
+        let thickness = self.scale.round().max(1.0);
+        quads.push(Quad {
+            x,
+            y: y + height - thickness,
+            width,
+            height: thickness,
+            color: preedit.color,
+            ..Quad::default()
+        });
     }
 
     /// A link's address in a bubble at the bottom left of a window `height` high.

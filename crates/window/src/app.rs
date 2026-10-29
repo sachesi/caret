@@ -20,6 +20,7 @@ use smithay_client_toolkit::reexports::calloop::{
     self, EventLoop, Interest, LoopHandle, Mode, PostAction,
 };
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
+use smithay_client_toolkit::reexports::protocols::wp::text_input::zv3::client::zwp_text_input_manager_v3::ZwpTextInputManagerV3;
 use smithay_client_toolkit::reexports::client::globals::{BindError, registry_queue_init};
 use smithay_client_toolkit::reexports::client::protocol::{
     wl_keyboard, wl_output, wl_seat, wl_surface,
@@ -90,6 +91,7 @@ mod pointer;
 mod scale;
 mod search;
 mod tabs;
+mod text_input;
 
 /// A question the window is waiting for the answer to.
 enum Asked {
@@ -166,6 +168,8 @@ struct App {
     /// The size of the grid the window fits, as last told to the server.
     grid_size: Option<Size>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
+    text_inputs: Option<ZwpTextInputManagerV3>,
+    text_input: Option<text_input::TextInput>,
     modifiers: Modifiers,
     /// The serial of the last key or button press, which taking a selection needs.
     serial: u32,
@@ -242,6 +246,7 @@ pub fn run() -> Result<(), AppError> {
         pastes,
     );
     let cursor_shapes = CursorShapeManager::bind(&globals, &qh).ok();
+    let text_inputs = text_input::TextInput::bind(&globals, &qh);
     let mut app = App {
         registry: RegistryState::new(&globals),
         compositor,
@@ -282,6 +287,8 @@ pub fn run() -> Result<(), AppError> {
         fractional,
         grid_size: None,
         keyboard: None,
+        text_inputs,
+        text_input: None,
         modifiers: Modifiers::default(),
         serial: 0,
         pointer: pointer::Pointer::default(),
@@ -712,6 +719,8 @@ impl App {
             (self.device(width + margin), self.device(height + margin));
         let constants = self.constants(surface_width, surface_height);
         let background = self.grid.background;
+        self.place_text_input();
+        self.place_preedit();
         let (mut quads, mut under) = self.frame_quads((width, height));
         if self.atlas.full {
             self.renew_full_atlas();
@@ -1115,6 +1124,7 @@ impl SeatHandler for App {
             }
         }
         if capability == Capability::Keyboard && self.keyboard.is_none() {
+            self.text_input = text_input::TextInput::new(self.text_inputs.as_ref(), &seat, qh);
             let keyboard = self.seats.get_keyboard_with_repeat(
                 qh,
                 &seat,
