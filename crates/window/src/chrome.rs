@@ -49,6 +49,11 @@ const FIELD_PADDING: f32 = 9.0;
 /// The icons' square, and the strokes drawn in it.
 const ICON: f32 = 16.0;
 const STROKE: f32 = 1.5;
+/// A toast's height, the room either side of its text and below it, and its colour.
+const TOAST: f32 = 42.0;
+const TOAST_PADDING: f32 = 18.0;
+const TOAST_MARGIN: f32 = 12.0;
+const TOAST_BACKGROUND: u32 = 0x2828_2cf0;
 /// The bubble showing a link's address: how far it is from the window's corner, and the
 /// room around its text.
 const BUBBLE_INSET: f32 = 6.0;
@@ -257,6 +262,8 @@ pub struct Chrome {
     pub dialog: Option<Dialog>,
     /// A menu over the window, which takes all input while it is open.
     pub menu: Option<Menu>,
+    /// A short message over the bottom of the window.
+    pub toast: Option<String>,
     pub hovered: Option<Part>,
     pub pressed: Option<Part>,
 }
@@ -452,6 +459,9 @@ impl Chrome {
         }
         if let Some(link) = &self.link {
             painter.link(&mut quads, link, size.1 as f32 * scale, &mut draw);
+        }
+        if let Some(toast) = &self.toast {
+            painter.toast(&mut quads, toast, size.1 as f32 * scale, &mut draw);
         }
         if let Some(dialog) = &self.dialog {
             painter.dialog(&mut quads, dialog, size.1 as f32 * scale, &mut draw);
@@ -802,6 +812,56 @@ impl Painter<'_> {
             color: preedit.color,
             ..Quad::default()
         });
+    }
+
+    /// `text` in a toast at the bottom of a window `height` high.
+    fn toast(
+        &self,
+        quads: &mut Vec<Quad>,
+        text: &str,
+        height: f32,
+        draw: &mut impl FnMut(&Drawing) -> Option<(u32, GpuGlyph)>,
+    ) {
+        let (scale, margin) = (self.scale, self.margin);
+        let padding = TOAST_PADDING * scale;
+        let room = (self.width - 2.0 * (TOAST_MARGIN * scale + padding)).max(0.0);
+        let label = Drawing::Label {
+            text: text.to_owned(),
+            width: room as u32,
+            bold: false,
+        };
+        let Some(glyph) = draw(&label) else {
+            return;
+        };
+        let (width, _) = halves(glyph.1.size);
+        let (toast_width, toast_height) = (width as f32 + 2.0 * padding, TOAST * scale);
+        let x = (margin + (self.width - toast_width) / 2.0).round();
+        let y = (margin + height - TOAST_MARGIN * scale - toast_height).round();
+        quads.push(Quad {
+            blur: 6.0 * scale,
+            ..rounded(
+                x,
+                y + scale,
+                toast_width,
+                toast_height,
+                toast_height / 2.0,
+                SHADOW,
+            )
+        });
+        quads.push(rounded(
+            x,
+            y,
+            toast_width,
+            toast_height,
+            toast_height / 2.0,
+            TOAST_BACKGROUND,
+        ));
+        quads.push(self.label(
+            x + toast_width / 2.0,
+            y + toast_height / 2.0,
+            glyph,
+            0xffff_ffff,
+        ));
     }
 
     /// A link's address in a bubble at the bottom left of a window `height` high.

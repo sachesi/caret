@@ -127,7 +127,7 @@ impl App {
         self.close_menu();
         match choice.filter(|_| enabled) {
             Some(Choice::Act(action)) => self.act(action),
-            Some(Choice::OpenLink(link)) => pointer::open(&link),
+            Some(Choice::OpenLink(link)) => pointer::open(&link, &self.toaster),
             Some(Choice::CopyLink(link)) => self.copy(link, false),
             None => {}
         }

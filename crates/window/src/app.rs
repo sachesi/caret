@@ -93,6 +93,7 @@ mod scale;
 mod search;
 mod tabs;
 mod text_input;
+mod toast;
 
 /// A question the window is waiting for the answer to.
 enum Asked {
@@ -151,6 +152,10 @@ struct App {
     confirming: Option<confirm::Confirm>,
     /// What each item of the menu open does.
     choices: Vec<menus::Choice>,
+    /// Counts toasts, so that a toast's timer hides only its own; and where threads
+    /// send theirs.
+    toasts: u32,
+    toaster: calloop::channel::Sender<String>,
     /// The window is about to close once its tabs say whether programs run in them.
     closing: Option<confirm::Closing>,
     fonts: Fonts,
@@ -245,6 +250,7 @@ pub fn run() -> Result<(), AppError> {
 
     let mut events: EventLoop<App> = EventLoop::try_new()?;
     let (pastes, pasted) = calloop::channel::channel();
+    let (toaster, toasts) = calloop::channel::channel();
     let clipboard = clipboard::Clipboard::new(
         DataDeviceManagerState::bind(&globals, &qh).ok(),
         PrimarySelectionManagerState::bind(&globals, &qh).ok(),
@@ -273,6 +279,8 @@ pub fn run() -> Result<(), AppError> {
         searches: 0,
         confirming: None,
         choices: Vec::new(),
+        toasts: 0,
+        toaster,
         closing: None,
         fonts,
         zoom: 0,
@@ -309,7 +317,7 @@ pub fn run() -> Result<(), AppError> {
     WaylandSource::new(connection, queue)
         .insert(events.handle())
         .map_err(|error| AppError::Loop(error.error))?;
-    listen(&events.handle(), received, pasted, desktop_changed)?;
+    listen(&events.handle(), received, pasted, desktop_changed, toasts)?;
     let signal = events.get_signal();
     events.run(None, &mut app, |app| {
         if app.exit {
@@ -362,7 +370,15 @@ fn listen(
     received: calloop::channel::Channel<Received>,
     pasted: calloop::channel::Channel<Vec<u8>>,
     desktop_changed: calloop::channel::Channel<Desktop>,
+    toasts: calloop::channel::Channel<String>,
 ) -> Result<(), AppError> {
+    events
+        .insert_source(toasts, |event, (), app| {
+            if let calloop::channel::Event::Msg(text) = event {
+                app.toast(text);
+            }
+        })
+        .map_err(|error| AppError::Loop(error.error))?;
     events
         .insert_source(desktop_changed, |event, (), app| {
             if let calloop::channel::Event::Msg(desktop) = event {
@@ -441,7 +457,7 @@ impl App {
                 }
                 (Some(Asked::Link), Answer::Link { uri }) => {
                     if let Some(uri) = uri {
-                        pointer::open(&uri);
+                        pointer::open(&uri, &self.toaster);
                     }
                 }
                 (Some(Asked::Busy(terminal)), answer) => self.busy(terminal, answer),

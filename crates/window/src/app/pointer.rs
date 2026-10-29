@@ -16,6 +16,8 @@ use smithay_client_toolkit::reexports::protocols::wp::cursor_shape::v1::client::
 };
 use smithay_client_toolkit::seat::pointer::{PointerEvent, PointerEventKind, PointerHandler};
 
+use smithay_client_toolkit::reexports::calloop::channel::Sender;
+
 use super::{App, Asked};
 use crate::chrome::{Chrome, Part};
 
@@ -535,8 +537,9 @@ impl PointerHandler for App {
     }
 }
 
-/// Opens `uri` with the program the desktop has for it.
-pub(super) fn open(uri: &str) {
+/// Opens `uri` with the program the desktop has for it, telling `toasts` if it cannot.
+pub(super) fn open(uri: &str, toasts: &Sender<String>) {
+    let failed = |reason: &str| format!("Could not open the link: {reason}");
     let mut opener = match Command::new("xdg-open")
         .arg(uri)
         .stdin(Stdio::null())
@@ -545,15 +548,25 @@ pub(super) fn open(uri: &str) {
         Ok(opener) => opener,
         Err(error) => {
             tracing::warn!("opening {uri}: {error}");
+            let _ = toasts.send(failed("no program opens links"));
             return;
         }
     };
-    let uri = uri.to_owned();
+    let (uri, toasts) = (uri.to_owned(), toasts.clone());
     // Waited for elsewhere, so that the window goes on meanwhile and it leaves no zombie.
     let waited = std::thread::Builder::new()
         .name("open".into())
         .spawn(move || match opener.wait() {
-            Ok(status) if !status.success() => tracing::warn!("opening {uri}: {status}"),
+            Ok(status) if !status.success() => {
+                tracing::warn!("opening {uri}: {status}");
+                // The codes xdg-open exits with.
+                let reason = match status.code() {
+                    Some(2) => "it does not exist",
+                    Some(3) => "no program opens it",
+                    _ => "the program that opens it failed",
+                };
+                let _ = toasts.send(failed(reason));
+            }
             Ok(_) => {}
             Err(error) => tracing::warn!("opening {uri}: {error}"),
         });
