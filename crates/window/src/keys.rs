@@ -6,6 +6,11 @@ use smithay_client_toolkit::seat::keyboard::Keysym;
 
 /// The terminal's key for `keysym`: a named key, or the character it types.
 pub fn key(keysym: Keysym) -> Option<Key> {
+    named(keysym).or_else(|| keysym.key_char().filter(|c| !c.is_control()).map(Key::Char))
+}
+
+/// The terminal's key for a key that types no character.
+pub fn named(keysym: Keysym) -> Option<Key> {
     let named = match keysym {
         Keysym::Return | Keysym::KP_Enter => Key::Enter,
         Keysym::Tab | Keysym::ISO_Left_Tab | Keysym::KP_Tab => Key::Tab,

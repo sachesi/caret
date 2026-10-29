@@ -31,6 +31,10 @@ use smithay_client_toolkit::shell::xdg::window::{
 };
 use smithay_client_toolkit::{delegate_dispatch2, delegate_registry, registry_handlers};
 
+use smithay_client_toolkit::data_device_manager::DataDeviceManagerState;
+use smithay_client_toolkit::primary_selection::PrimarySelectionManagerState;
+use smithay_client_toolkit::seat::pointer::cursor_shape::CursorShapeManager;
+
 use crate::atlas::Atlas;
 use crate::connection::{self, Received};
 use crate::fonts::{FontError, Fonts};
@@ -66,10 +70,18 @@ const PADDING: u32 = 6;
 /// The font size until settings choose one.
 const POINTS: f32 = 11.0;
 
+mod clipboard;
+mod pointer;
+
 /// A question the window is waiting for the answer to.
 enum Asked {
     Session,
-    Tab,
+    /// The window's tab, opened at this size.
+    Tab(Size),
+    /// The selected text, to offer as the clipboard or the primary selection.
+    Copy {
+        primary: bool,
+    },
 }
 
 /// Fields drop in order: the device before the surface it draws to, and both before
@@ -108,6 +120,11 @@ struct App {
     grid_size: Option<Size>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
     modifiers: Modifiers,
+    /// The serial of the last key or button press, which taking a selection needs.
+    serial: u32,
+    pointer: pointer::Pointer,
+    cursor_shapes: Option<CursorShapeManager>,
+    clipboard: clipboard::Clipboard,
     focused: bool,
     /// Something changed since the last frame was drawn.
     dirty: bool,
@@ -158,6 +175,13 @@ pub fn run() -> Result<(), AppError> {
     asked.insert(server.ask(Question::NewSession), Asked::Session);
 
     let mut events: EventLoop<App> = EventLoop::try_new()?;
+    let (pastes, pasted) = calloop::channel::channel();
+    let clipboard = clipboard::Clipboard::new(
+        DataDeviceManagerState::bind(&globals, &qh).ok(),
+        PrimarySelectionManagerState::bind(&globals, &qh).ok(),
+        pastes,
+    );
+    let cursor_shapes = CursorShapeManager::bind(&globals, &qh).ok();
     let mut app = App {
         registry: RegistryState::new(&globals),
         seats: SeatState::new(&globals, &qh),
@@ -182,6 +206,10 @@ pub fn run() -> Result<(), AppError> {
         grid_size: None,
         keyboard: None,
         modifiers: Modifiers::default(),
+        serial: 0,
+        pointer: pointer::Pointer::default(),
+        cursor_shapes,
+        clipboard,
         focused: false,
         dirty: true,
         waiting: false,
@@ -196,6 +224,14 @@ pub fn run() -> Result<(), AppError> {
         .insert_source(received, |event, (), app| {
             if let calloop::channel::Event::Msg(received) = event {
                 app.received(received);
+            }
+        })
+        .map_err(|error| AppError::Loop(error.error))?;
+    events
+        .handle()
+        .insert_source(pasted, |event, (), app| {
+            if let calloop::channel::Event::Msg(bytes) = event {
+                app.pasted(&bytes);
             }
         })
         .map_err(|error| AppError::Loop(error.error))?;
@@ -225,16 +261,28 @@ impl App {
                     self.server.send(&Request::Attach { session });
                     self.open_tab();
                 }
-                (Some(Asked::Tab), Answer::Opened { terminal }) => {
+                (Some(Asked::Copy { primary }), Answer::Text { text }) => {
+                    if let Some(text) = text.filter(|text| !text.is_empty()) {
+                        self.copy(text, primary);
+                    }
+                }
+                (Some(Asked::Tab(size)), Answer::Opened { terminal }) => {
                     self.opening = false;
                     self.terminal = Some(terminal);
+                    // The window may have changed size while the tab was opening.
+                    if let Some(now) = self.grid_size.filter(|&now| now != size) {
+                        self.server.send(&Request::Resize {
+                            terminal,
+                            size: now,
+                        });
+                    }
                     self.ask_frame();
                 }
+                (Some(Asked::Copy { .. }) | None, _) => {}
                 (Some(_), answer) => {
                     tracing::error!("the server answered {answer:?}");
                     self.exit = true;
                 }
-                (None, _) => {}
             },
             Message::Frame { terminal, frame } if Some(terminal) == self.terminal => {
                 self.frame_asked = false;
@@ -243,6 +291,11 @@ impl App {
                 self.dirty = true;
                 self.draw();
             }
+            Message::Clipboard {
+                terminal,
+                primary,
+                text,
+            } if Some(terminal) == self.terminal => self.copy(text, primary),
             Message::Title { terminal, title } if Some(terminal) == self.terminal => {
                 self.window.set_title(title);
             }
@@ -281,7 +334,7 @@ impl App {
             command,
             size,
         });
-        self.asked.insert(id, Asked::Tab);
+        self.asked.insert(id, Asked::Tab(size));
         self.opening = true;
     }
 
@@ -406,6 +459,39 @@ impl App {
         let Some(terminal) = self.terminal else {
             return;
         };
+        let Modifiers { shift, ctrl, alt } = self.modifiers;
+        if ctrl && shift && !alt {
+            match event.keysym {
+                Keysym::C | Keysym::c => {
+                    let id = self.server.ask(Question::SelectionText { terminal });
+                    self.asked.insert(id, Asked::Copy { primary: false });
+                    return;
+                }
+                Keysym::V | Keysym::v => {
+                    self.paste(false);
+                    return;
+                }
+                _ => {}
+            }
+        }
+        // Text as the keymap and compose sequences make it, dead keys included; with Ctrl
+        // or Alt the key itself counts.
+        let typed = event
+            .utf8
+            .as_deref()
+            .filter(|text| !text.is_empty() && !text.chars().any(char::is_control));
+        if let Some(text) = typed
+            && !ctrl
+            && !alt
+            && crate::keys::named(event.keysym).is_none()
+        {
+            self.server.send(&Request::Input {
+                terminal,
+                bytes: Bytes(text.as_bytes().to_vec()),
+                bottom: true,
+            });
+            return;
+        }
         let Some(key) = crate::keys::key(event.keysym) else {
             return;
         };
@@ -549,9 +635,10 @@ impl KeyboardHandler for App {
         _: &Connection,
         _: &QueueHandle<Self>,
         _: &wl_keyboard::WlKeyboard,
-        _: u32,
+        serial: u32,
         event: KeyEvent,
     ) {
+        self.serial = serial;
         self.key(&event);
     }
 
@@ -611,7 +698,9 @@ impl SeatHandler for App {
         &mut self.seats
     }
 
-    fn new_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
+    fn new_seat(&mut self, _: &Connection, qh: &QueueHandle<Self>, seat: wl_seat::WlSeat) {
+        self.clipboard.add_seat(qh, &seat);
+    }
 
     fn new_capability(
         &mut self,
@@ -620,6 +709,19 @@ impl SeatHandler for App {
         seat: wl_seat::WlSeat,
         capability: Capability,
     ) {
+        self.clipboard.add_seat(qh, &seat);
+        if capability == Capability::Pointer && self.pointer.proxy.is_none() {
+            match self.seats.get_pointer(qh, &seat) {
+                Ok(pointer) => {
+                    self.pointer.shape = self
+                        .cursor_shapes
+                        .as_ref()
+                        .map(|shapes| shapes.get_shape_device(&pointer, qh));
+                    self.pointer.proxy = Some(pointer);
+                }
+                Err(error) => tracing::warn!("taking the pointer: {error}"),
+            }
+        }
         if capability == Capability::Keyboard && self.keyboard.is_none() {
             let keyboard = self.seats.get_keyboard_with_repeat(
                 qh,
@@ -646,6 +748,14 @@ impl SeatHandler for App {
             && let Some(keyboard) = self.keyboard.take()
         {
             keyboard.release();
+        }
+        if capability == Capability::Pointer {
+            if let Some(shape) = self.pointer.shape.take() {
+                shape.destroy();
+            }
+            if let Some(pointer) = self.pointer.proxy.take() {
+                pointer.release();
+            }
         }
     }
 
