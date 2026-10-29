@@ -6,6 +6,7 @@ use std::os::unix::ffi::OsStrExt;
 use caret_protocol::{Bytes, Command, Frame, Question, Request, TerminalId};
 
 use super::{App, Asked};
+use crate::chrome::TabLabel;
 use crate::gpu::FRAMES_IN_FLIGHT;
 use crate::grid::Grid;
 
@@ -18,6 +19,8 @@ pub struct Tab {
     grid: Grid,
     /// A frame has been asked of the server and not yet come.
     pub frame_asked: bool,
+    /// Something happened in it while it was out of sight.
+    attention: bool,
 }
 
 impl Tab {
@@ -55,6 +58,7 @@ impl App {
                 name: tab.name,
                 grid: Grid::new(FRAMES_IN_FLIGHT),
                 frame_asked: false,
+                attention: false,
             },
         );
         if let Some(size) = self.grid_size {
@@ -140,6 +144,7 @@ impl App {
             self.selected = index;
             std::mem::swap(&mut self.grid, &mut self.tabs[index].grid);
         }
+        self.tabs[index].attention = false;
         self.reveal();
         self.retitle();
     }
@@ -215,13 +220,51 @@ impl App {
         self.asked.insert(id, Asked::Tab(size));
     }
 
+    pub(super) fn tab_title(&self, terminal: TerminalId) -> String {
+        self.tab_of(terminal)
+            .map_or_else(String::new, |index| self.tabs[index].label().to_owned())
+    }
+
+    /// Whether `terminal`'s tab is in sight: shown, in the window that has the focus.
+    pub(super) fn seen(&self, terminal: TerminalId) -> bool {
+        self.chrome.active && self.terminal() == Some(terminal)
+    }
+
+    /// Marks `terminal`'s tab for something that happened in it, unless it is in sight;
+    /// whether it was out of sight.
+    pub(super) fn draw_attention(&mut self, terminal: TerminalId) -> bool {
+        let Some(index) = self.tab_of(terminal).filter(|_| !self.seen(terminal)) else {
+            return false;
+        };
+        if !self.tabs[index].attention {
+            self.tabs[index].attention = true;
+            self.retitle();
+        }
+        true
+    }
+
+    /// Takes the mark off the shown tab, which is in sight again.
+    pub(super) fn attended(&mut self) {
+        if let Some(tab) = self.tabs.get_mut(self.selected)
+            && std::mem::take(&mut tab.attention)
+        {
+            self.retitle();
+        }
+    }
+
     /// Shows the shown tab's title on the window and every tab's in the strip.
-    fn retitle(&mut self) {
-        let labels: Vec<String> = self.tabs.iter().map(|tab| tab.label().to_owned()).collect();
+    pub(super) fn retitle(&mut self) {
+        let labels: Vec<TabLabel> = self
+            .tabs
+            .iter()
+            .map(|tab| TabLabel {
+                title: tab.label().to_owned(),
+                attention: tab.attention,
+            })
+            .collect();
         let title = labels
             .get(self.selected)
-            .cloned()
-            .unwrap_or_else(|| "Caret".to_owned());
+            .map_or_else(|| "Caret".to_owned(), |label| label.title.clone());
         if title != self.chrome.title {
             self.window.set_title(title.clone());
             self.chrome.title = title;

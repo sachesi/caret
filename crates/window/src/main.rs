@@ -11,6 +11,7 @@ mod fonts;
 mod gpu;
 mod grid;
 mod keys;
+mod notifications;
 mod palette;
 mod renderer;
 mod shortcuts;

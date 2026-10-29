@@ -39,8 +39,11 @@ pub struct Config {
     pub custom_command: String,
     pub scroll_on_output: bool,
     pub scroll_on_keystroke: bool,
-    /// Programs may set the clipboard.
+    /// Programs may set the clipboard, and show notifications while out of sight.
     pub program_clipboard: bool,
+    pub program_notifications: bool,
+    /// The bell a program rings makes a sound.
+    pub audible_bell: bool,
     /// Closing a window leaves its programs running, to attach to again.
     pub close_detaches: bool,
     pub title_bar: bool,
@@ -62,6 +65,8 @@ impl Default for Config {
             scroll_on_output: false,
             scroll_on_keystroke: true,
             program_clipboard: true,
+            program_notifications: true,
+            audible_bell: true,
             close_detaches: false,
             title_bar: true,
             server_side_decorations: true,
@@ -176,6 +181,8 @@ impl Config {
             "scroll-on-output" => self.scroll_on_output = boolean()?,
             "scroll-on-keystroke" => self.scroll_on_keystroke = boolean()?,
             "program-clipboard" => self.program_clipboard = boolean()?,
+            "program-notifications" => self.program_notifications = boolean()?,
+            "audible-bell" => self.audible_bell = boolean()?,
             "close-detaches" => self.close_detaches = boolean()?,
             "title-bar" => self.title_bar = boolean()?,
             "server-side-decorations" => self.server_side_decorations = boolean()?,

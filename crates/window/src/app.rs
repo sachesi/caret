@@ -20,8 +20,10 @@ use smithay_client_toolkit::reexports::calloop::{
     self, EventLoop, Interest, LoopHandle, Mode, PostAction,
 };
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
+use smithay_client_toolkit::reexports::protocols::xdg::activation::v1::client::xdg_activation_v1::XdgActivationV1;
+use smithay_client_toolkit::reexports::protocols::xdg::system_bell::v1::client::xdg_system_bell_v1::XdgSystemBellV1;
 use smithay_client_toolkit::reexports::protocols::wp::text_input::zv3::client::zwp_text_input_manager_v3::ZwpTextInputManagerV3;
-use smithay_client_toolkit::reexports::client::globals::{BindError, registry_queue_init};
+use smithay_client_toolkit::reexports::client::globals::{BindError, GlobalList, registry_queue_init};
 use smithay_client_toolkit::reexports::client::protocol::{
     wl_keyboard, wl_output, wl_seat, wl_surface,
 };
@@ -50,6 +52,7 @@ use crate::desktop::{self, Desktop};
 use crate::fonts::{FontError, Fonts};
 use crate::gpu::{FRAMES_IN_FLIGHT, Gpu, GpuError};
 use crate::grid::{Grid, packed};
+use crate::notifications::Notifier;
 use crate::palette::Palette;
 use crate::renderer::{CURSOR_FOCUSED, CURSOR_WIDE, Constants, Scene};
 use crate::shortcuts::{Action, Shortcuts};
@@ -86,6 +89,7 @@ const DESKTOP_WAIT: Duration = Duration::from_millis(250);
 /// Logical pixels between the window's edge and the cells.
 const PADDING: u32 = 6;
 
+mod attention;
 mod clipboard;
 mod confirm;
 mod menus;
@@ -182,13 +186,14 @@ struct App {
     /// The size of the grid the window fits, as last told to the server.
     grid_size: Option<Size>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
-    text_inputs: Option<ZwpTextInputManagerV3>,
+    offered: Offered,
+    /// Sends desktop notifications, from the first on.
+    notifier: Option<Notifier>,
     text_input: Option<text_input::TextInput>,
     modifiers: Modifiers,
     /// The serial of the last key or button press, which taking a selection needs.
     serial: u32,
     pointer: pointer::Pointer,
-    cursor_shapes: Option<CursorShapeManager>,
     clipboard: clipboard::Clipboard,
     focused: bool,
     /// Something changed since the last frame was drawn.
@@ -197,6 +202,25 @@ struct App {
     /// the next one is worth drawing.
     waiting: bool,
     exit: bool,
+}
+
+/// Protocols the window uses where the compositor offers them.
+struct Offered {
+    cursor_shapes: Option<CursorShapeManager>,
+    text_inputs: Option<ZwpTextInputManagerV3>,
+    system_bell: Option<XdgSystemBellV1>,
+    activation: Option<XdgActivationV1>,
+}
+
+impl Offered {
+    fn bind(globals: &GlobalList, qh: &QueueHandle<App>) -> Self {
+        Self {
+            cursor_shapes: CursorShapeManager::bind(globals, qh).ok(),
+            text_inputs: text_input::TextInput::bind(globals, qh),
+            system_bell: attention::bind_bell(globals, qh),
+            activation: attention::bind_activation(globals, qh),
+        }
+    }
 }
 
 /// The window's toplevel, its frame drawn by the compositor if the settings ask and it
@@ -275,8 +299,8 @@ pub fn run() -> Result<(), AppError> {
         gpu,
         window,
         connection: connection.clone(),
-        cursor_shapes: CursorShapeManager::bind(&globals, &qh).ok(),
-        text_inputs: text_input::TextInput::bind(&globals, &qh),
+        offered: Offered::bind(&globals, &qh),
+        notifier: None,
         qh,
         events: events.handle(),
         server,
@@ -486,6 +510,17 @@ impl App {
                 text,
             } if self.tab_of(terminal).is_some() => self.copy(text, primary),
             Message::Title { terminal, title } => self.tab_titled(terminal, title),
+            Message::Bell { terminal } => self.bell(terminal),
+            Message::Notification {
+                terminal,
+                title,
+                body,
+            } => self.program_notification(terminal, title, body),
+            Message::CommandFinished {
+                terminal,
+                seconds,
+                status,
+            } => self.command_finished(terminal, seconds, status),
             Message::TabNamed { terminal, name } => self.tab_named(terminal, name),
             Message::Attached { session, tabs } if Some(session) == self.session => {
                 for (index, tab) in (0..).zip(tabs) {
@@ -1044,6 +1079,9 @@ impl WindowHandler for App {
             !(configure.is_maximized() || configure.is_fullscreen() || configure.is_tiled());
         self.chrome.maximized = configure.is_maximized();
         self.chrome.active = configure.is_activated();
+        if self.chrome.active {
+            self.attended();
+        }
         let (width, height) = configure.new_size;
         let earlier = if self.chrome.floating {
             self.floating_size.or(self.size)
@@ -1178,6 +1216,7 @@ impl SeatHandler for App {
             match self.seats.get_pointer(qh, &seat) {
                 Ok(pointer) => {
                     self.pointer.shape = self
+                        .offered
                         .cursor_shapes
                         .as_ref()
                         .map(|shapes| shapes.get_shape_device(&pointer, qh));
@@ -1187,7 +1226,8 @@ impl SeatHandler for App {
             }
         }
         if capability == Capability::Keyboard && self.keyboard.is_none() {
-            self.text_input = text_input::TextInput::new(self.text_inputs.as_ref(), &seat, qh);
+            self.text_input =
+                text_input::TextInput::new(self.offered.text_inputs.as_ref(), &seat, qh);
             let keyboard = self.seats.get_keyboard_with_repeat(
                 qh,
                 &seat,

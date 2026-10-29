@@ -83,7 +83,7 @@ fn listen(first: &mpsc::SyncSender<Desktop>, changes: &Sender<Desktop>) -> zbus:
 
 /// The session bus. Connecting here, not through zbus, keeps zbus from starting the
 /// pool it connects in, whose thread stays and wakes twice a second.
-fn session() -> zbus::Result<Connection> {
+pub fn session() -> zbus::Result<Connection> {
     let address = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
     let path = address
         .split(';')

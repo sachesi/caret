@@ -61,6 +61,7 @@ const BUBBLE_PADDING: (f32, f32) = (8.0, 4.0);
 
 /// Colours as 0xRRGGBBAA, not premultiplied.
 const OUTLINE: u32 = 0x0000_063b;
+const ACCENT: u32 = 0x3584_e4ff;
 const SHADOW: u32 = 0x0000_0680;
 const SHADOW_BACKDROP: u32 = 0x0000_0640;
 
@@ -168,6 +169,13 @@ pub enum Icon {
     Menu,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TabLabel {
+    pub title: String,
+    /// Something happened in the tab while it was out of sight.
+    pub attention: bool,
+}
+
 /// Text an input method is composing, over the cursor's cell.
 #[derive(Debug, Default)]
 pub struct Preedit {
@@ -249,8 +257,8 @@ pub struct Chrome {
     pub header_bar: bool,
     pub dark: bool,
     pub title: String,
-    /// The tabs' titles, and which one is shown.
-    pub tabs: Vec<String>,
+    /// The tabs as the strip shows them, and which one is shown.
+    pub tabs: Vec<TabLabel>,
     pub selected: usize,
     /// The find bar, while it is open.
     pub search: Option<Search>,
@@ -660,15 +668,30 @@ impl Painter<'_> {
                 ));
             }
             let room = share - 2.0 * (inset + TAB_CLOSE_END * scale + BUTTON * scale / 2.0);
-            if let Some(text) = chrome.tabs.get(index).filter(|_| room > 0.0) {
+            let label = chrome.tabs.get(index);
+            if let Some(label) = label.filter(|_| room > 0.0) {
                 let tab = Drawing::Label {
-                    text: text.clone(),
+                    text: label.title.clone(),
                     width: room as u32,
                     bold: false,
                 };
                 if let Some(label) = draw(&tab) {
                     quads.push(self.label(left + share / 2.0, middle, label, colors.foreground));
                 }
+            }
+            if label.is_some_and(|label| label.attention) {
+                let (width, height) = ((share / 3.0).min(64.0 * scale), 3.0 * scale);
+                quads.push(Quad {
+                    blur: 2.0 * scale,
+                    ..rounded(
+                        (left + (share - width) / 2.0).round(),
+                        (top + TAB_BAR as f32 * scale - inset - height).round(),
+                        width,
+                        height,
+                        height / 2.0,
+                        chrome.dim(ACCENT),
+                    )
+                });
             }
             if index == chrome.selected || hovered {
                 let centre = left + share - TAB_CLOSE_END * scale;
@@ -1044,6 +1067,13 @@ pub fn icon(icon: Icon, scale: f32) -> Raster {
 mod tests {
     use super::*;
 
+    fn label(title: &str) -> TabLabel {
+        TabLabel {
+            title: title.to_owned(),
+            attention: false,
+        }
+    }
+
     fn floating() -> Chrome {
         Chrome {
             drawn: true,
@@ -1112,12 +1142,12 @@ mod tests {
     fn with_two_tabs_a_strip_shows_them_and_their_close_buttons() {
         let mut chrome = Chrome {
             floating: false,
-            tabs: vec!["one".into()],
+            tabs: vec![label("one")],
             ..floating()
         };
         let size = (800, 500);
         assert_eq!(chrome.top(), HEADER);
-        chrome.tabs.push("two".into());
+        chrome.tabs.push(label("two"));
         assert_eq!(chrome.top(), HEADER + TAB_BAR);
         let middle = f64::from(HEADER + TAB_BAR / 2);
         assert_eq!(chrome.part_at((100.0, middle), size), Some(Part::Tab(0)));
