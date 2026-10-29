@@ -9,8 +9,10 @@ use crate::atlas::GpuGlyph;
 use crate::fonts::Raster;
 
 mod dialog;
+mod menu;
 
 pub use dialog::{Dialog, wrap};
+pub use menu::{Item, Menu};
 
 /// The header bar's height, in logical pixels as all sizes here are.
 pub const HEADER: u32 = 47;
@@ -31,6 +33,8 @@ const BUTTON: f32 = 24.0;
 const BUTTON_HIT: f32 = 34.0;
 /// From the window's right edge to the close button's centre.
 const BUTTON_END: f32 = 23.0;
+/// From the window's right edge to the main menu button's centre.
+const MAIN_MENU_END: f32 = 63.0;
 /// The new tab button's square, from the window's left edge, and its corners' radius.
 const FLAT_BUTTON: (f32, f32) = (6.0, 34.0);
 const FLAT_RADIUS: f32 = 9.0;
@@ -156,6 +160,7 @@ pub enum Icon {
     NewTab,
     Up,
     Down,
+    Menu,
 }
 
 /// Text an input method is composing, over the cursor's cell.
@@ -189,6 +194,8 @@ pub enum Part {
     Header,
     Close,
     NewTab,
+    /// The button that opens the main menu.
+    MainMenu,
     /// The tab at this index, and its close button.
     Tab(usize),
     CloseTab(usize),
@@ -198,6 +205,10 @@ pub enum Part {
     /// A dialog's button, and the rest of the window under the dialog.
     Response(usize),
     Dialog,
+    /// A menu's item, the menu between its items, and the window outside it.
+    MenuItem(usize),
+    Menu,
+    OffMenu,
 }
 
 impl Part {
@@ -205,7 +216,12 @@ impl Part {
     fn shows_hover(self) -> bool {
         !matches!(
             self,
-            Self::Edge(_) | Self::Header | Self::SearchField | Self::Dialog
+            Self::Edge(_)
+                | Self::Header
+                | Self::SearchField
+                | Self::Dialog
+                | Self::Menu
+                | Self::OffMenu
         )
     }
 }
@@ -239,6 +255,8 @@ pub struct Chrome {
     pub link: Option<String>,
     /// A dialog over the window, which takes all input while it is open.
     pub dialog: Option<Dialog>,
+    /// A menu over the window, which takes all input while it is open.
+    pub menu: Option<Menu>,
     pub hovered: Option<Part>,
     pub pressed: Option<Part>,
 }
@@ -299,6 +317,9 @@ impl Chrome {
                 None
             };
         }
+        if let Some(menu) = &self.menu {
+            return Some(menu.part_at((x, y), size));
+        }
         if let Some(dialog) = &self.dialog {
             return Some(dialog.part_at((x, y), size));
         }
@@ -316,6 +337,8 @@ impl Chrome {
                     Part::Close
                 } else if within((left + side / 2.0, middle), side / 2.0) {
                     Part::NewTab
+                } else if within((width - f64::from(MAIN_MENU_END), middle), side / 2.0) {
+                    Part::MainMenu
                 } else {
                     Part::Header
                 },
@@ -433,6 +456,9 @@ impl Chrome {
         if let Some(dialog) = &self.dialog {
             painter.dialog(&mut quads, dialog, size.1 as f32 * scale, &mut draw);
         }
+        if let Some(menu) = &self.menu {
+            painter.menu(&mut quads, menu, size.1 as f32 * scale, &mut draw);
+        }
         (quads, under)
     }
 
@@ -543,7 +569,28 @@ impl Painter<'_> {
                 chrome.dim(colors.foreground),
             ));
         }
-        let room = width - 2.0 * (BUTTON_END + BUTTON_HIT / 2.0 + 6.0) * scale;
+        let menu_left = (margin + width - (MAIN_MENU_END + FLAT_BUTTON.1 / 2.0) * scale).round();
+        let open = chrome.menu.as_ref().is_some_and(|menu| menu.main);
+        if open || chrome.over(Part::MainMenu, false) {
+            let pressed = open || chrome.over(Part::MainMenu, true);
+            quads.push(rounded(
+                menu_left,
+                top,
+                side,
+                side,
+                FLAT_RADIUS * scale,
+                chrome.dim(colors.flat[usize::from(pressed)]),
+            ));
+        }
+        if let Some(icon) = draw(&Drawing::Icon(Icon::Menu)) {
+            quads.push(centred(
+                menu_left + side / 2.0,
+                middle,
+                icon,
+                chrome.dim(colors.foreground),
+            ));
+        }
+        let room = width - 2.0 * (MAIN_MENU_END + FLAT_BUTTON.1 / 2.0 + 6.0) * scale;
         if !chrome.title.is_empty() && room > 0.0 {
             let title = Drawing::Label {
                 text: chrome.title.clone(),
@@ -899,6 +946,11 @@ pub fn icon(icon: Icon, scale: f32) -> Raster {
         Icon::NewTab => &[&[[3.0, 8.0], [13.0, 8.0]], &[[8.0, 3.0], [8.0, 13.0]]],
         Icon::Up => &[&[[3.0, 10.5], [8.0, 5.5], [13.0, 10.5]]],
         Icon::Down => &[&[[3.0, 5.5], [8.0, 10.5], [13.0, 5.5]]],
+        Icon::Menu => &[
+            &[[2.5, 4.0], [13.5, 4.0]],
+            &[[2.5, 8.0], [13.5, 8.0]],
+            &[[2.5, 12.0], [13.5, 12.0]],
+        ],
     };
     let size = (ICON * scale).round() as u32;
     let mut path = Vec::new();

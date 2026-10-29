@@ -130,32 +130,64 @@ impl Shortcut {
             alt: held.alt,
         }
     }
+
+    /// The shortcut as it is shown: its modifiers, then its key as typed or named.
+    fn label(self) -> String {
+        let typed = char::from_u32(xkb::keysym_to_utf32(self.key))
+            .filter(|c| !c.is_control() && !c.is_whitespace());
+        let key = match (typed, self.key) {
+            (Some(c), _) => c.to_uppercase().collect(),
+            (None, Keysym::Page_Down) => "Page Down".to_owned(),
+            (None, Keysym::Page_Up) => "Page Up".to_owned(),
+            (None, Keysym::ISO_Left_Tab) => "Tab".to_owned(),
+            (None, key) => xkb::keysym_get_name(key).replace('_', " "),
+        };
+        let mut label = String::new();
+        for (held, name) in [
+            (self.ctrl, "Ctrl+"),
+            (self.shift, "Shift+"),
+            (self.alt, "Alt+"),
+        ] {
+            if held {
+                label.push_str(name);
+            }
+        }
+        label + &key
+    }
 }
 
-pub struct Shortcuts(HashMap<Shortcut, Action>);
+pub struct Shortcuts {
+    actions: HashMap<Shortcut, Action>,
+    /// Each action's first shortcut, to show it by.
+    first: HashMap<Action, Shortcut>,
+}
 
 impl Shortcuts {
     /// Caret's shortcuts, with those of the actions in `bound` replaced.
     pub fn new(bound: &HashMap<Action, Vec<Shortcut>>) -> Self {
-        let mut shortcuts = HashMap::new();
+        let mut actions = HashMap::new();
+        let mut first = HashMap::new();
         for (action, _, keys) in ACTIONS {
-            match bound.get(action) {
-                Some(keys) => {
-                    shortcuts.extend(keys.iter().map(|&shortcut| (shortcut, *action)));
-                }
-                None => shortcuts.extend(
-                    keys.iter()
-                        .filter_map(|key| Shortcut::parse(key))
-                        .map(|shortcut| (shortcut, *action)),
-                ),
+            let keys: Vec<Shortcut> = match bound.get(action) {
+                Some(keys) => keys.clone(),
+                None => keys.iter().filter_map(|key| Shortcut::parse(key)).collect(),
+            };
+            if let Some(&key) = keys.first() {
+                first.insert(*action, key);
             }
+            actions.extend(keys.into_iter().map(|shortcut| (shortcut, *action)));
         }
-        Self(shortcuts)
+        Self { actions, first }
     }
 
     /// The action a key pressed with `held` does, if any.
     pub fn action(&self, key: Keysym, held: Modifiers) -> Option<Action> {
-        self.0.get(&Shortcut::pressed(key, held)).copied()
+        self.actions.get(&Shortcut::pressed(key, held)).copied()
+    }
+
+    /// `action`'s first shortcut as it is shown, such as `"Ctrl+Shift+C"`.
+    pub fn label(&self, action: Action) -> Option<String> {
+        self.first.get(&action).copied().map(Shortcut::label)
     }
 }
 
@@ -191,6 +223,20 @@ mod tests {
             shortcuts.action(Keysym::F11, Modifiers::default()),
             Some(Action::Fullscreen)
         );
+    }
+
+    #[test]
+    fn an_action_is_shown_by_its_first_shortcut() {
+        let shortcuts = Shortcuts::new(&HashMap::new());
+        assert_eq!(
+            shortcuts.label(Action::Copy).as_deref(),
+            Some("Ctrl+Shift+C")
+        );
+        assert_eq!(
+            shortcuts.label(Action::NextTab).as_deref(),
+            Some("Ctrl+Page Down")
+        );
+        assert_eq!(shortcuts.label(Action::Fullscreen).as_deref(), Some("F11"));
     }
 
     #[test]

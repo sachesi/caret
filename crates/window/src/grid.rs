@@ -44,6 +44,10 @@ pub struct Grid {
 }
 
 impl Grid {
+    pub fn has_selection(&self) -> bool {
+        self.selection.is_some()
+    }
+
     /// An empty grid, kept on the GPU in `copies` copies.
     pub fn new(copies: usize) -> Self {
         Self {

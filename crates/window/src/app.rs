@@ -87,6 +87,7 @@ const PADDING: u32 = 6;
 
 mod clipboard;
 mod confirm;
+mod menus;
 mod pointer;
 mod scale;
 mod search;
@@ -112,6 +113,8 @@ enum Asked {
     Busy(TerminalId),
     /// Whether a program runs in one of the tabs, to close the window or ask first.
     Closing,
+    /// The link where the terminal's menu opens, at this point of the window.
+    Menu((f32, f32)),
 }
 
 /// Fields drop in order: the device before the surface it draws to, and both before
@@ -146,6 +149,8 @@ struct App {
     searches: u32,
     /// What the dialog open asks to confirm.
     confirming: Option<confirm::Confirm>,
+    /// What each item of the menu open does.
+    choices: Vec<menus::Choice>,
     /// The window is about to close once its tabs say whether programs run in them.
     closing: Option<confirm::Closing>,
     fonts: Fonts,
@@ -267,6 +272,7 @@ pub fn run() -> Result<(), AppError> {
         opened: None,
         searches: 0,
         confirming: None,
+        choices: Vec::new(),
         closing: None,
         fonts,
         zoom: 0,
@@ -440,6 +446,8 @@ impl App {
                 }
                 (Some(Asked::Busy(terminal)), answer) => self.busy(terminal, answer),
                 (Some(Asked::Closing), answer) => self.closing_busy(&answer),
+                (Some(Asked::Menu(at)), Answer::Link { uri }) => self.terminal_menu(at, uri),
+                (Some(Asked::Menu(at)), _) => self.terminal_menu(at, None),
                 (Some(Asked::Copy { .. } | Asked::Find(_) | Asked::Link) | None, _) => {}
                 (Some(_), answer) => {
                     tracing::error!("the server answered {answer:?}");
@@ -764,6 +772,10 @@ impl App {
                 .fonts
                 .label_advance(&search.text[..search.cursor], false);
         }
+        if let Some(menu) = &mut self.chrome.menu {
+            let fonts = &self.fonts;
+            menu.fit(|text| fonts.label_advance(text, false) / scale);
+        }
         if let Some(dialog) = &mut self.chrome.dialog {
             let fonts = &self.fonts;
             let width = Dialog::text_width(size.0 as f32) * scale;
@@ -820,7 +832,7 @@ impl App {
     }
 
     fn key(&mut self, event: &KeyEvent) {
-        if self.dialog_key(event) {
+        if self.dialog_key(event) || self.menu_key(event) {
             return;
         }
         if let Some(action) = self.shortcuts.action(event.keysym, self.modifiers) {
@@ -915,6 +927,9 @@ impl App {
 
     fn set_focus(&mut self, focused: bool) {
         self.focused = focused;
+        if !focused {
+            self.close_menu();
+        }
         if let Some(terminal) = self.terminal() {
             self.server.send(&Request::Focus { terminal, focused });
         }

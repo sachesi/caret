@@ -78,6 +78,17 @@ impl App {
         Some((point, x - x.floor() >= 0.5))
     }
 
+    /// Where the pointer is, in logical pixels from the window's corner.
+    pub(super) fn pointer_at(&self) -> (f32, f32) {
+        let margin = f64::from(self.chrome.margin());
+        let (x, y) = self.pointer.position;
+        ((x - margin) as f32, (y - margin) as f32)
+    }
+
+    pub(super) fn pointer_cell(&self) -> Option<Point> {
+        self.cell_at(self.pointer.position).map(|(point, _)| point)
+    }
+
     /// The part of the window's frame under the pointer; none over the terminal.
     fn part(&self) -> Option<Part> {
         self.chrome.part_at(self.pointer.position, self.size?)
@@ -163,14 +174,27 @@ impl App {
     }
 
     fn pressed_frame(&mut self, part: Part, button: u32, serial: u32) {
+        // A press outside the menu closes it and goes no further, unless it resizes.
+        if self.chrome.menu.is_some() && !matches!(part, Part::MenuItem(_) | Part::Menu) {
+            self.close_menu();
+            if part == Part::OffMenu {
+                return;
+            }
+        }
         match (part, button) {
+            (Part::MainMenu, BUTTON_LEFT) => {
+                self.open_main_menu();
+                return;
+            }
+            (Part::Menu | Part::Dialog, _) => return,
             (
                 Part::Close
                 | Part::NewTab
                 | Part::CloseTab(_)
                 | Part::FindUp
                 | Part::FindDown
-                | Part::Response(_),
+                | Part::Response(_)
+                | Part::MenuItem(_),
                 BUTTON_LEFT,
             ) => {
                 self.chrome.pressed = Some(part);
@@ -242,6 +266,7 @@ impl App {
                 Part::FindUp => self.find(true),
                 Part::FindDown => self.find(false),
                 Part::Response(index) => self.respond(index == 1),
+                Part::MenuItem(index) => self.choose(index),
                 _ => {}
             }
         }
@@ -338,6 +363,7 @@ impl App {
                 self.select(Select::Start { kind, point, right });
             }
             MouseButton::Middle => self.paste(true),
+            MouseButton::Right => self.open_terminal_menu(),
             _ => {}
         }
     }
@@ -548,7 +574,11 @@ fn cursor(part: Part) -> Shape {
         | Part::FindUp
         | Part::FindDown
         | Part::Response(_)
-        | Part::Dialog => Shape::Default,
+        | Part::Dialog
+        | Part::MainMenu
+        | Part::MenuItem(_)
+        | Part::Menu
+        | Part::OffMenu => Shape::Default,
         Part::Edge(edge) => match edge {
             ResizeEdge::Top => Shape::NResize,
             ResizeEdge::Bottom => Shape::SResize,
