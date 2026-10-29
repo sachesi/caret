@@ -12,6 +12,7 @@ use rustix::fs::inotify;
 use rustybuzz::Feature;
 use toml_edit::{DocumentMut, Item, Value};
 
+use crate::palette;
 use crate::shortcuts::{self, Action, Shortcut};
 
 /// The font size when neither the settings nor the desktop name one.
@@ -49,6 +50,9 @@ pub struct Config {
     /// Symbols the font joins, such as `->` and `!=`, are drawn joined.
     pub ligatures: bool,
     pub color_scheme: ColorScheme,
+    /// The names of the colour schemes of the light and the dark style.
+    pub light_scheme: String,
+    pub dark_scheme: String,
     /// How opaque the terminal's background is, from 0 to 1.
     pub opacity: f32,
     pub cursor_shape: CursorShape,
@@ -79,6 +83,8 @@ impl Default for Config {
             font_features: Vec::new(),
             ligatures: true,
             color_scheme: ColorScheme::System,
+            light_scheme: palette::OWN.to_owned(),
+            dark_scheme: palette::OWN.to_owned(),
             opacity: 1.0,
             cursor_shape: CursorShape::Block,
             scrollback_lines: 10_000,
@@ -187,6 +193,15 @@ impl Config {
                     _ => return Err("\"system\", \"light\" or \"dark\""),
                 };
             }
+            "light-scheme" | "dark-scheme" => {
+                let name = item.as_str().ok_or("the name of a colour scheme")?;
+                let scheme = if key == "light-scheme" {
+                    &mut self.light_scheme
+                } else {
+                    &mut self.dark_scheme
+                };
+                name.clone_into(scheme);
+            }
             "opacity" => {
                 self.opacity = item
                     .as_float()
@@ -269,7 +284,7 @@ pub fn path() -> Option<PathBuf> {
 
 /// What `config.toml` starts as when it is opened to edit: every setting at its
 /// default, commented out, so that the file says what can be set.
-const STARTER: &str = r#"# Caret's settings. Take the # off a setting to change it; open windows follow
+const STARTER: &str = r##"# Caret's settings. Take the # off a setting to change it; open windows follow
 # the file as it is saved.
 
 # The terminal's font family and size, such as "Adwaita Mono 11"; empty for the
@@ -281,6 +296,12 @@ const STARTER: &str = r#"# Caret's settings. Take the # off a setting to change 
 #ligatures = true
 # "system", "light" or "dark".
 #color-scheme = "system"
+# The colours of the light and the dark style: "caret", Caret's own, or the name
+# of a file in the schemes directory beside this file, "mine" for schemes/mine.toml.
+# A scheme sets foreground, background and the 16 colours of palette, and may set
+# selection, each as "#rrggbb".
+#light-scheme = "caret"
+#dark-scheme = "caret"
 # How opaque the terminal's background is, from 0 for clear to 1.
 #opacity = 1.0
 # "block", "underline" or "beam".
@@ -305,7 +326,7 @@ const STARTER: &str = r#"# Caret's settings. Take the # off a setting to change 
 # The keys of each action: a key such as "Ctrl+Shift+T", a list of them, or []
 # for none.
 #[keys]
-"#;
+"##;
 
 /// The path of `config.toml`, made as [`STARTER`] if it is missing, to open to edit.
 pub fn editable() -> Option<PathBuf> {
@@ -440,25 +461,40 @@ pub fn write(key: &str, value: impl Into<Value>) {
     }
 }
 
-/// Watches the directory `config.toml` is in, made if it is missing, so that changes
-/// to the file are seen however an editor saves it.
+/// The file of the colour scheme `name`.
+pub fn scheme_path(name: &str) -> Option<PathBuf> {
+    Some(
+        path()?
+            .parent()?
+            .join("schemes")
+            .join(format!("{name}.toml")),
+    )
+}
+
+/// Watches the directory `config.toml` is in and the one of colour schemes in it, made
+/// if they are missing, so that changes to the files are seen however an editor saves
+/// them.
 pub fn watch() -> std::io::Result<OwnedFd> {
     let path = path().ok_or_else(|| std::io::Error::other("no home directory"))?;
     let directory = path.parent().unwrap_or(&path);
-    std::fs::create_dir_all(directory)?;
+    let schemes = directory.join("schemes");
+    std::fs::create_dir_all(&schemes)?;
     let watch = inotify::init(inotify::CreateFlags::CLOEXEC | inotify::CreateFlags::NONBLOCK)?;
-    inotify::add_watch(
-        &watch,
-        directory,
-        inotify::WatchFlags::CLOSE_WRITE
-            | inotify::WatchFlags::MOVED_TO
-            | inotify::WatchFlags::MOVED_FROM
-            | inotify::WatchFlags::DELETE,
-    )?;
+    for directory in [directory, &schemes] {
+        inotify::add_watch(
+            &watch,
+            directory,
+            inotify::WatchFlags::CLOSE_WRITE
+                | inotify::WatchFlags::MOVED_TO
+                | inotify::WatchFlags::MOVED_FROM
+                | inotify::WatchFlags::DELETE,
+        )?;
+    }
     Ok(watch)
 }
 
-/// Reads every event waiting on `watch`, saying whether one was about `config.toml`.
+/// Reads every event waiting on `watch`, saying whether one was about `config.toml` or
+/// a colour scheme's file.
 pub fn changed(watch: impl AsFd) -> bool {
     let mut buffer = [MaybeUninit::uninit(); 4096];
     let mut events = inotify::Reader::new(watch, &mut buffer);
@@ -468,7 +504,7 @@ pub fn changed(watch: impl AsFd) -> bool {
             Ok(event) => {
                 changed |= event
                     .file_name()
-                    .is_some_and(|name| name.to_bytes() == b"config.toml");
+                    .is_some_and(|name| name.to_bytes().ends_with(b".toml"));
             }
             Err(rustix::io::Errno::AGAIN) => return changed,
             Err(error) => {

@@ -407,9 +407,9 @@ pub fn new_window(arguments: &[&str]) {
 /// The palette of the style the settings and the desktop choose.
 fn palette(config: &Config, desktop: &Desktop) -> Palette {
     if config.dark(desktop.dark) {
-        Palette::dark()
+        Palette::named(&config.dark_scheme, true)
     } else {
-        Palette::light()
+        Palette::named(&config.light_scheme, false)
     }
 }
 
@@ -621,21 +621,22 @@ impl App {
     /// server is to show its terminals.
     fn style(&self) -> (FontChoice, Request) {
         let font = self.config.font_for(self.desktop.monospace.as_deref());
-        let palette = palette(&self.config, &self.desktop);
-        (font, look(&self.config, &palette))
+        (font, look(&self.config, &self.palette))
     }
 
     /// Applies what changed of the window's style since it was `before`.
     fn restyle(&mut self, before: &(FontChoice, Request)) {
-        let (font, look) = self.style();
-        if font != before.0 {
+        if self.config.font_for(self.desktop.monospace.as_deref()) != before.0 {
             self.load_fonts();
         }
-        if look != before.1 {
-            self.palette = palette(&self.config, &self.desktop);
-            self.chrome.dark = self.config.dark(self.desktop.dark);
+        // Read again, as a scheme's file may have changed without the settings.
+        let palette = palette(&self.config, &self.desktop);
+        let look = look(&self.config, &palette);
+        if look != before.1 || palette != self.palette {
+            self.palette = palette;
             self.server.send(&look);
         }
+        self.chrome.dark = self.config.dark(self.desktop.dark);
         self.fit();
         self.dirty = true;
         self.draw();
