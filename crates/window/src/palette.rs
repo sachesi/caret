@@ -46,6 +46,33 @@ impl Palette {
         }
     }
 
+    pub fn light() -> Self {
+        let background = rgb(0xffffff);
+        Self {
+            foreground: rgb(0x1d1d20),
+            background,
+            ansi: [
+                rgb(0x241f31),
+                rgb(0xc01c28),
+                rgb(0x26a269),
+                rgb(0xa67c00),
+                rgb(0x1c71d8),
+                rgb(0x813d9c),
+                rgb(0x1a8a9c),
+                rgb(0xdeddda),
+                rgb(0x5e5c64),
+                rgb(0xed333b),
+                rgb(0x2ec27e),
+                rgb(0xc88800),
+                rgb(0x3584e4),
+                rgb(0x9141ac),
+                rgb(0x0ab9dc),
+                rgb(0xf6f5f4),
+            ],
+            selection: mix(background, ACCENT, 0.3),
+        }
+    }
+
     /// The colours the server shows cells in.
     pub fn colors(&self) -> caret_protocol::Palette {
         caret_protocol::Palette {

@@ -7,14 +7,16 @@ use std::os::unix::ffi::OsStrExt;
 
 use caret_protocol::encode::{self, Modifiers};
 use caret_protocol::{
-    Answer, Bytes, Command, CursorShape, Message, Options, Question, Request, SessionId, Size,
-    TerminalId,
+    Answer, Bytes, Command, Message, Options, Question, Request, SessionId, Size, TerminalId,
 };
 use smithay_client_toolkit::compositor::{
     CompositorHandler, CompositorState, FrameCallbackData, Region,
 };
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
-use smithay_client_toolkit::reexports::calloop::{self, EventLoop, LoopHandle};
+use smithay_client_toolkit::reexports::calloop::generic::Generic;
+use smithay_client_toolkit::reexports::calloop::{
+    self, EventLoop, Interest, LoopHandle, Mode, PostAction,
+};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::reexports::client::globals::{BindError, registry_queue_init};
 use smithay_client_toolkit::reexports::client::protocol::{
@@ -39,6 +41,7 @@ use smithay_client_toolkit::seat::pointer::cursor_shape::CursorShapeManager;
 
 use crate::atlas::Atlas;
 use crate::chrome::{self, Chrome, Drawing};
+use crate::config::{self, ColorScheme, Config};
 use crate::connection::{self, Received};
 use crate::fonts::{FontError, Fonts};
 use crate::gpu::{FRAMES_IN_FLIGHT, Gpu, GpuError};
@@ -69,9 +72,6 @@ const DEFAULT_SIZE: (u32, u32) = (800, 500);
 
 /// Logical pixels between the window's edge and the cells.
 const PADDING: u32 = 6;
-
-/// The font size until settings choose one.
-const POINTS: f32 = 11.0;
 
 mod clipboard;
 mod pointer;
@@ -119,6 +119,7 @@ struct App {
     grid: Grid,
     palette: Palette,
     chrome: Chrome,
+    config: Config,
     /// The window's size in logical pixels, as the compositor configures it, without
     /// the room around it for a shadow; none before the first configure.
     size: Option<(u32, u32)>,
@@ -152,10 +153,17 @@ pub fn run() -> Result<(), AppError> {
     let compositor = CompositorState::bind(&globals, &qh)?;
     let shell = XdgShell::bind(&globals, &qh)?;
     let (mut server, received) = connection::Connection::open(crate::APP_ID)?;
-    let fonts = Fonts::new(None, POINTS, 1.0)?;
+    config::import();
+    let config = Config::load();
+    let fonts = Fonts::new(config.font.as_deref(), config.font_size, 1.0)?;
 
     let surface = compositor.create_surface(&qh);
-    let window = shell.create_window(surface, WindowDecorations::RequestServer, &qh);
+    let decorations = if config.server_side_decorations {
+        WindowDecorations::RequestServer
+    } else {
+        WindowDecorations::RequestClient
+    };
+    let window = shell.create_window(surface, decorations, &qh);
     window.set_title("Caret");
     window.set_app_id(crate::APP_ID);
     window.set_min_size(Some((360, 200)));
@@ -167,17 +175,8 @@ pub fn run() -> Result<(), AppError> {
     // that order.
     let gpu = unsafe { Gpu::new(display, surface)? };
 
-    let palette = Palette::dark();
-    server.send(&Request::Look {
-        palette: palette.colors(),
-        options: Options {
-            scrollback: 10_000,
-            cursor_shape: CursorShape::Block,
-            cursor_blinks: false,
-            copy_from_programs: true,
-            scroll_on_output: false,
-        },
-    });
+    let palette = palette(&config);
+    server.send(&look(&config, &palette));
     let mut asked = HashMap::new();
     asked.insert(server.ask(Question::NewSession), Asked::Session);
 
@@ -212,8 +211,11 @@ pub fn run() -> Result<(), AppError> {
         palette,
         chrome: Chrome {
             title: "Caret".to_owned(),
+            header_bar: config.title_bar,
+            dark: config.color_scheme != ColorScheme::Light,
             ..Chrome::default()
         },
+        config,
         size: None,
         scale: 1,
         grid_size: None,
@@ -242,7 +244,31 @@ pub fn run() -> Result<(), AppError> {
     Ok(())
 }
 
-/// Takes the server's messages and the pastes read from other programs in the loop.
+/// The palette of the colour scheme `config` chooses. The desktop's preference is not
+/// read yet, so following it means the dark one.
+fn palette(config: &Config) -> Palette {
+    match config.color_scheme {
+        ColorScheme::Light => Palette::light(),
+        ColorScheme::Dark | ColorScheme::System => Palette::dark(),
+    }
+}
+
+/// Tells the server how to show the window's terminals.
+fn look(config: &Config, palette: &Palette) -> Request {
+    Request::Look {
+        palette: palette.colors(),
+        options: Options {
+            scrollback: config.scrollback_lines,
+            cursor_shape: config.cursor_shape,
+            cursor_blinks: false,
+            copy_from_programs: config.program_clipboard,
+            scroll_on_output: config.scroll_on_output,
+        },
+    }
+}
+
+/// Takes the server's messages, the pastes read from other programs and changes to the
+/// settings in the loop.
 fn listen(
     events: &LoopHandle<'static, App>,
     received: calloop::channel::Channel<Received>,
@@ -262,6 +288,20 @@ fn listen(
             }
         })
         .map_err(|error| AppError::Loop(error.error))?;
+    match config::watch() {
+        Ok(watch) => {
+            let source = Generic::new(watch, Interest::READ, Mode::Level);
+            events
+                .insert_source(source, |_, watch, app| {
+                    if config::changed(watch.as_ref()) {
+                        app.reconfigure(Config::load());
+                    }
+                    Ok(PostAction::Continue)
+                })
+                .map_err(|error| AppError::Loop(error.error))?;
+        }
+        Err(error) => tracing::warn!("watching the settings: {error}"),
+    }
     Ok(())
 }
 
@@ -352,10 +392,69 @@ impl App {
         }
     }
 
-    /// Ends the window's session and the window.
+    /// Applies settings changed while the window is open; the others are read when used.
+    fn reconfigure(&mut self, config: Config) {
+        let old = std::mem::replace(&mut self.config, config);
+        let new = &self.config;
+        if (&old.font, old.font_size) != (&new.font, new.font_size) {
+            self.load_fonts();
+        }
+        let new = &self.config;
+        let looks = (
+            old.color_scheme,
+            old.cursor_shape,
+            old.scrollback_lines,
+            old.program_clipboard,
+            old.scroll_on_output,
+        ) != (
+            new.color_scheme,
+            new.cursor_shape,
+            new.scrollback_lines,
+            new.program_clipboard,
+            new.scroll_on_output,
+        );
+        if looks {
+            self.palette = palette(new);
+            self.chrome.dark = new.color_scheme != ColorScheme::Light;
+            self.server.send(&look(new, &self.palette));
+        }
+        if old.server_side_decorations != new.server_side_decorations {
+            self.window
+                .request_decoration_mode(Some(if new.server_side_decorations {
+                    DecorationMode::Server
+                } else {
+                    DecorationMode::Client
+                }));
+        }
+        self.chrome.header_bar = self.config.title_bar;
+        self.fit();
+        self.dirty = true;
+        self.draw();
+    }
+
+    /// Loads the font the settings name at the window's scale, drawing every glyph
+    /// again.
+    fn load_fonts(&mut self) {
+        let (family, points) = (self.config.font.as_deref(), self.config.font_size);
+        match Fonts::new(family, points, self.scale as f32) {
+            Ok(fonts) => {
+                self.fonts = fonts;
+                self.atlas = self.atlas.next();
+                let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
+                self.grid.refill(|glyph| atlas.index(glyph, fonts));
+            }
+            Err(error) => tracing::error!("loading fonts at scale {}: {error}", self.scale),
+        }
+    }
+
+    /// Ends the window, and its session unless the settings keep it running.
     fn close(&mut self) {
         if let Some(session) = self.session {
-            self.server.send(&Request::CloseSession { session });
+            if self.config.close_detaches {
+                self.server.send(&Request::Detach { session });
+            } else {
+                self.server.send(&Request::CloseSession { session });
+            }
         }
         self.exit = true;
     }
@@ -372,7 +471,7 @@ impl App {
             .ok()
             .map(|path| Bytes(path.as_os_str().as_bytes().to_vec()));
         let command = Command {
-            argv: Vec::new(),
+            argv: self.config.argv(),
             directory,
             env: std::env::vars().collect(),
             hold: false,
@@ -619,7 +718,7 @@ impl App {
             self.server.send(&Request::Input {
                 terminal,
                 bytes: Bytes(text.as_bytes().to_vec()),
-                bottom: true,
+                bottom: self.config.scroll_on_keystroke,
             });
             return;
         }
@@ -630,7 +729,7 @@ impl App {
             self.server.send(&Request::Input {
                 terminal,
                 bytes: Bytes(bytes),
-                bottom: true,
+                bottom: self.config.scroll_on_keystroke,
             });
         }
     }
@@ -658,16 +757,7 @@ impl CompositorHandler for App {
             return;
         }
         self.scale = factor;
-        match Fonts::new(None, POINTS, factor as f32) {
-            Ok(fonts) => {
-                self.fonts = fonts;
-                // Every glyph is rasterised again at the new size.
-                self.atlas = self.atlas.next();
-                let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
-                self.grid.refill(|glyph| atlas.index(glyph, fonts));
-            }
-            Err(error) => tracing::error!("loading fonts at scale {factor}: {error}"),
-        }
+        self.load_fonts();
         self.fit();
         self.dirty = true;
         self.draw();

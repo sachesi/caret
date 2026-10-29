@@ -4,6 +4,7 @@ mod app;
 mod atlas;
 mod box_drawing;
 mod chrome;
+mod config;
 mod connection;
 mod fonts;
 mod gpu;

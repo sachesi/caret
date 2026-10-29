@@ -29,16 +29,37 @@ const CROSS: (f32, f32) = (4.0, 12.0);
 const CROSS_WIDTH: f32 = 1.5;
 
 /// Colours as 0xRRGGBBAA, not premultiplied.
-const HEADER_COLOR: u32 = 0x2e2e_32ff;
-const HEADER_BACKDROP: u32 = 0x2222_26ff;
-const SHADE: u32 = 0x0000_065c;
 const OUTLINE: u32 = 0x0000_063b;
 const SHADOW: u32 = 0x0000_0680;
 const SHADOW_BACKDROP: u32 = 0x0000_0640;
-const FOREGROUND: u32 = 0xffff_ffff;
-const BUTTON_COLOR: u32 = 0xffff_ff1a;
-const BUTTON_HOVERED: u32 = 0xffff_ff26;
-const BUTTON_PRESSED: u32 = 0xffff_ff4d;
+
+/// The header bar's colours in one style.
+struct Colors {
+    header: u32,
+    /// The header in a window without the focus.
+    backdrop: u32,
+    /// The line under the header.
+    shade: u32,
+    foreground: u32,
+    /// The close button's circle, then hovered, then pressed.
+    button: [u32; 3],
+}
+
+const DARK: Colors = Colors {
+    header: 0x2e2e_32ff,
+    backdrop: 0x2222_26ff,
+    shade: 0x0000_065c,
+    foreground: 0xffff_ffff,
+    button: [0xffff_ff1a, 0xffff_ff26, 0xffff_ff4d],
+};
+
+const LIGHT: Colors = Colors {
+    header: 0xffff_ffff,
+    backdrop: 0xfafa_fbff,
+    shade: 0x0000_061f,
+    foreground: 0x0000_06cc,
+    button: [0x0000_0614, 0x0000_061f, 0x0000_063d],
+};
 
 pub const TOP_LEFT: u32 = 1;
 pub const TOP_RIGHT: u32 = 2;
@@ -99,6 +120,9 @@ pub struct Chrome {
     pub fullscreen: bool,
     pub maximized: bool,
     pub active: bool,
+    /// The header bar is shown; hidden, the window keeps its other parts.
+    pub header_bar: bool,
+    pub dark: bool,
     pub title: String,
     pub hovered: Option<Part>,
     pub pressed: Option<Part>,
@@ -115,7 +139,7 @@ impl Chrome {
     }
 
     pub fn header(&self) -> u32 {
-        if self.drawn && !self.fullscreen {
+        if self.drawn && self.header_bar && !self.fullscreen {
             HEADER
         } else {
             0
@@ -169,6 +193,7 @@ impl Chrome {
         if !self.drawn || self.fullscreen {
             return Vec::new();
         }
+        let colors = self.colors();
         let margin = self.margin() as f32 * scale;
         let (width, height) = (size.0 as f32 * scale, size.1 as f32 * scale);
         let header = HEADER as f32 * scale;
@@ -213,10 +238,13 @@ impl Chrome {
             });
         }
         quads.push(rectangle(margin, margin, width, height, background));
+        if !self.header_bar {
+            return quads;
+        }
         let header_color = if self.active {
-            HEADER_COLOR
+            colors.header
         } else {
-            HEADER_BACKDROP
+            colors.backdrop
         };
         quads.push(Quad {
             corners: corners & (TOP_LEFT | TOP_RIGHT),
@@ -224,7 +252,7 @@ impl Chrome {
         });
         quads.push(Quad {
             radius: 0.0,
-            ..rectangle(margin, margin + header - scale, width, scale, SHADE)
+            ..rectangle(margin, margin + header - scale, width, scale, colors.shade)
         });
         self.controls(
             &mut quads,
@@ -248,6 +276,7 @@ impl Chrome {
         line: i32,
         close: Option<(u32, GpuGlyph)>,
     ) {
+        let colors = self.colors();
         // Both are dimmed in a window without the focus.
         let dim = |color: u32| {
             if self.active {
@@ -262,16 +291,16 @@ impl Chrome {
             let top = i32::from((glyph.offset >> 16) as u16 as i16);
             let x = (margin + (width - glyph_width as f32) / 2.0).floor();
             let y = (middle - line as f32 / 2.0).floor() + top as f32;
-            quads.push(entry(x, y, index, glyph, dim(FOREGROUND)));
+            quads.push(entry(x, y, index, glyph, dim(colors.foreground)));
         }
         let centre = margin + width - BUTTON_END * scale;
         let pressed = self.pressed == Some(Part::Close) && self.hovered == Some(Part::Close);
         let button = if pressed {
-            BUTTON_PRESSED
+            colors.button[2]
         } else if self.hovered == Some(Part::Close) {
-            BUTTON_HOVERED
+            colors.button[1]
         } else {
-            BUTTON_COLOR
+            colors.button[0]
         };
         let diameter = BUTTON * scale;
         quads.push(Quad {
@@ -288,8 +317,12 @@ impl Chrome {
             let (icon_width, icon_height) = halves(glyph.size);
             let x = (centre - icon_width as f32 / 2.0).round();
             let y = (middle - icon_height as f32 / 2.0).round();
-            quads.push(entry(x, y, index, glyph, dim(FOREGROUND)));
+            quads.push(entry(x, y, index, glyph, dim(colors.foreground)));
         }
+    }
+
+    fn colors(&self) -> &'static Colors {
+        if self.dark { &DARK } else { &LIGHT }
     }
 }
 
@@ -367,6 +400,7 @@ mod tests {
             drawn: true,
             floating: true,
             active: true,
+            header_bar: true,
             ..Chrome::default()
         }
     }
