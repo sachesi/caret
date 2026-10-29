@@ -40,7 +40,7 @@ impl App {
             Some(Confirm::CloseTab(terminal)) if accepted => {
                 self.server.send(&Request::CloseTab { terminal });
             }
-            Some(Confirm::CloseWindow) if accepted => self.end(),
+            Some(Confirm::CloseWindow) if accepted => self.end(false),
             Some(Confirm::Paste { terminal, text }) if accepted => {
                 self.server.send(&Request::Input {
                     terminal,
@@ -121,7 +121,7 @@ impl App {
             return;
         }
         if self.config.close_detaches || self.tabs.is_empty() {
-            self.end();
+            self.end(self.config.close_detaches);
             return;
         }
         self.closing = Some(Closing {
@@ -150,7 +150,7 @@ impl App {
         let busy = closing.busy;
         self.closing = None;
         if busy == 0 {
-            self.end();
+            self.end(false);
             return;
         }
         let body = if busy == 1 {

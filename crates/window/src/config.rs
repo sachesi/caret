@@ -1,6 +1,7 @@
 //! The settings in `config.toml`, in Caret's directory of the user's configuration.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::mem::MaybeUninit;
 use std::os::fd::{AsFd, OwnedFd};
 use std::path::{Path, PathBuf};
@@ -10,7 +11,7 @@ use caret_protocol::CursorShape;
 use rustix::fs::inotify;
 use toml_edit::{DocumentMut, Item, Value};
 
-use crate::shortcuts::{Action, Shortcut};
+use crate::shortcuts::{self, Action, Shortcut};
 
 /// The font size when neither the settings nor the desktop name one.
 const POINTS: f32 = 11.0;
@@ -227,6 +228,69 @@ pub fn path() -> Option<PathBuf> {
         .map(PathBuf::from)
         .or_else(|| std::env::home_dir().map(|home| home.join(".config")))?;
     Some(base.join("caret").join("config.toml"))
+}
+
+/// What `config.toml` starts as when it is opened to edit: every setting at its
+/// default, commented out, so that the file says what can be set.
+const STARTER: &str = r#"# Caret's settings. Take the # off a setting to change it; open windows follow
+# the file as it is saved.
+
+# The terminal's font family and size, such as "Adwaita Mono 11"; empty for the
+# desktop's monospace font.
+#font = ""
+# "system", "light" or "dark".
+#color-scheme = "system"
+# "block", "underline" or "beam".
+#cursor-shape = "block"
+#scrollback-lines = 10000
+# What new tabs run instead of the shell, such as "fish --login".
+#custom-command = ""
+#scroll-on-output = false
+#scroll-on-keystroke = true
+# Whether programs may put text on the clipboard, and show notifications while
+# their tab is out of sight.
+#program-clipboard = true
+#program-notifications = true
+#audible-bell = true
+# Whether closing a window leaves its programs running, to attach to again with
+# caret --attach.
+#close-detaches = false
+#title-bar = true
+# Whether the compositor draws the window's frame, where it offers to.
+#server-side-decorations = true
+
+# The keys of each action: a key such as "Ctrl+Shift+T", a list of them, or []
+# for none.
+#[keys]
+"#;
+
+/// The path of `config.toml`, made as [`STARTER`] if it is missing, to open to edit.
+pub fn editable() -> Option<PathBuf> {
+    let path = path()?;
+    if !path.exists() {
+        let made = path
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::write(&path, starter()));
+        if let Err(error) = made {
+            tracing::warn!("writing {}: {error}", path.display());
+            return None;
+        }
+    }
+    Some(path)
+}
+
+fn starter() -> String {
+    let mut text = STARTER.to_owned();
+    for (name, keys) in shortcuts::defaults() {
+        let keys: Vec<String> = keys.iter().map(|key| format!("\"{key}\"")).collect();
+        let keys = match keys.as_slice() {
+            [key] => key.clone(),
+            keys => format!("[{}]", keys.join(", ")),
+        };
+        let _ = writeln!(text, "#{name} = {keys}");
+    }
+    text
 }
 
 /// Writes the settings the GTK version of Caret kept in `GSettings` to `config.toml`,
@@ -485,5 +549,24 @@ mod tests {
             ..Config::default()
         };
         assert_eq!(unsplit.argv(), ["echo 'open"]);
+    }
+
+    #[test]
+    fn the_starter_file_holds_every_setting_at_its_default() {
+        let uncommented = starter()
+            .lines()
+            .filter_map(|line| line.strip_prefix('#'))
+            .filter(|line| line.starts_with(|c: char| c.is_ascii_lowercase() || c == '['))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let config = parse(&uncommented);
+        assert_eq!(
+            Config {
+                keys: HashMap::new(),
+                ..config.clone()
+            },
+            Config::default()
+        );
+        assert_eq!(config.keys.len(), shortcuts::defaults().count());
     }
 }

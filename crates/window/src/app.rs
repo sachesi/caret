@@ -123,6 +123,8 @@ enum Asked {
     Closing,
     /// The link where the terminal's menu opens, at this point of the window.
     Menu((f32, f32)),
+    /// The sessions, to show those no window shows.
+    Reattach,
 }
 
 /// Fields drop in order: the device before the surface it draws to, and both before
@@ -527,6 +529,7 @@ impl App {
                 (Some(Asked::Closing), answer) => self.closing_busy(&answer),
                 (Some(Asked::Menu(at)), Answer::Link { uri }) => self.terminal_menu(at, uri),
                 (Some(Asked::Menu(at)), _) => self.terminal_menu(at, None),
+                (Some(Asked::Reattach), Answer::Sessions { sessions }) => self.reattach(&sessions),
                 (Some(Asked::Copy { .. } | Asked::Find(_) | Asked::Link) | None, _) => {}
                 (Some(_), answer) => {
                     tracing::error!("the server answered {answer:?}");
@@ -651,15 +654,16 @@ impl App {
         }
     }
 
-    /// Ends the window, and its session unless the settings keep it running.
-    fn end(&mut self) {
+    /// Ends the window, and its session unless `detach` keeps it running for another
+    /// window to show.
+    fn end(&mut self, detach: bool) {
         WindowState {
             size: self.floating_size,
             maximized: self.chrome.maximized,
         }
         .save();
         if let Some(session) = self.session {
-            if self.config.close_detaches {
+            if detach {
                 self.server.send(&Request::Detach { session });
             } else {
                 self.server.send(&Request::CloseSession { session });

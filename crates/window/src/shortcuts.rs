@@ -70,6 +70,11 @@ const ACTIONS: &[(Action, &str, &[&str])] = &[
     (Action::ShowTab(9), "tab-9", &["Alt+9"]),
 ];
 
+/// Each action's name in `config.toml` and the keys it has unless bound to others.
+pub fn defaults() -> impl Iterator<Item = (&'static str, &'static [&'static str])> {
+    ACTIONS.iter().map(|(_, name, keys)| (*name, *keys))
+}
+
 impl Action {
     /// The action named `name` in `config.toml`.
     pub fn named(name: &str) -> Option<Self> {

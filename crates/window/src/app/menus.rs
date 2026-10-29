@@ -1,17 +1,21 @@
 //! The window's menus: the main one from the header bar, and the terminal's from a
 //! right click, with what it can do where it was clicked.
 
-use caret_protocol::Question;
+use caret_protocol::{Question, SessionInfo};
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
 use super::{App, Asked, pointer};
 use crate::chrome::{Item, Menu};
+use crate::config;
 use crate::shortcuts::Action;
 
 /// What a menu's item does.
 #[derive(Debug, Clone)]
 pub enum Choice {
     Act(Action),
+    Detach,
+    Reattach,
+    Preferences,
     OpenLink(String),
     CopyLink(String),
 }
@@ -55,7 +59,12 @@ impl App {
                 self.act_item("New Window", Action::NewWindow),
                 self.act_item("New Tab", Action::NewTab),
             ],
+            vec![
+                self.item("Detach Window", Choice::Detach, true),
+                self.item("Reattach Windows", Choice::Reattach, true),
+            ],
             vec![self.act_item("Full Screen", Action::Fullscreen)],
+            vec![self.item("Preferences", Choice::Preferences, true)],
         ];
         self.show_menu(sections, Menu::under_main_button(width), true);
     }
@@ -129,7 +138,30 @@ impl App {
             Some(Choice::Act(action)) => self.act(action),
             Some(Choice::OpenLink(link)) => pointer::open(&link, &self.toaster),
             Some(Choice::CopyLink(link)) => self.copy(link, false),
+            Some(Choice::Detach) => self.end(true),
+            Some(Choice::Reattach) => {
+                let id = self.server.ask(Question::Sessions);
+                self.asked.insert(id, Asked::Reattach);
+            }
+            Some(Choice::Preferences) => match config::editable() {
+                Some(path) => pointer::open(&path.to_string_lossy(), &self.toaster),
+                None => self.toast("Could not make the settings file".to_owned()),
+            },
             None => {}
+        }
+    }
+
+    /// Opens a window for each session no window shows, or says there is none.
+    pub(super) fn reattach(&mut self, sessions: &[SessionInfo]) {
+        let mut detached = sessions
+            .iter()
+            .filter(|session| session.clients == 0 && !session.tabs.is_empty())
+            .peekable();
+        if detached.peek().is_none() {
+            self.toast("No windows were detached".to_owned());
+        }
+        for session in detached {
+            super::new_window(&["--session", &session.session.0.to_string()]);
         }
     }
 
