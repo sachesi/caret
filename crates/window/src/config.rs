@@ -9,7 +9,7 @@ use caret_protocol::CursorShape;
 use rustix::fs::inotify;
 use toml_edit::{DocumentMut, Item, Value};
 
-/// The font size when the font setting names none.
+/// The font size when neither the settings nor the desktop name one.
 const POINTS: f32 = 11.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,9 +26,9 @@ pub enum ColorScheme {
     reason = "each is a separate setting, on or off"
 )]
 pub struct Config {
-    /// The terminal's font family; none for the first of those Caret prefers.
+    /// The terminal's font family and size; none for the desktop's.
     pub font: Option<String>,
-    pub font_size: f32,
+    pub font_size: Option<f32>,
     pub color_scheme: ColorScheme,
     pub cursor_shape: CursorShape,
     pub scrollback_lines: u32,
@@ -49,7 +49,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             font: None,
-            font_size: POINTS,
+            font_size: None,
             color_scheme: ColorScheme::System,
             cursor_shape: CursorShape::Block,
             scrollback_lines: 10_000,
@@ -144,6 +144,24 @@ impl Config {
             _ => return Err("a setting Caret knows"),
         }
         Ok(())
+    }
+
+    /// The family and size of the terminal's font: those the settings name, else those
+    /// of `desktop`'s monospace font, as `"Family Size"`. Without a family, Caret picks
+    /// one.
+    pub fn font_for(&self, desktop: Option<&str>) -> (Option<String>, f32) {
+        let (family, size) = desktop.map(font).unwrap_or_default();
+        let size = self.font_size.or(size).unwrap_or(POINTS);
+        (self.font.clone().or(family), size)
+    }
+
+    /// Whether the window is dark, given whether `desktop` prefers dark styles.
+    pub fn dark(&self, desktop: bool) -> bool {
+        match self.color_scheme {
+            ColorScheme::System => desktop,
+            ColorScheme::Light => false,
+            ColorScheme::Dark => true,
+        }
     }
 
     /// The custom command split into its words; none for the shell. A line that does
@@ -279,17 +297,18 @@ pub fn changed(watch: impl AsFd) -> bool {
     }
 }
 
-/// The family and size a font setting such as `"Adwaita Mono 11"` names.
-fn font(text: &str) -> (Option<String>, f32) {
+/// The family and size a font such as `"Adwaita Mono 11"` names.
+fn font(text: &str) -> (Option<String>, Option<f32>) {
     let text = text.trim();
+    let size = |size: &str| size.parse::<f32>().ok().filter(|&size| size > 0.0);
     let (family, size) = match text.rsplit_once(' ') {
-        Some((family, size)) => match size.parse::<f32>() {
-            Ok(size) if size > 0.0 => (family.trim(), size),
-            _ => (text, POINTS),
+        Some((family, last)) => match size(last) {
+            Some(size) => (family.trim(), Some(size)),
+            None => (text, None),
         },
-        None => match text.parse::<f32>() {
-            Ok(size) if size > 0.0 => ("", size),
-            _ => (text, POINTS),
+        None => match size(text) {
+            Some(size) => ("", Some(size)),
+            None => (text, None),
         },
     };
     let family = (!family.is_empty()).then(|| family.to_owned());
@@ -311,8 +330,8 @@ mod tests {
              close-detaches = true\nscrollback-lines = 500\n",
         );
         assert_eq!(
-            (config.font.as_deref(), config.font_size),
-            (Some("Adwaita Mono"), 13.0)
+            config.font_for(Some("Monospace 10")),
+            (Some("Adwaita Mono".into()), 13.0)
         );
         assert_eq!(config.color_scheme, ColorScheme::Light);
         assert!(config.close_detaches && config.title_bar);
@@ -330,11 +349,21 @@ mod tests {
     fn a_font_names_a_family_a_size_or_both() {
         assert_eq!(
             font("Source Code Pro 12.5"),
-            (Some("Source Code Pro".into()), 12.5)
+            (Some("Source Code Pro".into()), Some(12.5))
         );
-        assert_eq!(font("Monaco"), (Some("Monaco".into()), POINTS));
-        assert_eq!(font("14"), (None, 14.0));
-        assert_eq!(font(""), (None, POINTS));
+        assert_eq!(font("Monaco"), (Some("Monaco".into()), None));
+        assert_eq!(font("14"), (None, Some(14.0)));
+        assert_eq!(font(""), (None, None));
+    }
+
+    #[test]
+    fn what_the_settings_leave_out_of_the_font_comes_from_the_desktop() {
+        let sized = parse("font = \"14\"");
+        assert_eq!(
+            sized.font_for(Some("Adwaita Mono 10")),
+            (Some("Adwaita Mono".into()), 14.0)
+        );
+        assert_eq!(Config::default().font_for(None), (None, POINTS));
     }
 
     #[test]
@@ -349,7 +378,7 @@ mod tests {
             io.github.sachesi.caret window-size (0, 0)\n";
         let document = imported(listing).to_string();
         let config = parse(&document);
-        assert_eq!(config.font.as_deref(), Some("Adwaita Mono"));
+        assert_eq!(config.font_for(None), (Some("Adwaita Mono".into()), 13.0));
         assert_eq!(config.scrollback_lines, 5000);
         assert_eq!(config.custom_command, "tmux new -s 'it'");
         assert!(config.close_detaches);

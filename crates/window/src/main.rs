@@ -6,6 +6,7 @@ mod box_drawing;
 mod chrome;
 mod config;
 mod connection;
+mod desktop;
 mod fonts;
 mod gpu;
 mod grid;

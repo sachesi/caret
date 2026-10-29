@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::os::unix::ffi::OsStrExt;
+use std::time::Duration;
 
 use caret_protocol::encode::{self, Modifiers};
 use caret_protocol::{
@@ -41,8 +42,9 @@ use smithay_client_toolkit::seat::pointer::cursor_shape::CursorShapeManager;
 
 use crate::atlas::Atlas;
 use crate::chrome::{self, Chrome, Drawing};
-use crate::config::{self, ColorScheme, Config};
+use crate::config::{self, Config};
 use crate::connection::{self, Received};
+use crate::desktop::{self, Desktop};
 use crate::fonts::{FontError, Fonts};
 use crate::gpu::{FRAMES_IN_FLIGHT, Gpu, GpuError};
 use crate::grid::{Grid, packed};
@@ -69,6 +71,9 @@ pub enum AppError {
 
 /// The size a window opens at before the compositor picks one, in logical pixels.
 const DEFAULT_SIZE: (u32, u32) = (800, 500);
+
+/// How long the window waits, before its first frame, for the desktop's preferences.
+const DESKTOP_WAIT: Duration = Duration::from_millis(250);
 
 /// Logical pixels between the window's edge and the cells.
 const PADDING: u32 = 6;
@@ -120,6 +125,7 @@ struct App {
     palette: Palette,
     chrome: Chrome,
     config: Config,
+    desktop: Desktop,
     /// The window's size in logical pixels, as the compositor configures it, without
     /// the room around it for a shadow; none before the first configure.
     size: Option<(u32, u32)>,
@@ -153,9 +159,10 @@ pub fn run() -> Result<(), AppError> {
     let compositor = CompositorState::bind(&globals, &qh)?;
     let shell = XdgShell::bind(&globals, &qh)?;
     let (mut server, received) = connection::Connection::open(crate::APP_ID)?;
+    let (desktop_changes, desktop_changed) = calloop::channel::channel();
+    let first_desktop = desktop::follow(desktop_changes);
     config::import();
     let config = Config::load();
-    let fonts = Fonts::new(config.font.as_deref(), config.font_size, 1.0)?;
 
     let surface = compositor.create_surface(&qh);
     let decorations = if config.server_side_decorations {
@@ -175,7 +182,10 @@ pub fn run() -> Result<(), AppError> {
     // that order.
     let gpu = unsafe { Gpu::new(display, surface)? };
 
-    let palette = palette(&config);
+    let desktop = first_desktop.recv_timeout(DESKTOP_WAIT).unwrap_or_default();
+    let (family, points) = config.font_for(desktop.monospace.as_deref());
+    let fonts = Fonts::new(family.as_deref(), points, 1.0)?;
+    let palette = palette(&config, &desktop);
     server.send(&look(&config, &palette));
     let mut asked = HashMap::new();
     asked.insert(server.ask(Question::NewSession), Asked::Session);
@@ -212,10 +222,11 @@ pub fn run() -> Result<(), AppError> {
         chrome: Chrome {
             title: "Caret".to_owned(),
             header_bar: config.title_bar,
-            dark: config.color_scheme != ColorScheme::Light,
+            dark: config.dark(desktop.dark),
             ..Chrome::default()
         },
         config,
+        desktop,
         size: None,
         scale: 1,
         grid_size: None,
@@ -234,7 +245,7 @@ pub fn run() -> Result<(), AppError> {
     WaylandSource::new(connection, queue)
         .insert(events.handle())
         .map_err(|error| AppError::Loop(error.error))?;
-    listen(&events.handle(), received, pasted)?;
+    listen(&events.handle(), received, pasted, desktop_changed)?;
     let signal = events.get_signal();
     events.run(None, &mut app, |app| {
         if app.exit {
@@ -244,12 +255,12 @@ pub fn run() -> Result<(), AppError> {
     Ok(())
 }
 
-/// The palette of the colour scheme `config` chooses. The desktop's preference is not
-/// read yet, so following it means the dark one.
-fn palette(config: &Config) -> Palette {
-    match config.color_scheme {
-        ColorScheme::Light => Palette::light(),
-        ColorScheme::Dark | ColorScheme::System => Palette::dark(),
+/// The palette of the style the settings and the desktop choose.
+fn palette(config: &Config, desktop: &Desktop) -> Palette {
+    if config.dark(desktop.dark) {
+        Palette::dark()
+    } else {
+        Palette::light()
     }
 }
 
@@ -267,13 +278,23 @@ fn look(config: &Config, palette: &Palette) -> Request {
     }
 }
 
-/// Takes the server's messages, the pastes read from other programs and changes to the
-/// settings in the loop.
+/// Takes the server's messages, the pastes read from other programs, and changes to the
+/// settings and the desktop's preferences in the loop.
 fn listen(
     events: &LoopHandle<'static, App>,
     received: calloop::channel::Channel<Received>,
     pasted: calloop::channel::Channel<Vec<u8>>,
+    desktop_changed: calloop::channel::Channel<Desktop>,
 ) -> Result<(), AppError> {
+    events
+        .insert_source(desktop_changed, |event, (), app| {
+            if let calloop::channel::Event::Msg(desktop) = event {
+                let before = app.style();
+                app.desktop = desktop;
+                app.restyle(&before);
+            }
+        })
+        .map_err(|error| AppError::Loop(error.error))?;
     events
         .insert_source(received, |event, (), app| {
             if let calloop::channel::Event::Msg(received) = event {
@@ -394,30 +415,9 @@ impl App {
 
     /// Applies settings changed while the window is open; the others are read when used.
     fn reconfigure(&mut self, config: Config) {
+        let before = self.style();
         let old = std::mem::replace(&mut self.config, config);
         let new = &self.config;
-        if (&old.font, old.font_size) != (&new.font, new.font_size) {
-            self.load_fonts();
-        }
-        let new = &self.config;
-        let looks = (
-            old.color_scheme,
-            old.cursor_shape,
-            old.scrollback_lines,
-            old.program_clipboard,
-            old.scroll_on_output,
-        ) != (
-            new.color_scheme,
-            new.cursor_shape,
-            new.scrollback_lines,
-            new.program_clipboard,
-            new.scroll_on_output,
-        );
-        if looks {
-            self.palette = palette(new);
-            self.chrome.dark = new.color_scheme != ColorScheme::Light;
-            self.server.send(&look(new, &self.palette));
-        }
         if old.server_side_decorations != new.server_side_decorations {
             self.window
                 .request_decoration_mode(Some(if new.server_side_decorations {
@@ -427,16 +427,38 @@ impl App {
                 }));
         }
         self.chrome.header_bar = self.config.title_bar;
+        self.restyle(&before);
+    }
+
+    /// What the settings and the desktop make of the window: its font, and how the
+    /// server is to show its terminals.
+    fn style(&self) -> ((Option<String>, f32), Request) {
+        let font = self.config.font_for(self.desktop.monospace.as_deref());
+        let palette = palette(&self.config, &self.desktop);
+        (font, look(&self.config, &palette))
+    }
+
+    /// Applies what changed of the window's style since it was `before`.
+    fn restyle(&mut self, before: &((Option<String>, f32), Request)) {
+        let (font, look) = self.style();
+        if font != before.0 {
+            self.load_fonts();
+        }
+        if look != before.1 {
+            self.palette = palette(&self.config, &self.desktop);
+            self.chrome.dark = self.config.dark(self.desktop.dark);
+            self.server.send(&look);
+        }
         self.fit();
         self.dirty = true;
         self.draw();
     }
 
-    /// Loads the font the settings name at the window's scale, drawing every glyph
+    /// Loads the font the settings or the desktop name at the window's scale, drawing every glyph
     /// again.
     fn load_fonts(&mut self) {
-        let (family, points) = (self.config.font.as_deref(), self.config.font_size);
-        match Fonts::new(family, points, self.scale as f32) {
+        let (family, points) = self.config.font_for(self.desktop.monospace.as_deref());
+        match Fonts::new(family.as_deref(), points, self.scale as f32) {
             Ok(fonts) => {
                 self.fonts = fonts;
                 self.atlas = self.atlas.next();
