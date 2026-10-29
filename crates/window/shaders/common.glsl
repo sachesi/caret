@@ -27,6 +27,8 @@ struct Quad {
     uint corners;
     uint glyph;
     float blur;
+    float cut[4];
+    float cut_radius;
 };
 
 layout(std430, set = 0, binding = 1) readonly buffer Glyphs { Glyph glyphs[]; };

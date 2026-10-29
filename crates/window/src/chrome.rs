@@ -142,6 +142,10 @@ pub struct Quad {
     pub glyph: u32,
     /// How far the edges fade, inside and out, for a shadow.
     pub blur: f32,
+    /// A rectangle left out, x, y, width and height, its corners those of
+    /// [`Self::corners`] rounded by [`Self::cut_radius`]; none while its width is zero.
+    pub cut: [f32; 4],
+    pub cut_radius: f32,
 }
 
 /// What the frame keeps in the atlas.
@@ -585,9 +589,16 @@ impl Chrome {
             corners,
             ..Quad::default()
         };
+        // What is drawn around the window stays out of it, where it would show through
+        // a translucent background.
+        let around = |quad: Quad| Quad {
+            cut: [margin, margin, width, height],
+            cut_radius: radius,
+            ..quad
+        };
         if self.floating {
             let spread = 2.0 * scale;
-            quads.push(Quad {
+            quads.push(around(Quad {
                 blur: 10.0 * scale,
                 color: if self.active { SHADOW } else { SHADOW_BACKDROP },
                 ..rectangle(
@@ -597,8 +608,8 @@ impl Chrome {
                     height + 2.0 * spread,
                     0,
                 )
-            });
-            quads.push(Quad {
+            }));
+            quads.push(around(Quad {
                 radius: radius + scale,
                 ..rectangle(
                     margin - scale,
@@ -607,7 +618,7 @@ impl Chrome {
                     height + 2.0 * scale,
                     OUTLINE,
                 )
-            });
+            }));
         }
         quads.push(rectangle(margin, margin, width, height, background));
     }

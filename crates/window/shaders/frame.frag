@@ -21,6 +21,14 @@ float rounded_box(vec2 p, vec2 half_size, float radius) {
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
 }
 
+// `radius` at the corner of `quad` nearest `p`, relative to the centre, if the quad
+// rounds that corner.
+float corner_radius(Quad quad, vec2 p, float radius) {
+    uint corner = p.x < 0.0 ? (p.y < 0.0 ? TOP_LEFT : BOTTOM_LEFT)
+                            : (p.y < 0.0 ? TOP_RIGHT : BOTTOM_RIGHT);
+    return (quad.corners & corner) != 0u ? radius : 0.0;
+}
+
 void main() {
     Quad quad = quads[quad_index];
     vec4 tint = vec4(
@@ -37,12 +45,15 @@ void main() {
     }
     vec2 half_size = vec2(quad.width, quad.height) / 2.0;
     vec2 p = local - half_size;
-    uint corner = p.x < 0.0 ? (p.y < 0.0 ? TOP_LEFT : BOTTOM_LEFT)
-                            : (p.y < 0.0 ? TOP_RIGHT : BOTTOM_RIGHT);
-    float radius = (quad.corners & corner) != 0u ? quad.radius : 0.0;
-    float distance = rounded_box(p, half_size, radius);
+    float distance = rounded_box(p, half_size, corner_radius(quad, p, quad.radius));
     float coverage = quad.blur > 0.0
         ? 1.0 - smoothstep(-quad.blur, quad.blur, distance)
         : clamp(0.5 - distance, 0.0, 1.0);
+    if (quad.cut[2] > 0.0) {
+        vec2 cut_half = vec2(quad.cut[2], quad.cut[3]) / 2.0;
+        vec2 q = vec2(quad.x, quad.y) + local - vec2(quad.cut[0], quad.cut[1]) - cut_half;
+        float cut = rounded_box(q, cut_half, corner_radius(quad, q, quad.cut_radius));
+        coverage *= clamp(0.5 + cut, 0.0, 1.0);
+    }
     color = tint * coverage;
 }

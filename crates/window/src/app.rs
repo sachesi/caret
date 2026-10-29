@@ -855,11 +855,12 @@ impl App {
         let clear = if self.chrome.framed() {
             [0.0; 4]
         } else {
+            let opacity = self.config.opacity;
             [
-                f32::from(background.r) / 255.0,
-                f32::from(background.g) / 255.0,
-                f32::from(background.b) / 255.0,
-                1.0,
+                f32::from(background.r) / 255.0 * opacity,
+                f32::from(background.g) / 255.0 * opacity,
+                f32::from(background.b) / 255.0 * opacity,
+                opacity,
             ]
         };
         let mut scene = Scene {
@@ -911,7 +912,7 @@ impl App {
         self.chrome.quads(
             size,
             scale,
-            (packed(self.grid.background) << 8) | 0xff,
+            (packed(self.grid.background) << 8) | (self.config.opacity * 255.0).round() as u32,
             line,
             |drawing| {
                 let index = atlas.drawing(drawing, || match drawing {

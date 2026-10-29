@@ -78,18 +78,19 @@ float cursor_mark(vec2 p) {
 void main() {
     Cell cell = cells[cell_index];
     if (k.pass == 0u) {
-        vec3 background = (cell.flags & HAS_BACKGROUND) != 0u ? rgb(cell.bg) : rgb(k.background);
+        // The terminal's own background is drawn under the cells, with its opacity.
+        vec4 background = (cell.flags & HAS_BACKGROUND) != 0u ? vec4(rgb(cell.bg), 1.0) : vec4(0.0);
         if ((cell.flags & SELECTED) != 0u) {
-            background = rgb(k.selection);
+            background = vec4(rgb(k.selection), 1.0);
         }
         if (block_cursor(cell_index)) {
-            background = rgb(k.cursor_color);
+            background = vec4(rgb(k.cursor_color), 1.0);
         }
-        background = mix(background, rgb(cell.underline), lines(cell, local));
+        background = mix(background, vec4(rgb(cell.underline), 1.0), lines(cell, local));
         if (under_cursor(cell_index)) {
-            background = mix(background, rgb(k.cursor_color), cursor_mark(local));
+            background = mix(background, vec4(rgb(k.cursor_color), 1.0), cursor_mark(local));
         }
-        color = vec4(background, 1.0);
+        color = background;
     } else {
         Glyph glyph = glyphs[cell.glyph - 1u];
         vec4 sampled = texelFetch(atlas, ivec2(texel), 0);

@@ -49,6 +49,8 @@ pub struct Config {
     /// Symbols the font joins, such as `->` and `!=`, are drawn joined.
     pub ligatures: bool,
     pub color_scheme: ColorScheme,
+    /// How opaque the terminal's background is, from 0 to 1.
+    pub opacity: f32,
     pub cursor_shape: CursorShape,
     pub scrollback_lines: u32,
     /// Run in new tabs instead of the shell; empty for the shell.
@@ -77,6 +79,7 @@ impl Default for Config {
             font_features: Vec::new(),
             ligatures: true,
             color_scheme: ColorScheme::System,
+            opacity: 1.0,
             cursor_shape: CursorShape::Block,
             scrollback_lines: 10_000,
             custom_command: String::new(),
@@ -184,6 +187,13 @@ impl Config {
                     _ => return Err("\"system\", \"light\" or \"dark\""),
                 };
             }
+            "opacity" => {
+                self.opacity = item
+                    .as_float()
+                    .or_else(|| item.as_integer().map(|opacity| opacity as f64))
+                    .filter(|opacity| (0.0..=1.0).contains(opacity))
+                    .ok_or("a number from 0 to 1")? as f32;
+            }
             "cursor-shape" => {
                 self.cursor_shape = match item.as_str() {
                     Some("block") => CursorShape::Block,
@@ -271,6 +281,8 @@ const STARTER: &str = r#"# Caret's settings. Take the # off a setting to change 
 #ligatures = true
 # "system", "light" or "dark".
 #color-scheme = "system"
+# How opaque the terminal's background is, from 0 for clear to 1.
+#opacity = 1.0
 # "block", "underline" or "beam".
 #cursor-shape = "block"
 #scrollback-lines = 10000
@@ -511,7 +523,7 @@ mod tests {
     fn settings_are_read_and_the_rest_keep_their_defaults() {
         let config = parse(
             "# mine\nfont = \"Adwaita Mono 13\"\ncolor-scheme = \"light\"\n\
-             close-detaches = true\nscrollback-lines = 500\n",
+             close-detaches = true\nscrollback-lines = 500\nopacity = 0.5\n",
         );
         assert_eq!(
             family_and_size(config.font_for(Some("Monospace 10"))),
@@ -520,11 +532,14 @@ mod tests {
         assert_eq!(config.color_scheme, ColorScheme::Light);
         assert!(config.close_detaches && config.title_bar);
         assert_eq!(config.scrollback_lines, 500);
+        assert!((config.opacity - 0.5).abs() < f32::EPSILON);
+        assert!((parse("opacity = 0").opacity).abs() < f32::EPSILON);
     }
 
     #[test]
     fn a_wrong_value_or_file_keeps_the_defaults() {
-        let config = parse("title-bar = \"no\"\ncursor-shape = \"star\"\nunknown = 1\n");
+        let config =
+            parse("title-bar = \"no\"\ncursor-shape = \"star\"\nopacity = 1.5\nunknown = 1\n");
         assert_eq!(config, Config::default());
         assert_eq!(parse("font = "), Config::default());
     }
