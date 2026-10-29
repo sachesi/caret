@@ -47,7 +47,7 @@ run *args: schemas build-debug
 # Formatting, clippy, Blueprint formatting, schema, desktop entry, metainfo and catalogues.
 check:
     cargo fmt --check
-    cargo clippy --all-targets --locked -- -D warnings
+    cargo clippy --workspace --all-targets --locked -- -D warnings
     blueprint-compiler format data/ui/*.blp
     glib-compile-schemas --strict --dry-run data
     desktop-file-validate data/{{app_id}}.desktop
@@ -73,7 +73,7 @@ po: pot
 
 # Unit tests.
 test:
-    cargo test --locked
+    cargo test --workspace --locked
 
 # Throughput, frame times, key echo, idle wakeups and memory of the release build, in a
 # headless session of its own: just bench [--runs N]

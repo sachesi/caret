@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/protocol", "crates/server"]
+members = ["crates/protocol", "crates/server", "crates/window"]
 default-members = [".", "crates/protocol", "crates/server"]
 
 [workspace.package]
