@@ -138,6 +138,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "caret-protocol"
+version = "0.2.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "cc"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

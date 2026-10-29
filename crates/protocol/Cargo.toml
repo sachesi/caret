@@ -1,0 +1,15 @@
+[package]
+name = "caret-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "What Caret's terminal server and its clients say to each other"
+repository.workspace = true
+publish = false
+
+[dependencies]
+thiserror.workspace = true
+
+[lints]
+workspace = true

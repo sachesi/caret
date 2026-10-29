@@ -1,11 +1,25 @@
-[package]
-name = "caret"
+[workspace]
+members = ["crates/protocol"]
+default-members = [".", "crates/protocol"]
+
+[workspace.package]
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.92"
 license = "GPL-3.0-or-later"
-description = "A GPU-rendered terminal for GTK 4 and libadwaita"
 repository = "https://github.com/sachesi/caret"
+
+[workspace.dependencies]
+thiserror = "2"
+
+[package]
+name = "caret"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "A GPU-rendered terminal for GTK 4 and libadwaita"
+repository.workspace = true
 readme = "README.md"
 publish = false
 
@@ -21,17 +35,20 @@ libc = "0.2"
 libloading = "0.9"
 pangocairo = "0.22"
 polling = "3"
-thiserror = "2"
+thiserror.workspace = true
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [build-dependencies]
 glib-build-tools = "0.22"
 
-[lints.rust]
+[lints]
+workspace = true
+
+[workspace.lints.rust]
 unsafe_code = "deny"
 
-[lints.clippy]
+[workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 # `mod imp { use super::*; }` is how every GObject subclass is written.
 wildcard_imports = "allow"
