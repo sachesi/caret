@@ -683,15 +683,15 @@ impl App {
         }
         // Around the window's frame, the surface is clear; without one, it is the
         // terminal's to its edges.
-        let clear = if self.chrome.drawn {
-            [0.0; 4]
-        } else {
+        let clear = if quads.is_empty() {
             [
                 f32::from(background.r) / 255.0,
                 f32::from(background.g) / 255.0,
                 f32::from(background.b) / 255.0,
                 1.0,
             ]
+        } else {
+            [0.0; 4]
         };
         let mut scene = Scene {
             grid: &mut self.grid,
