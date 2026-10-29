@@ -6,6 +6,8 @@ use std::ffi::c_void;
 
 use ash::{khr, vk};
 
+use crate::renderer::{Renderer, Scene};
+
 #[derive(Debug, thiserror::Error)]
 pub enum GpuError {
     #[error("loading Vulkan: {0}")]
@@ -17,9 +19,11 @@ pub enum GpuError {
     },
     #[error("no device can draw to the window with Vulkan 1.3")]
     NoDevice,
+    #[error("the shaders are not SPIR-V")]
+    Shader,
 }
 
-trait During<T> {
+pub trait During<T> {
     fn during(self, call: &'static str) -> Result<T, GpuError>;
 }
 
@@ -30,7 +34,7 @@ impl<T> During<T> for Result<T, vk::Result> {
 }
 
 /// Frames recorded while earlier ones are still drawn.
-const FRAMES_IN_FLIGHT: usize = 2;
+pub const FRAMES_IN_FLIGHT: usize = 2;
 
 struct Frame {
     commands: vk::CommandBuffer,
@@ -60,6 +64,7 @@ pub struct Gpu {
     present_mode: vk::PresentModeKHR,
     alpha: vk::CompositeAlphaFlagsKHR,
     pool: vk::CommandPool,
+    renderer: Renderer,
     frames: Vec<Frame>,
     frame: usize,
     swapchain: Option<Swapchain>,
@@ -145,6 +150,13 @@ impl Gpu {
 
         let (format, present_mode, alpha) = surface_choices(&surfaces, physical, surface)?;
         let (pool, frames) = make_frames(&device, family)?;
+        let renderer = Renderer::new(
+            &instance,
+            physical,
+            &device,
+            format.format,
+            FRAMES_IN_FLIGHT,
+        )?;
 
         Ok(Self {
             _entry: entry,
@@ -159,6 +171,7 @@ impl Gpu {
             present_mode,
             alpha,
             pool,
+            renderer,
             frames,
             frame: 0,
             swapchain: None,
@@ -166,12 +179,12 @@ impl Gpu {
         })
     }
 
-    /// Draws a frame `width` by `height` pixels, cleared to `background`, premultiplied.
+    /// Draws `scene` in a frame `width` by `height` pixels.
     ///
     /// # Errors
     ///
     /// When the device is lost or out of memory.
-    pub fn draw(&mut self, width: u32, height: u32, background: [f32; 4]) -> Result<(), GpuError> {
+    pub fn draw(&mut self, width: u32, height: u32, scene: &mut Scene) -> Result<(), GpuError> {
         let wanted = vk::Extent2D { width, height };
         if self.stale
             || self
@@ -222,7 +235,11 @@ impl Gpu {
 
         // SAFETY: the fence was waited on, so the GPU is done with the frame.
         unsafe { device.reset_fences(&[frame.done]) }.during("vkResetFences")?;
-        record(device, commands, image, view, swapchain.extent, background)?;
+        let extent = swapchain.extent;
+        begin(device, commands, image)?;
+        self.renderer
+            .record(device, commands, self.frame, view, extent, scene)?;
+        end(device, commands, image)?;
 
         let waits = [vk::SemaphoreSubmitInfo::default()
             .semaphore(frame.acquired)
@@ -381,6 +398,7 @@ impl Drop for Gpu {
         // it or from the instance, which go last.
         unsafe {
             let _ = self.device.device_wait_idle();
+            self.renderer.destroy(&self.device);
             for frame in self.frames.drain(..) {
                 self.device.destroy_semaphore(frame.acquired, None);
                 self.device.destroy_fence(frame.done, None);
@@ -472,16 +490,27 @@ fn make_frames(
     Ok((pool, frames))
 }
 
-/// Records into `commands` a frame that clears `image` to `background` and leaves it
-/// ready to present.
-fn record(
+fn color_range() -> vk::ImageSubresourceRange {
+    vk::ImageSubresourceRange::default()
+        .aspect_mask(vk::ImageAspectFlags::COLOR)
+        .level_count(1)
+        .layer_count(1)
+}
+
+/// Starts recording into `commands` a frame that draws to `image`.
+fn begin(
     device: &ash::Device,
     commands: vk::CommandBuffer,
     image: vk::Image,
-    view: vk::ImageView,
-    extent: vk::Extent2D,
-    background: [f32; 4],
 ) -> Result<(), GpuError> {
+    let to_drawing = [vk::ImageMemoryBarrier2::default()
+        .src_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
+        .dst_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
+        .dst_access_mask(vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
+        .old_layout(vk::ImageLayout::UNDEFINED)
+        .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+        .image(image)
+        .subresource_range(color_range())];
     // SAFETY: the caller waited for the GPU to finish with the command buffer.
     unsafe {
         device
@@ -494,51 +523,29 @@ fn record(
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )
             .during("vkBeginCommandBuffer")?;
+        device.cmd_pipeline_barrier2(
+            commands,
+            &vk::DependencyInfo::default().image_memory_barriers(&to_drawing),
+        );
     }
-    let range = vk::ImageSubresourceRange::default()
-        .aspect_mask(vk::ImageAspectFlags::COLOR)
-        .level_count(1)
-        .layer_count(1);
-    let to_drawing = [vk::ImageMemoryBarrier2::default()
-        .src_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
-        .dst_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
-        .dst_access_mask(vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
-        .old_layout(vk::ImageLayout::UNDEFINED)
-        .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-        .image(image)
-        .subresource_range(range)];
-    let attachments = [vk::RenderingAttachmentInfo::default()
-        .image_view(view)
-        .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-        .load_op(vk::AttachmentLoadOp::CLEAR)
-        .store_op(vk::AttachmentStoreOp::STORE)
-        .clear_value(vk::ClearValue {
-            color: vk::ClearColorValue {
-                float32: background,
-            },
-        })];
-    let rendering = vk::RenderingInfo::default()
-        .render_area(vk::Rect2D {
-            offset: vk::Offset2D::default(),
-            extent,
-        })
-        .layer_count(1)
-        .color_attachments(&attachments);
+    Ok(())
+}
+
+/// Ends the frame in `commands`, leaving `image` ready to present.
+fn end(
+    device: &ash::Device,
+    commands: vk::CommandBuffer,
+    image: vk::Image,
+) -> Result<(), GpuError> {
     let to_present = [vk::ImageMemoryBarrier2::default()
         .src_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
         .src_access_mask(vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
         .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
         .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
         .image(image)
-        .subresource_range(range)];
-    // SAFETY: the command buffer is recording, and every handle is this device's.
+        .subresource_range(color_range())];
+    // SAFETY: the command buffer is recording.
     unsafe {
-        device.cmd_pipeline_barrier2(
-            commands,
-            &vk::DependencyInfo::default().image_memory_barriers(&to_drawing),
-        );
-        device.cmd_begin_rendering(commands, &rendering);
-        device.cmd_end_rendering(commands);
         device.cmd_pipeline_barrier2(
             commands,
             &vk::DependencyInfo::default().image_memory_barriers(&to_present),

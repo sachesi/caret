@@ -10,7 +10,10 @@ publish = false
 [dependencies]
 ash = "0.38"
 caret-protocol.workspace = true
+fontdb = { version = "0.24", default-features = false, features = ["std", "fs", "memmap"] }
+rustybuzz = "0.20"
 smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop", "system", "xkbcommon"] }
+swash = "0.2"
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

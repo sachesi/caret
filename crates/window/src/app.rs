@@ -1,16 +1,28 @@
-//! The Wayland side of a window: its surface, the compositor's configures and frame
-//! callbacks, and the loop that waits for them.
+//! A window and the terminal it shows: the compositor's configures and frame callbacks,
+//! the server's frames, keys, and the loop that waits for all of them.
 
+use std::collections::HashMap;
 use std::num::NonZeroU32;
+use std::os::unix::ffi::OsStrExt;
 
+use caret_protocol::encode::{self, Modifiers};
+use caret_protocol::{
+    Answer, Bytes, Command, CursorShape, Message, Options, Question, Request, SessionId, Size,
+    TerminalId,
+};
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, FrameCallbackData};
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
-use smithay_client_toolkit::reexports::calloop::{self, EventLoop};
+use smithay_client_toolkit::reexports::calloop::{self, EventLoop, LoopHandle};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::reexports::client::globals::{BindError, registry_queue_init};
-use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_seat, wl_surface};
+use smithay_client_toolkit::reexports::client::protocol::{
+    wl_keyboard, wl_output, wl_seat, wl_surface,
+};
 use smithay_client_toolkit::reexports::client::{Connection, Proxy, QueueHandle};
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
+use smithay_client_toolkit::seat::keyboard::{
+    KeyEvent, KeyboardHandler, Keysym, Modifiers as KeyModifiers, RawModifiers,
+};
 use smithay_client_toolkit::seat::{Capability, SeatHandler, SeatState};
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::xdg::XdgShell;
@@ -19,7 +31,13 @@ use smithay_client_toolkit::shell::xdg::window::{
 };
 use smithay_client_toolkit::{delegate_dispatch2, delegate_registry, registry_handlers};
 
-use crate::gpu::{Gpu, GpuError};
+use crate::atlas::Atlas;
+use crate::connection::{self, Received};
+use crate::fonts::{FontError, Fonts};
+use crate::gpu::{FRAMES_IN_FLIGHT, Gpu, GpuError};
+use crate::grid::{Grid, packed};
+use crate::palette::Palette;
+use crate::renderer::{CURSOR_FOCUSED, CURSOR_WIDE, Constants, Scene};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
@@ -33,21 +51,33 @@ pub enum AppError {
     Loop(#[from] calloop::Error),
     #[error("Vulkan: {0}")]
     Gpu(#[from] GpuError),
+    #[error("fonts: {0}")]
+    Font(#[from] FontError),
+    #[error("the terminal server: {0}")]
+    Server(#[from] caret_protocol::client::ConnectError),
 }
 
 /// The size a window opens at before the compositor picks one, in logical pixels.
 const DEFAULT_SIZE: (u32, u32) = (800, 500);
 
-/// Adwaita's dark view background, until the terminal's own arrives.
-const BACKGROUND: [f32; 4] = [
-    0x1e as f32 / 255.0,
-    0x1e as f32 / 255.0,
-    0x1e as f32 / 255.0,
-    1.0,
-];
+/// Logical pixels between the window's edge and the cells.
+const PADDING: u32 = 6;
+
+/// The font size until settings choose one.
+const POINTS: f32 = 11.0;
+
+/// A question the window is waiting for the answer to.
+enum Asked {
+    Session,
+    Tab,
+}
 
 /// Fields drop in order: the device before the surface it draws to, and both before
 /// the connection.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each flag is a separate part of the window's state"
+)]
 struct App {
     gpu: Gpu,
     window: Window,
@@ -56,10 +86,29 @@ struct App {
     registry: RegistryState,
     seats: SeatState,
     outputs: OutputState,
+    qh: QueueHandle<Self>,
+    events: LoopHandle<'static, Self>,
+    server: connection::Connection,
+    asked: HashMap<u32, Asked>,
+    session: Option<SessionId>,
+    terminal: Option<TerminalId>,
+    /// A tab has been asked for and not yet opened.
+    opening: bool,
+    /// A frame has been asked of the server and not yet come.
+    frame_asked: bool,
+    fonts: Fonts,
+    atlas: Atlas,
+    grid: Grid,
+    palette: Palette,
     /// Logical pixels, as the compositor configures them; none before the first
     /// configure.
     size: Option<(u32, u32)>,
     scale: i32,
+    /// The size of the grid the window fits, as last told to the server.
+    grid_size: Option<Size>,
+    keyboard: Option<wl_keyboard::WlKeyboard>,
+    modifiers: Modifiers,
+    focused: bool,
     /// Something changed since the last frame was drawn.
     dirty: bool,
     /// A frame callback is pending: the compositor shows the last frame and says when
@@ -78,6 +127,8 @@ pub fn run() -> Result<(), AppError> {
     let qh = queue.handle();
     let compositor = CompositorState::bind(&globals, &qh)?;
     let shell = XdgShell::bind(&globals, &qh)?;
+    let (mut server, received) = connection::Connection::open(crate::APP_ID)?;
+    let fonts = Fonts::new(None, POINTS, 1.0)?;
 
     let surface = compositor.create_surface(&qh);
     let window = shell.create_window(surface, WindowDecorations::RequestServer, &qh);
@@ -92,6 +143,21 @@ pub fn run() -> Result<(), AppError> {
     // that order.
     let gpu = unsafe { Gpu::new(display, surface)? };
 
+    let palette = Palette::dark();
+    server.send(&Request::Look {
+        palette: palette.colors(),
+        options: Options {
+            scrollback: 10_000,
+            cursor_shape: CursorShape::Block,
+            cursor_blinks: false,
+            copy_from_programs: true,
+            scroll_on_output: false,
+        },
+    });
+    let mut asked = HashMap::new();
+    asked.insert(server.ask(Question::NewSession), Asked::Session);
+
+    let mut events: EventLoop<App> = EventLoop::try_new()?;
     let mut app = App {
         registry: RegistryState::new(&globals),
         seats: SeatState::new(&globals, &qh),
@@ -99,16 +165,39 @@ pub fn run() -> Result<(), AppError> {
         gpu,
         window,
         connection: connection.clone(),
+        qh,
+        events: events.handle(),
+        server,
+        asked,
+        session: None,
+        terminal: None,
+        opening: false,
+        frame_asked: false,
+        fonts,
+        atlas: Atlas::default(),
+        grid: Grid::new(FRAMES_IN_FLIGHT),
+        palette,
         size: None,
         scale: 1,
+        grid_size: None,
+        keyboard: None,
+        modifiers: Modifiers::default(),
+        focused: false,
         dirty: true,
         waiting: false,
         exit: false,
     };
 
-    let mut events: EventLoop<App> = EventLoop::try_new()?;
     WaylandSource::new(connection, queue)
         .insert(events.handle())
+        .map_err(|error| AppError::Loop(error.error))?;
+    events
+        .handle()
+        .insert_source(received, |event, (), app| {
+            if let calloop::channel::Event::Msg(received) = event {
+                app.received(received);
+            }
+        })
         .map_err(|error| AppError::Loop(error.error))?;
     let signal = events.get_signal();
     events.run(None, &mut app, |app| {
@@ -120,8 +209,164 @@ pub fn run() -> Result<(), AppError> {
 }
 
 impl App {
+    fn received(&mut self, received: Received) {
+        let message = match received {
+            Received::Message(message) => message,
+            Received::Lost(reason) => {
+                tracing::error!("lost the terminal server: {reason}");
+                self.exit = true;
+                return;
+            }
+        };
+        match message {
+            Message::Answer { id, answer } => match (self.asked.remove(&id), answer) {
+                (Some(Asked::Session), Answer::Session { session }) => {
+                    self.session = Some(session);
+                    self.server.send(&Request::Attach { session });
+                    self.open_tab();
+                }
+                (Some(Asked::Tab), Answer::Opened { terminal }) => {
+                    self.opening = false;
+                    self.terminal = Some(terminal);
+                    self.ask_frame();
+                }
+                (Some(_), answer) => {
+                    tracing::error!("the server answered {answer:?}");
+                    self.exit = true;
+                }
+                (None, _) => {}
+            },
+            Message::Frame { terminal, frame } if Some(terminal) == self.terminal => {
+                self.frame_asked = false;
+                let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
+                self.grid.apply(frame, |glyph| atlas.index(glyph, fonts));
+                self.dirty = true;
+                self.draw();
+            }
+            Message::Title { terminal, title } if Some(terminal) == self.terminal => {
+                self.window.set_title(title);
+            }
+            Message::Ended { terminal, .. } | Message::TabClosed { terminal, .. }
+                if Some(terminal) == self.terminal =>
+            {
+                self.exit = true;
+            }
+            Message::SessionClosed { session } if Some(session) == self.session => {
+                self.exit = true;
+            }
+            _ => {}
+        }
+    }
+
+    /// Asks for the window's tab once there is a session and a size to give it.
+    fn open_tab(&mut self) {
+        let (Some(session), Some(size)) = (self.session, self.grid_size) else {
+            return;
+        };
+        if self.opening || self.terminal.is_some() {
+            return;
+        }
+        let directory = std::env::current_dir()
+            .ok()
+            .map(|path| Bytes(path.as_os_str().as_bytes().to_vec()));
+        let command = Command {
+            argv: Vec::new(),
+            directory,
+            env: std::env::vars().collect(),
+            hold: false,
+        };
+        let id = self.server.ask(Question::OpenTab {
+            session,
+            index: 0,
+            command,
+            size,
+        });
+        self.asked.insert(id, Asked::Tab);
+        self.opening = true;
+    }
+
+    fn ask_frame(&mut self) {
+        if let Some(terminal) = self.terminal
+            && !self.frame_asked
+        {
+            self.server.send(&Request::Frame { terminal });
+            self.frame_asked = true;
+        }
+    }
+
+    /// Fits the grid to the window, telling the server when its size changes.
+    fn fit(&mut self) {
+        let Some((width, height)) = self.size else {
+            return;
+        };
+        let scale = self.scale.unsigned_abs();
+        let cell = self.fonts.cell();
+        let padding = PADDING * scale;
+        let fit = |pixels: u32, cell: i32| {
+            let cells = pixels.saturating_sub(2 * padding) / cell.max(1).unsigned_abs();
+            u16::try_from(cells.max(1)).unwrap_or(u16::MAX)
+        };
+        let size = Size {
+            columns: fit(width * scale, cell.width),
+            lines: fit(height * scale, cell.height),
+            cell_width: u16::try_from(cell.width).unwrap_or(u16::MAX),
+            cell_height: u16::try_from(cell.height).unwrap_or(u16::MAX),
+        };
+        if self.grid_size == Some(size) {
+            return;
+        }
+        self.grid_size = Some(size);
+        match self.terminal {
+            Some(terminal) => self.server.send(&Request::Resize { terminal, size }),
+            None => self.open_tab(),
+        }
+    }
+
+    fn constants(&self, width: u32, height: u32) -> Constants {
+        let cell = self.fonts.cell();
+        let padding = (PADDING * self.scale.unsigned_abs()) as i32;
+        let (cursor_column, cursor_line, cursor_shape) = match self.grid.cursor {
+            Some(cursor) => {
+                let mut shape = cursor.shape as u32;
+                if cursor.wide {
+                    shape |= CURSOR_WIDE;
+                }
+                if self.focused {
+                    shape |= CURSOR_FOCUSED;
+                }
+                (
+                    i32::from(cursor.point.column),
+                    i32::from(cursor.point.line),
+                    shape,
+                )
+            }
+            None => (-1, -1, 0),
+        };
+        Constants {
+            viewport_width: width as f32,
+            viewport_height: height as f32,
+            cell_width: cell.width,
+            cell_height: cell.height,
+            origin_x: padding,
+            origin_y: padding,
+            columns: self.grid.columns as u32,
+            pass: 0,
+            cursor_column,
+            cursor_line,
+            cursor_shape,
+            cursor_color: packed(self.grid.cursor_color),
+            background: packed(self.grid.background),
+            selection: packed(self.palette.selection),
+            baseline: cell.baseline,
+            underline_top: cell.underline,
+            underline_thickness: cell.underline_thickness,
+            strikeout_top: cell.strikeout,
+            strikeout_thickness: cell.strikeout_thickness,
+        }
+    }
+
     /// Draws a frame if one is due, asking the compositor when to draw the next.
-    fn draw(&mut self, qh: &QueueHandle<Self>) {
+    fn draw(&mut self) {
         let Some((width, height)) = self.size else {
             return;
         };
@@ -129,16 +374,57 @@ impl App {
             return;
         }
         let surface = self.window.wl_surface();
-        surface.frame(qh, FrameCallbackData(surface.clone()));
+        surface.frame(&self.qh, FrameCallbackData(surface.clone()));
         surface.set_buffer_scale(self.scale);
         self.waiting = true;
         self.dirty = false;
         let scale = self.scale.unsigned_abs();
         let (width, height) = (width * scale, height * scale);
-        if let Err(error) = self.gpu.draw(width, height, BACKGROUND) {
+        let constants = self.constants(width, height);
+        let background = self.grid.background;
+        let mut scene = Scene {
+            grid: &mut self.grid,
+            atlas: &mut self.atlas,
+            constants,
+            background: [
+                f32::from(background.r) / 255.0,
+                f32::from(background.g) / 255.0,
+                f32::from(background.b) / 255.0,
+                1.0,
+            ],
+        };
+        if let Err(error) = self.gpu.draw(width, height, &mut scene) {
             tracing::error!("drawing the window: {error}");
             self.exit = true;
+            return;
         }
+        // Drawn, so ready for the next.
+        self.ask_frame();
+    }
+
+    fn key(&mut self, event: &KeyEvent) {
+        let Some(terminal) = self.terminal else {
+            return;
+        };
+        let Some(key) = crate::keys::key(event.keysym) else {
+            return;
+        };
+        if let Some(bytes) = encode::key(key, self.modifiers, self.grid.mode) {
+            self.server.send(&Request::Input {
+                terminal,
+                bytes: Bytes(bytes),
+                bottom: true,
+            });
+        }
+    }
+
+    fn set_focus(&mut self, focused: bool) {
+        self.focused = focused;
+        if let Some(terminal) = self.terminal {
+            self.server.send(&Request::Focus { terminal, focused });
+        }
+        self.dirty = true;
+        self.draw();
     }
 }
 
@@ -146,15 +432,28 @@ impl CompositorHandler for App {
     fn scale_factor_changed(
         &mut self,
         _: &Connection,
-        qh: &QueueHandle<Self>,
+        _: &QueueHandle<Self>,
         _: &wl_surface::WlSurface,
         factor: i32,
     ) {
-        if factor != self.scale {
-            self.scale = factor.max(1);
-            self.dirty = true;
-            self.draw(qh);
+        let factor = factor.max(1);
+        if factor == self.scale {
+            return;
         }
+        self.scale = factor;
+        match Fonts::new(None, POINTS, factor as f32) {
+            Ok(fonts) => {
+                self.fonts = fonts;
+                // Every glyph is rasterised again at the new size.
+                self.atlas = Atlas::default();
+                let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
+                self.grid.refill(|glyph| atlas.index(glyph, fonts));
+            }
+            Err(error) => tracing::error!("loading fonts at scale {factor}: {error}"),
+        }
+        self.fit();
+        self.dirty = true;
+        self.draw();
     }
 
     fn transform_changed(
@@ -166,9 +465,9 @@ impl CompositorHandler for App {
     ) {
     }
 
-    fn frame(&mut self, _: &Connection, qh: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {
+    fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {
         self.waiting = false;
-        self.draw(qh);
+        self.draw();
     }
 
     fn surface_enter(
@@ -192,13 +491,16 @@ impl CompositorHandler for App {
 
 impl WindowHandler for App {
     fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &Window) {
+        if let Some(session) = self.session {
+            self.server.send(&Request::CloseSession { session });
+        }
         self.exit = true;
     }
 
     fn configure(
         &mut self,
         _: &Connection,
-        qh: &QueueHandle<Self>,
+        _: &QueueHandle<Self>,
         _: &Window,
         configure: WindowConfigure,
         _: u32,
@@ -209,10 +511,86 @@ impl WindowHandler for App {
             width.map_or(old_width, NonZeroU32::get),
             height.map_or(old_height, NonZeroU32::get),
         ));
+        self.fit();
         self.dirty = true;
         // A configure is answered by a frame of the new size, even while one is pending.
         self.waiting = false;
-        self.draw(qh);
+        self.draw();
+    }
+}
+
+impl KeyboardHandler for App {
+    fn enter(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _: &wl_surface::WlSurface,
+        _: u32,
+        _: &[u32],
+        _: &[Keysym],
+    ) {
+        self.set_focus(true);
+    }
+
+    fn leave(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _: &wl_surface::WlSurface,
+        _: u32,
+    ) {
+        self.set_focus(false);
+    }
+
+    fn press_key(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _: u32,
+        event: KeyEvent,
+    ) {
+        self.key(&event);
+    }
+
+    fn repeat_key(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _: u32,
+        event: KeyEvent,
+    ) {
+        self.key(&event);
+    }
+
+    fn release_key(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _: u32,
+        _: KeyEvent,
+    ) {
+    }
+
+    fn update_modifiers(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _: u32,
+        modifiers: KeyModifiers,
+        _: RawModifiers,
+        _: u32,
+    ) {
+        self.modifiers = Modifiers {
+            shift: modifiers.shift,
+            alt: modifiers.alt,
+            ctrl: modifiers.ctrl,
+        };
     }
 }
 
@@ -238,10 +616,23 @@ impl SeatHandler for App {
     fn new_capability(
         &mut self,
         _: &Connection,
-        _: &QueueHandle<Self>,
-        _: wl_seat::WlSeat,
-        _: Capability,
+        qh: &QueueHandle<Self>,
+        seat: wl_seat::WlSeat,
+        capability: Capability,
     ) {
+        if capability == Capability::Keyboard && self.keyboard.is_none() {
+            let keyboard = self.seats.get_keyboard_with_repeat(
+                qh,
+                &seat,
+                None,
+                self.events.clone(),
+                Box::new(|app, _, event| app.key(&event)),
+            );
+            match keyboard {
+                Ok(keyboard) => self.keyboard = Some(keyboard),
+                Err(error) => tracing::warn!("taking the keyboard: {error}"),
+            }
+        }
     }
 
     fn remove_capability(
@@ -249,8 +640,13 @@ impl SeatHandler for App {
         _: &Connection,
         _: &QueueHandle<Self>,
         _: wl_seat::WlSeat,
-        _: Capability,
+        capability: Capability,
     ) {
+        if capability == Capability::Keyboard
+            && let Some(keyboard) = self.keyboard.take()
+        {
+            keyboard.release();
+        }
     }
 
     fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}

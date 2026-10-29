@@ -1,7 +1,14 @@
 //! Caret's window: it shows the terminals the server keeps, drawn with Vulkan.
 
 mod app;
+mod atlas;
+mod connection;
+mod fonts;
 mod gpu;
+mod grid;
+mod keys;
+mod palette;
+mod renderer;
 
 use std::process::ExitCode;
 
