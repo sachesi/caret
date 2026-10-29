@@ -7,12 +7,14 @@ use caret_protocol::encode::{self, MouseAction, MouseButton};
 use caret_protocol::{Bytes, Mode, Point, Question, Request, Scroll, Select, SelectionKind};
 use smithay_client_toolkit::reexports::client::protocol::wl_pointer::WlPointer;
 use smithay_client_toolkit::reexports::client::{Connection, QueueHandle};
+use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_toplevel::ResizeEdge;
 use smithay_client_toolkit::reexports::protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::{
     Shape, WpCursorShapeDeviceV1,
 };
 use smithay_client_toolkit::seat::pointer::{PointerEvent, PointerEventKind, PointerHandler};
 
 use super::{App, Asked};
+use crate::chrome::Part;
 
 /// Linux's button codes.
 const BUTTON_LEFT: u32 = 0x110;
@@ -29,6 +31,10 @@ const NOTCH: f64 = 3.0;
 pub struct Pointer {
     pub proxy: Option<WlPointer>,
     pub shape: Option<WpCursorShapeDeviceV1>,
+    /// The serial of the pointer's entering the window, which setting its shape needs.
+    entered: u32,
+    /// The last click on the header bar, which a second soon after maximizes the window.
+    header_click: Option<Instant>,
     /// Logical pixels from the surface's corner.
     position: (f64, f64),
     /// Selecting with the left button held.
@@ -51,9 +57,9 @@ impl App {
         }
         let scale = f64::from(self.scale);
         let cell = self.fonts.cell();
-        let padding = f64::from(super::PADDING) * scale;
-        let x = (x * scale - padding) / f64::from(cell.width);
-        let y = (y * scale - padding) / f64::from(cell.height);
+        let (origin_x, origin_y) = self.origin();
+        let x = (x * scale - f64::from(origin_x)) / f64::from(cell.width);
+        let y = (y * scale - f64::from(origin_y)) / f64::from(cell.height);
         let column = (x.floor().max(0.0) as usize).min(columns - 1);
         let line = (y.floor().max(0.0) as usize).min(lines - 1);
         let point = Point {
@@ -61,6 +67,82 @@ impl App {
             column: u16::try_from(column).ok()?,
         };
         Some((point, x - x.floor() >= 0.5))
+    }
+
+    /// The part of the window's frame under the pointer; none over the terminal.
+    fn part(&self) -> Option<Part> {
+        self.chrome.part_at(self.pointer.position, self.size?)
+    }
+
+    /// Follows the pointer over the frame: the button it hovers and the cursor's shape.
+    fn hover(&mut self) {
+        let part = self.part();
+        if part == self.chrome.hovered {
+            return;
+        }
+        let shown = |part: Option<Part>| part.filter(|&part| part == Part::Close);
+        let redraw = shown(part) != shown(self.chrome.hovered);
+        self.chrome.hovered = part;
+        if let Some(shape) = &self.pointer.shape {
+            shape.set_shape(self.pointer.entered, cursor(part));
+        }
+        if redraw {
+            self.dirty = true;
+            self.draw();
+        }
+    }
+
+    fn pressed_frame(&mut self, part: Part, button: u32, serial: u32) {
+        let Some(seat) = self.seat.clone() else {
+            return;
+        };
+        match (part, button) {
+            (Part::Close, BUTTON_LEFT) => {
+                self.chrome.pressed = Some(part);
+                self.dirty = true;
+                self.draw();
+            }
+            (Part::Edge(edge), BUTTON_LEFT) => self.window.resize(&seat, serial, edge),
+            (Part::Header, BUTTON_LEFT) => {
+                let now = Instant::now();
+                let again = self
+                    .pointer
+                    .header_click
+                    .is_some_and(|at| now.duration_since(at) < MULTI_CLICK);
+                if again {
+                    self.pointer.header_click = None;
+                    if self.chrome.maximized {
+                        self.window.unset_maximized();
+                    } else {
+                        self.window.set_maximized();
+                    }
+                } else {
+                    self.pointer.header_click = Some(now);
+                    self.window.move_(&seat, serial);
+                }
+            }
+            (Part::Header | Part::Close, BUTTON_RIGHT) => {
+                let margin = f64::from(self.chrome.margin());
+                let (x, y) = self.pointer.position;
+                self.window.show_window_menu(
+                    &seat,
+                    serial,
+                    ((x - margin) as i32, (y - margin) as i32),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn released_frame(&mut self) {
+        if self.chrome.pressed.take() == Some(Part::Close) {
+            if self.chrome.hovered == Some(Part::Close) {
+                self.close();
+            } else {
+                self.dirty = true;
+                self.draw();
+            }
+        }
     }
 
     /// Whether the program gets the mouse: it asked, and Shift is not held to select
@@ -233,20 +315,49 @@ impl PointerHandler for App {
         events: &[PointerEvent],
     ) {
         for event in events {
+            // The terminal keeps a drag that began in it, wherever the pointer goes.
+            let dragging = self.pointer.selecting || self.pointer.reported.is_some();
             match event.kind {
                 PointerEventKind::Enter { serial } => {
                     self.pointer.position = event.position;
+                    self.pointer.entered = serial;
                     if let Some(shape) = &self.pointer.shape {
-                        shape.set_shape(serial, Shape::Text);
+                        shape.set_shape(serial, cursor(self.part()));
+                    }
+                    self.chrome.hovered = self.part();
+                }
+                PointerEventKind::Leave { .. } => {
+                    if self.chrome.hovered.take() == Some(Part::Close) {
+                        self.dirty = true;
+                        self.draw();
                     }
                 }
-                PointerEventKind::Leave { .. } => {}
-                PointerEventKind::Motion { .. } => self.moved(event.position),
+                PointerEventKind::Motion { .. } if dragging => self.moved(event.position),
+                PointerEventKind::Motion { .. } => {
+                    self.pointer.position = event.position;
+                    self.hover();
+                    if self.chrome.hovered.is_none() {
+                        self.moved(event.position);
+                    }
+                }
                 PointerEventKind::Press { button, serial, .. } => {
                     self.pointer.position = event.position;
-                    self.pressed(button, serial);
+                    match self.part() {
+                        Some(part) if !dragging => {
+                            self.serial = serial;
+                            self.pressed_frame(part, button, serial);
+                        }
+                        _ => self.pressed(button, serial),
+                    }
                 }
-                PointerEventKind::Release { button, .. } => self.released(button),
+                PointerEventKind::Release { button, .. } => {
+                    if self.chrome.pressed.is_some() {
+                        self.released_frame();
+                    } else {
+                        self.released(button);
+                    }
+                }
+                PointerEventKind::Axis { .. } if self.chrome.hovered.is_some() => {}
                 PointerEventKind::Axis { vertical, .. } => {
                     let lines = if vertical.value120 != 0 {
                         f64::from(vertical.value120) / 120.0 * NOTCH
@@ -260,5 +371,23 @@ impl PointerHandler for App {
                 }
             }
         }
+    }
+}
+
+/// The cursor over `part` of the window.
+fn cursor(part: Option<Part>) -> Shape {
+    match part {
+        None => Shape::Text,
+        Some(Part::Header | Part::Close) => Shape::Default,
+        Some(Part::Edge(edge)) => match edge {
+            ResizeEdge::Top => Shape::NResize,
+            ResizeEdge::Bottom => Shape::SResize,
+            ResizeEdge::Left => Shape::WResize,
+            ResizeEdge::Right => Shape::EResize,
+            ResizeEdge::TopLeft => Shape::NwResize,
+            ResizeEdge::TopRight => Shape::NeResize,
+            ResizeEdge::BottomLeft => Shape::SwResize,
+            _ => Shape::SeResize,
+        },
     }
 }

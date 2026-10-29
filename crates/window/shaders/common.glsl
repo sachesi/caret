@@ -1,5 +1,5 @@
-// What both stages of the cell pipeline share: the cells, the atlas entries and the
-// constants each draw is given.
+// What the stages of both pipelines share: the cells, the frame's quads, the atlas
+// entries and the constants each draw is given.
 
 struct Cell {
     uint glyph;
@@ -16,8 +16,22 @@ struct Glyph {
     uint flags;
 };
 
+// A rectangle of the window's frame: see chrome.rs.
+struct Quad {
+    float x;
+    float y;
+    float width;
+    float height;
+    uint color;
+    float radius;
+    uint corners;
+    uint glyph;
+    float blur;
+};
+
 layout(std430, set = 0, binding = 1) readonly buffer Glyphs { Glyph glyphs[]; };
 layout(std430, set = 0, binding = 2) readonly buffer Cells { Cell cells[]; };
+layout(std430, set = 0, binding = 3) readonly buffer Quads { Quad quads[]; };
 
 layout(push_constant) uniform Constants {
     float viewport_width;

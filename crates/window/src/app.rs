@@ -10,7 +10,9 @@ use caret_protocol::{
     Answer, Bytes, Command, CursorShape, Message, Options, Question, Request, SessionId, Size,
     TerminalId,
 };
-use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, FrameCallbackData};
+use smithay_client_toolkit::compositor::{
+    CompositorHandler, CompositorState, FrameCallbackData, Region,
+};
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::calloop::{self, EventLoop, LoopHandle};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
@@ -25,10 +27,10 @@ use smithay_client_toolkit::seat::keyboard::{
 };
 use smithay_client_toolkit::seat::{Capability, SeatHandler, SeatState};
 use smithay_client_toolkit::shell::WaylandSurface;
-use smithay_client_toolkit::shell::xdg::XdgShell;
 use smithay_client_toolkit::shell::xdg::window::{
-    Window, WindowConfigure, WindowDecorations, WindowHandler,
+    DecorationMode, Window, WindowConfigure, WindowDecorations, WindowHandler,
 };
+use smithay_client_toolkit::shell::xdg::{XdgShell, XdgSurface};
 use smithay_client_toolkit::{delegate_dispatch2, delegate_registry, registry_handlers};
 
 use smithay_client_toolkit::data_device_manager::DataDeviceManagerState;
@@ -36,6 +38,7 @@ use smithay_client_toolkit::primary_selection::PrimarySelectionManagerState;
 use smithay_client_toolkit::seat::pointer::cursor_shape::CursorShapeManager;
 
 use crate::atlas::Atlas;
+use crate::chrome::{self, Chrome, Drawing};
 use crate::connection::{self, Received};
 use crate::fonts::{FontError, Fonts};
 use crate::gpu::{FRAMES_IN_FLIGHT, Gpu, GpuError};
@@ -96,7 +99,10 @@ struct App {
     #[expect(dead_code, reason = "held so that the display outlives the device")]
     connection: Connection,
     registry: RegistryState,
+    compositor: CompositorState,
     seats: SeatState,
+    /// The seat whose pointer moves and resizes the window.
+    seat: Option<wl_seat::WlSeat>,
     outputs: OutputState,
     qh: QueueHandle<Self>,
     events: LoopHandle<'static, Self>,
@@ -112,8 +118,9 @@ struct App {
     atlas: Atlas,
     grid: Grid,
     palette: Palette,
-    /// Logical pixels, as the compositor configures them; none before the first
-    /// configure.
+    chrome: Chrome,
+    /// The window's size in logical pixels, as the compositor configures it, without
+    /// the room around it for a shadow; none before the first configure.
     size: Option<(u32, u32)>,
     scale: i32,
     /// The size of the grid the window fits, as last told to the server.
@@ -184,7 +191,9 @@ pub fn run() -> Result<(), AppError> {
     let cursor_shapes = CursorShapeManager::bind(&globals, &qh).ok();
     let mut app = App {
         registry: RegistryState::new(&globals),
+        compositor,
         seats: SeatState::new(&globals, &qh),
+        seat: None,
         outputs: OutputState::new(&globals, &qh),
         gpu,
         window,
@@ -201,6 +210,10 @@ pub fn run() -> Result<(), AppError> {
         atlas: Atlas::default(),
         grid: Grid::new(FRAMES_IN_FLIGHT),
         palette,
+        chrome: Chrome {
+            title: "Caret".to_owned(),
+            ..Chrome::default()
+        },
         size: None,
         scale: 1,
         grid_size: None,
@@ -219,8 +232,23 @@ pub fn run() -> Result<(), AppError> {
     WaylandSource::new(connection, queue)
         .insert(events.handle())
         .map_err(|error| AppError::Loop(error.error))?;
+    listen(&events.handle(), received, pasted)?;
+    let signal = events.get_signal();
+    events.run(None, &mut app, |app| {
+        if app.exit {
+            signal.stop();
+        }
+    })?;
+    Ok(())
+}
+
+/// Takes the server's messages and the pastes read from other programs in the loop.
+fn listen(
+    events: &LoopHandle<'static, App>,
+    received: calloop::channel::Channel<Received>,
+    pasted: calloop::channel::Channel<Vec<u8>>,
+) -> Result<(), AppError> {
     events
-        .handle()
         .insert_source(received, |event, (), app| {
             if let calloop::channel::Event::Msg(received) = event {
                 app.received(received);
@@ -228,19 +256,12 @@ pub fn run() -> Result<(), AppError> {
         })
         .map_err(|error| AppError::Loop(error.error))?;
     events
-        .handle()
         .insert_source(pasted, |event, (), app| {
             if let calloop::channel::Event::Msg(bytes) = event {
                 app.pasted(&bytes);
             }
         })
         .map_err(|error| AppError::Loop(error.error))?;
-    let signal = events.get_signal();
-    events.run(None, &mut app, |app| {
-        if app.exit {
-            signal.stop();
-        }
-    })?;
     Ok(())
 }
 
@@ -288,18 +309,7 @@ impl App {
                 self.frame_asked = false;
                 let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
                 self.grid.apply(frame, |glyph| atlas.index(glyph, fonts));
-                if self.atlas.full {
-                    // Glyphs scrolled away fill it: it starts again with those on screen.
-                    tracing::debug!("starting the glyph atlas again");
-                    self.atlas = self.atlas.next();
-                    let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
-                    self.grid.refill(|glyph| atlas.index(glyph, fonts));
-                    if self.atlas.full {
-                        tracing::warn!("the glyphs on screen do not fit the atlas");
-                        // Left set, every frame would start the atlas again to no avail.
-                        self.atlas.full = false;
-                    }
-                }
+                self.renew_full_atlas();
                 self.dirty = true;
                 self.draw();
             }
@@ -309,7 +319,10 @@ impl App {
                 text,
             } if Some(terminal) == self.terminal => self.copy(text, primary),
             Message::Title { terminal, title } if Some(terminal) == self.terminal => {
-                self.window.set_title(title);
+                self.window.set_title(title.clone());
+                self.chrome.title = title;
+                self.dirty = true;
+                self.draw();
             }
             Message::Ended { terminal, .. } | Message::TabClosed { terminal, .. }
                 if Some(terminal) == self.terminal =>
@@ -321,6 +334,30 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// Starts the atlas again with what is on screen once glyphs scrolled away fill it.
+    fn renew_full_atlas(&mut self) {
+        if !self.atlas.full {
+            return;
+        }
+        tracing::debug!("starting the glyph atlas again");
+        self.atlas = self.atlas.next();
+        let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
+        self.grid.refill(|glyph| atlas.index(glyph, fonts));
+        if self.atlas.full {
+            tracing::warn!("the glyphs on screen do not fit the atlas");
+            // Left set, every frame would start the atlas again to no avail.
+            self.atlas.full = false;
+        }
+    }
+
+    /// Ends the window's session and the window.
+    fn close(&mut self) {
+        if let Some(session) = self.session {
+            self.server.send(&Request::CloseSession { session });
+        }
+        self.exit = true;
     }
 
     /// Asks for the window's tab once there is a session and a size to give it.
@@ -371,6 +408,7 @@ impl App {
             let cells = pixels.saturating_sub(2 * padding) / cell.max(1).unsigned_abs();
             u16::try_from(cells.max(1)).unwrap_or(u16::MAX)
         };
+        let height = height.saturating_sub(self.chrome.header());
         let size = Size {
             columns: fit(width * scale, cell.width),
             lines: fit(height * scale, cell.height),
@@ -387,9 +425,18 @@ impl App {
         }
     }
 
+    /// Where the first cell's top left is, in device pixels from the surface's.
+    fn origin(&self) -> (i32, i32) {
+        let scale = self.scale.unsigned_abs();
+        let margin = self.chrome.margin();
+        let x = (margin + PADDING) * scale;
+        let y = (margin + self.chrome.header() + PADDING) * scale;
+        (x as i32, y as i32)
+    }
+
     fn constants(&self, width: u32, height: u32) -> Constants {
         let cell = self.fonts.cell();
-        let padding = (PADDING * self.scale.unsigned_abs()) as i32;
+        let (origin_x, origin_y) = self.origin();
         let (cursor_column, cursor_line, cursor_shape) = match self.grid.cursor {
             Some(cursor) => {
                 let mut shape = cursor.shape as u32;
@@ -412,8 +459,8 @@ impl App {
             viewport_height: height as f32,
             cell_width: cell.width,
             cell_height: cell.height,
-            origin_x: padding,
-            origin_y: padding,
+            origin_x,
+            origin_y,
             columns: self.grid.columns as u32,
             pass: 0,
             cursor_column,
@@ -444,27 +491,99 @@ impl App {
         self.waiting = true;
         self.dirty = false;
         let scale = self.scale.unsigned_abs();
-        let (width, height) = (width * scale, height * scale);
-        let constants = self.constants(width, height);
+        let margin = 2 * self.chrome.margin();
+        let (surface_width, surface_height) = ((width + margin) * scale, (height + margin) * scale);
+        let constants = self.constants(surface_width, surface_height);
         let background = self.grid.background;
-        let mut scene = Scene {
-            grid: &mut self.grid,
-            atlas: &mut self.atlas,
-            constants,
-            background: [
+        let mut quads = self.frame_quads((width, height));
+        if self.atlas.full {
+            self.renew_full_atlas();
+            quads = self.frame_quads((width, height));
+        }
+        // Around the window's frame, the surface is clear; without one, it is the
+        // terminal's to its edges.
+        let clear = if self.chrome.drawn {
+            [0.0; 4]
+        } else {
+            [
                 f32::from(background.r) / 255.0,
                 f32::from(background.g) / 255.0,
                 f32::from(background.b) / 255.0,
                 1.0,
-            ],
+            ]
         };
-        if let Err(error) = self.gpu.draw(width, height, &mut scene) {
+        let mut scene = Scene {
+            grid: &mut self.grid,
+            atlas: &mut self.atlas,
+            constants,
+            quads: &quads,
+            background: clear,
+        };
+        if let Err(error) = self.gpu.draw(surface_width, surface_height, &mut scene) {
             tracing::error!("drawing the window: {error}");
             self.exit = true;
             return;
         }
         // Drawn, so ready for the next.
         self.ask_frame();
+    }
+
+    /// The window's frame for a window `size` big, its title and icon put in the atlas.
+    fn frame_quads(&mut self, size: (u32, u32)) -> Vec<chrome::Quad> {
+        if !self.chrome.drawn {
+            return Vec::new();
+        }
+        let scale = self.scale as f32;
+        let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
+        let title = (!self.chrome.title.is_empty()).then(|| {
+            let width = Chrome::title_width(size.0, scale);
+            let text = &self.chrome.title;
+            let drawing = Drawing::Title {
+                text: text.clone(),
+                width,
+            };
+            atlas.drawing(&drawing, || fonts.label(text, width))
+        });
+        let close = atlas.drawing(&Drawing::Close, || Some(chrome::close_icon(scale)));
+        let entry = |index: u32| Some((index, atlas.entry(index)?));
+        self.chrome.quads(
+            size,
+            scale,
+            (packed(self.grid.background) << 8) | 0xff,
+            title.and_then(entry),
+            fonts.label_height(),
+            entry(close),
+        )
+    }
+
+    /// Tells the compositor where the window is in its surface and where the surface
+    /// takes input: the window and the edges around it that resize it.
+    fn place(&self) {
+        let Some((width, height)) = self.size else {
+            return;
+        };
+        let margin = self.chrome.margin();
+        self.window
+            .set_window_geometry(margin, margin, width, height);
+        let surface = self.window.wl_surface();
+        if margin == 0 {
+            surface.set_input_region(None);
+            return;
+        }
+        match Region::new(&self.compositor) {
+            Ok(region) => {
+                let reach = chrome::EDGE as i32;
+                let (margin, width, height) = (margin as i32, width as i32, height as i32);
+                region.add(
+                    margin - reach,
+                    margin - reach,
+                    width + 2 * reach,
+                    height + 2 * reach,
+                );
+                surface.set_input_region(Some(region.wl_region()));
+            }
+            Err(error) => tracing::warn!("making the window's input region: {error}"),
+        }
     }
 
     fn key(&mut self, event: &KeyEvent) {
@@ -589,10 +708,7 @@ impl CompositorHandler for App {
 
 impl WindowHandler for App {
     fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &Window) {
-        if let Some(session) = self.session {
-            self.server.send(&Request::CloseSession { session });
-        }
-        self.exit = true;
+        self.close();
     }
 
     fn configure(
@@ -603,12 +719,19 @@ impl WindowHandler for App {
         configure: WindowConfigure,
         _: u32,
     ) {
+        self.chrome.drawn = configure.decoration_mode == DecorationMode::Client;
+        self.chrome.fullscreen = configure.is_fullscreen();
+        self.chrome.floating =
+            !(configure.is_maximized() || configure.is_fullscreen() || configure.is_tiled());
+        self.chrome.maximized = configure.is_maximized();
+        self.chrome.active = configure.is_activated();
         let (width, height) = configure.new_size;
         let (old_width, old_height) = self.size.unwrap_or(DEFAULT_SIZE);
         self.size = Some((
             width.map_or(old_width, NonZeroU32::get),
             height.map_or(old_height, NonZeroU32::get),
         ));
+        self.place();
         self.fit();
         self.dirty = true;
         // A configure is answered by a frame of the new size, even while one is pending.
@@ -723,6 +846,7 @@ impl SeatHandler for App {
     ) {
         self.clipboard.add_seat(qh, &seat);
         if capability == Capability::Pointer && self.pointer.proxy.is_none() {
+            self.seat = Some(seat.clone());
             match self.seats.get_pointer(qh, &seat) {
                 Ok(pointer) => {
                     self.pointer.shape = self

@@ -36,6 +36,12 @@ const FALLBACKS: &[&str] = &[
     "Noto Sans",
 ];
 
+/// Families tried in order for the window's own text, before any sans-serif face.
+const LABEL_FAMILIES: &[&str] = &["Adwaita Sans", "Cantarell", "Noto Sans", "DejaVu Sans"];
+
+/// The size of the window's own text.
+const LABEL_POINTS: f32 = 11.0;
+
 /// How far a face without italics is slanted to stand in for one, as a tangent.
 const SLANT: f32 = 0.2;
 
@@ -57,7 +63,7 @@ pub struct CellMetrics {
     pub strikeout_thickness: i32,
 }
 
-/// A glyph's pixels and where they go, from the top left of its cell.
+/// A glyph's pixels and where they go, from the top left of its cell or line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Raster {
     pub width: u32,
@@ -68,6 +74,16 @@ pub struct Raster {
     pub pixels: Vec<u8>,
     /// Coloured, an emoji; otherwise white, a coverage mask the text colour is applied to.
     pub color: bool,
+}
+
+/// A glyph of shaped text, its place in pixels from where the text starts.
+struct Shaped {
+    id: u16,
+    x: f32,
+    y: f32,
+    /// Where the pen was before it, and how far it moves the pen.
+    pen: f32,
+    advance: f32,
 }
 
 #[derive(Clone)]
@@ -123,6 +139,12 @@ pub struct Fonts {
     cell: CellMetrics,
     context: ScaleContext,
     fallbacks: HashMap<char, Option<Face>>,
+    /// The bold sans-serif face of the window's own text, its size in pixels to the em,
+    /// and its line's ascent and height.
+    label: Option<Face>,
+    label_size: f32,
+    label_ascent: i32,
+    label_height: i32,
 }
 
 impl Fonts {
@@ -149,6 +171,16 @@ impl Fonts {
         // CSS pixels: 96 to the inch, 72 points.
         let size = points * 96.0 / 72.0 * scale;
         let cell = measure(&regular, size).ok_or(FontError::NoFont)?;
+        let label_size = LABEL_POINTS * 96.0 / 72.0 * scale;
+        let label = label_face(&mut database);
+        let (label_ascent, label_height) = label
+            .as_ref()
+            .and_then(|face| {
+                let metrics = face.font()?.metrics(&[]).scale(label_size);
+                let ascent = metrics.ascent.ceil() as i32;
+                Some((ascent, ascent + metrics.descent.ceil() as i32))
+            })
+            .unwrap_or_default();
         Ok(Self {
             database,
             styles: [regular, bold, italic, bold_italic],
@@ -156,11 +188,45 @@ impl Fonts {
             cell,
             context: ScaleContext::new(),
             fallbacks: HashMap::new(),
+            label,
+            label_size,
+            label_ascent,
+            label_height,
         })
     }
 
     pub fn cell(&self) -> CellMetrics {
         self.cell
+    }
+
+    /// The height of a line of the window's own text, in pixels.
+    pub fn label_height(&self) -> i32 {
+        self.label_height
+    }
+
+    /// `text` in the window's own face, from the top of its line, cut short with an
+    /// ellipsis to fit `width` pixels; none if nothing in it draws.
+    pub fn label(&mut self, text: &str, width: u32) -> Option<Raster> {
+        let face = self.label.clone()?;
+        let size = self.label_size;
+        let (mut glyphs, advance) = shape(&face, text, size)?;
+        if advance > width as f32 {
+            let (dots, dots_advance) = shape(&face, "\u{2026}", size)?;
+            let room = width as f32 - dots_advance;
+            let kept = glyphs
+                .iter()
+                .position(|glyph| glyph.pen + glyph.advance > room)
+                .unwrap_or(glyphs.len());
+            glyphs.truncate(kept);
+            let pen = glyphs.last().map_or(0.0, |glyph| glyph.pen + glyph.advance);
+            glyphs.extend(dots.into_iter().map(|dot| Shaped {
+                x: dot.x + pen,
+                pen: dot.pen + pen,
+                ..dot
+            }));
+        }
+        let placed = self.render(&face, size, &glyphs, self.label_ascent);
+        compose(&placed)
     }
 
     /// The pixels of `glyph`, or none for one that draws nothing, such as a space.
@@ -229,24 +295,26 @@ impl Fonts {
 
     /// Each glyph `text` shapes to in `face`, rendered and placed against the baseline.
     fn shape_and_render(&mut self, face: &Face, text: &str) -> Option<Vec<(i32, i32, Image)>> {
-        let mut shaper = rustybuzz::Face::from_slice(face.bytes(), face.index)?;
-        if let Some(weight) = face.weight {
-            shaper.set_variations(&[rustybuzz::Variation {
-                tag: rustybuzz::ttf_parser::Tag::from_bytes(b"wght"),
-                value: weight,
-            }]);
-        }
-        let units = f32::from(u16::try_from(shaper.units_per_em()).ok()?);
-        let to_pixels = self.size / units;
-        let mut buffer = rustybuzz::UnicodeBuffer::new();
-        buffer.push_str(text);
-        let shaped = rustybuzz::shape(&shaper, &[], buffer);
+        let (glyphs, _) = shape(face, text, self.size)?;
+        Some(self.render(face, self.size, &glyphs, self.cell.baseline))
+    }
 
-        let font = face.font()?;
+    /// `glyphs` of `face` rendered at `size`, placed against a baseline `baseline` pixels
+    /// down.
+    fn render(
+        &mut self,
+        face: &Face,
+        size: f32,
+        glyphs: &[Shaped],
+        baseline: i32,
+    ) -> Vec<(i32, i32, Image)> {
+        let Some(font) = face.font() else {
+            return Vec::new();
+        };
         let mut scaler = self
             .context
             .builder(font)
-            .size(self.size)
+            .size(size)
             .hint(true)
             .variations(face.weight.map(|weight| ("wght", weight)))
             .build();
@@ -257,7 +325,7 @@ impl Fonts {
         ]);
         render.format(Format::Alpha);
         if face.embolden {
-            render.embolden(self.size / 24.0);
+            render.embolden(size / 24.0);
         }
         if face.slant {
             render.transform(Some(Transform::skew(
@@ -265,28 +333,21 @@ impl Fonts {
                 swash::zeno::Angle::from_radians(-SLANT.atan()),
             )));
         }
-        let mut pen = 0.0f32;
         let mut placed = Vec::new();
-        for (info, position) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {
-            let x = pen + position.x_offset as f32 * to_pixels;
-            let y = position.y_offset as f32 * to_pixels;
-            pen += position.x_advance as f32 * to_pixels;
-            let whole = x.floor();
-            render.offset(Vector::new(x - whole, 0.0));
-            let Ok(id) = u16::try_from(info.glyph_id) else {
-                continue;
-            };
-            let Some(image) = render.render(&mut scaler, id) else {
+        for glyph in glyphs {
+            let whole = glyph.x.floor();
+            render.offset(Vector::new(glyph.x - whole, 0.0));
+            let Some(image) = render.render(&mut scaler, glyph.id) else {
                 continue;
             };
             if image.placement.width == 0 || image.placement.height == 0 {
                 continue;
             }
             let left = whole as i32 + image.placement.left;
-            let top = self.cell.baseline - y.round() as i32 - image.placement.top;
+            let top = baseline - glyph.y.round() as i32 - image.placement.top;
             placed.push((left, top, image));
         }
-        Some(placed)
+        placed
     }
 
     /// A face with `c`, for a character the terminal's font lacks.
@@ -318,6 +379,60 @@ impl Fonts {
         self.fallbacks.insert(c, found.clone());
         found
     }
+}
+
+/// `text` shaped in `face` at `size` pixels to the em, and how far it moves the pen.
+fn shape(face: &Face, text: &str, size: f32) -> Option<(Vec<Shaped>, f32)> {
+    let mut shaper = rustybuzz::Face::from_slice(face.bytes(), face.index)?;
+    if let Some(weight) = face.weight {
+        shaper.set_variations(&[rustybuzz::Variation {
+            tag: rustybuzz::ttf_parser::Tag::from_bytes(b"wght"),
+            value: weight,
+        }]);
+    }
+    let units = f32::from(u16::try_from(shaper.units_per_em()).ok()?);
+    let to_pixels = size / units;
+    let mut buffer = rustybuzz::UnicodeBuffer::new();
+    buffer.push_str(text);
+    let shaped = rustybuzz::shape(&shaper, &[], buffer);
+    let mut pen = 0.0f32;
+    let mut glyphs = Vec::new();
+    for (info, position) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {
+        let advance = position.x_advance as f32 * to_pixels;
+        if let Ok(id) = u16::try_from(info.glyph_id) {
+            glyphs.push(Shaped {
+                id,
+                x: pen + position.x_offset as f32 * to_pixels,
+                y: position.y_offset as f32 * to_pixels,
+                pen,
+                advance,
+            });
+        }
+        pen += advance;
+    }
+    Some((glyphs, pen))
+}
+
+/// The bold face of the first of [`LABEL_FAMILIES`] installed, else of the sans-serif
+/// family.
+fn label_face(database: &mut fontdb::Database) -> Option<Face> {
+    let mut families: Vec<fontdb::Family> = LABEL_FAMILIES
+        .iter()
+        .map(|&name| fontdb::Family::Name(name))
+        .collect();
+    families.push(fontdb::Family::SansSerif);
+    let id = database.query(&fontdb::Query {
+        families: &families,
+        weight: fontdb::Weight::BOLD,
+        style: fontdb::Style::Normal,
+        stretch: fontdb::Stretch::Normal,
+    })?;
+    let light = database.face(id)?.weight < fontdb::Weight::SEMIBOLD;
+    let mut face = shared(database, id)?;
+    if light {
+        face.weigh(fontdb::Weight::BOLD);
+    }
+    Some(face)
 }
 
 /// The family to use: the one asked for if it is installed, else the first of

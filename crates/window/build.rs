@@ -9,7 +9,12 @@ fn main() {
     let glslc = std::env::var_os("GLSLC").unwrap_or_else(|| "glslc".into());
     println!("cargo::rerun-if-changed=shaders");
     println!("cargo::rerun-if-env-changed=GLSLC");
-    for (source, stage) in [("cells.vert", "vert"), ("cells.frag", "frag")] {
+    for (source, stage) in [
+        ("cells.vert", "vert"),
+        ("cells.frag", "frag"),
+        ("frame.vert", "vert"),
+        ("frame.frag", "frag"),
+    ] {
         let status = Command::new(&glslc)
             .arg(format!("-fshader-stage={stage}"))
             .args(["--target-env=vulkan1.3", "-O", "-Werror"])

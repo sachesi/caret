@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use caret_protocol::Glyph;
 
+use crate::chrome::Drawing;
 use crate::fonts::{Fonts, Raster};
 
 /// Texels on each side of the atlas texture.
@@ -75,6 +76,8 @@ pub struct Atlas {
     shelves: Shelves,
     /// Each glyph's index in `entries` plus one; zero for one that draws nothing.
     indices: HashMap<Glyph, u32>,
+    /// The same for what the window draws around the terminal.
+    drawings: HashMap<Drawing, u32>,
     pub entries: Vec<GpuGlyph>,
     pub uploads: Vec<Upload>,
     /// A glyph did not fit: the atlas is to be started again with what is on screen.
@@ -104,6 +107,22 @@ impl Atlas {
             .unwrap_or(0);
         self.indices.insert(glyph.clone(), index);
         index
+    }
+
+    /// The number quads refer to `drawing` by, made with `raster` the first time.
+    pub fn drawing(&mut self, drawing: &Drawing, raster: impl FnOnce() -> Option<Raster>) -> u32 {
+        if let Some(&index) = self.drawings.get(drawing) {
+            return index;
+        }
+        let index = raster().and_then(|raster| self.insert(raster)).unwrap_or(0);
+        self.drawings.insert(drawing.clone(), index);
+        index
+    }
+
+    /// The entry `index` refers to.
+    pub fn entry(&self, index: u32) -> Option<GpuGlyph> {
+        let position = usize::try_from(index.checked_sub(1)?).ok()?;
+        self.entries.get(position).copied()
     }
 
     fn insert(&mut self, raster: Raster) -> Option<u32> {

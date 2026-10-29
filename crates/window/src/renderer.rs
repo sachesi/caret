@@ -1,5 +1,6 @@
-//! Drawing the cell grid: the pipeline, the glyph atlas texture, the table of its entries,
-//! and for each frame in flight a copy of the cells and the pixels to upload.
+//! Drawing the cell grid and the window's frame: the pipelines, the glyph atlas texture,
+//! the table of its entries, and for each frame in flight a copy of the cells, the
+//! frame's quads and the pixels to upload.
 
 #![expect(unsafe_code, reason = "Vulkan is only reached through ash's raw calls")]
 
@@ -8,6 +9,7 @@ use std::io::Cursor;
 use ash::vk;
 
 use crate::atlas::{self, Atlas, GpuGlyph};
+use crate::chrome::Quad;
 use crate::gpu::{During, GpuError};
 use crate::grid::{GpuCell, Grid};
 
@@ -46,7 +48,9 @@ pub struct Scene<'a> {
     pub grid: &'a mut Grid,
     pub atlas: &'a mut Atlas,
     pub constants: Constants,
-    /// Premultiplied.
+    /// The window's frame, drawn under the cells.
+    pub quads: &'a [Quad],
+    /// What the frame is cleared to, premultiplied.
     pub background: [f32; 4],
 }
 
@@ -60,11 +64,15 @@ struct Buffer {
 /// Glyph entries the table holds before it is made again, larger.
 const GLYPHS: u64 = 4096;
 
+/// Quads a frame's buffer holds before it is made again, larger.
+const QUADS: u64 = 64;
+
 pub struct Renderer {
     memory: vk::PhysicalDeviceMemoryProperties,
     set_layout: vk::DescriptorSetLayout,
     layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
+    frame_pipeline: vk::Pipeline,
     pool: vk::DescriptorPool,
     sets: Vec<vk::DescriptorSet>,
     atlas: vk::Image,
@@ -78,6 +86,7 @@ pub struct Renderer {
     /// The atlas the texture and the table hold glyphs of.
     generation: u64,
     cells: Vec<Option<Buffer>>,
+    quads: Vec<Buffer>,
     staging: Vec<Option<Buffer>>,
 }
 
@@ -91,31 +100,7 @@ impl Renderer {
     ) -> Result<Self, GpuError> {
         // SAFETY: the physical device came from this instance.
         let memory = unsafe { instance.get_physical_device_memory_properties(physical) };
-        let bindings = [
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(0)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT),
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(1)
-                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT),
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(2)
-                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT),
-        ];
-        // SAFETY: the device is live and the infos live through the calls below.
-        let set_layout = unsafe {
-            device.create_descriptor_set_layout(
-                &vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings),
-                None,
-            )
-        }
-        .during("vkCreateDescriptorSetLayout")?;
+        let set_layout = make_set_layout(device)?;
         let ranges = [vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
             .size(size_of::<Constants>() as u32)];
@@ -130,7 +115,20 @@ impl Renderer {
             )
         }
         .during("vkCreatePipelineLayout")?;
-        let pipeline = make_pipeline(device, layout, format)?;
+        let pipeline = make_pipeline(
+            device,
+            layout,
+            format,
+            include_bytes!(concat!(env!("OUT_DIR"), "/cells.vert.spv")),
+            include_bytes!(concat!(env!("OUT_DIR"), "/cells.frag.spv")),
+        )?;
+        let frame_pipeline = make_pipeline(
+            device,
+            layout,
+            format,
+            include_bytes!(concat!(env!("OUT_DIR"), "/frame.vert.spv")),
+            include_bytes!(concat!(env!("OUT_DIR"), "/frame.frag.spv")),
+        )?;
 
         let (pool, sets) = make_sets(device, set_layout, frames)?;
 
@@ -150,12 +148,23 @@ impl Renderer {
             GLYPHS * size_of::<GpuGlyph>() as u64,
             vk::BufferUsageFlags::STORAGE_BUFFER,
         )?;
+        let quads = (0..frames)
+            .map(|_| {
+                make_buffer(
+                    device,
+                    &memory,
+                    QUADS * size_of::<Quad>() as u64,
+                    vk::BufferUsageFlags::STORAGE_BUFFER,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         let renderer = Self {
             memory,
             set_layout,
             layout,
             pipeline,
+            frame_pipeline,
             pool,
             sets,
             atlas,
@@ -167,10 +176,12 @@ impl Renderer {
             glyphs_written: 0,
             generation: 0,
             cells: (0..frames).map(|_| None).collect(),
+            quads,
             staging: (0..frames).map(|_| None).collect(),
         };
         for frame in 0..frames {
             renderer.write_atlas_and_glyphs(device, frame);
+            renderer.write_quads(device, frame);
         }
         Ok(renderer)
     }
@@ -196,6 +207,7 @@ impl Renderer {
         }
         self.copy_cells(device, frame, scene.grid)?;
         self.copy_glyphs(device, &scene.atlas.entries)?;
+        self.copy_quads(device, frame, scene.quads)?;
         self.upload(device, commands, frame, scene.atlas)?;
 
         let attachments = [vk::RenderingAttachmentInfo::default()
@@ -221,21 +233,37 @@ impl Renderer {
             .height(extent.height as f32)
             .max_depth(1.0);
         let cells = (scene.grid.columns * scene.grid.lines) as u32;
+        let stages = vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT;
         // SAFETY: the command buffer is recording, and every handle is this device's.
         unsafe {
             device.cmd_begin_rendering(commands, &rendering);
-            if cells > 0 {
-                device.cmd_bind_pipeline(commands, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
-                device.cmd_set_viewport(commands, 0, &[viewport]);
-                device.cmd_set_scissor(commands, 0, &[area]);
-                device.cmd_bind_descriptor_sets(
+            device.cmd_set_viewport(commands, 0, &[viewport]);
+            device.cmd_set_scissor(commands, 0, &[area]);
+            device.cmd_bind_descriptor_sets(
+                commands,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.layout,
+                0,
+                &[self.sets[frame]],
+                &[],
+            );
+            if !scene.quads.is_empty() {
+                device.cmd_bind_pipeline(
                     commands,
                     vk::PipelineBindPoint::GRAPHICS,
-                    self.layout,
-                    0,
-                    &[self.sets[frame]],
-                    &[],
+                    self.frame_pipeline,
                 );
+                device.cmd_push_constants(
+                    commands,
+                    self.layout,
+                    stages,
+                    0,
+                    bytes_of(&scene.constants),
+                );
+                device.cmd_draw(commands, 6, scene.quads.len() as u32, 0, 0);
+            }
+            if cells > 0 {
+                device.cmd_bind_pipeline(commands, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
                 for pass in 0..2 {
                     let constants = Constants {
                         pass,
@@ -244,7 +272,7 @@ impl Renderer {
                     device.cmd_push_constants(
                         commands,
                         self.layout,
-                        vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                        stages,
                         0,
                         bytes_of(&constants),
                     );
@@ -302,6 +330,37 @@ impl Renderer {
                     size_of_val(row),
                 );
             }
+        }
+        Ok(())
+    }
+
+    /// Copies the window's frame into frame `frame`'s quads, in a larger buffer if they
+    /// outgrow it.
+    fn copy_quads(
+        &mut self,
+        device: &ash::Device,
+        frame: usize,
+        quads: &[Quad],
+    ) -> Result<(), GpuError> {
+        let needed = size_of_val(quads) as u64;
+        if needed > self.quads[frame].size {
+            let larger = make_buffer(
+                device,
+                &self.memory,
+                needed * 2,
+                vk::BufferUsageFlags::STORAGE_BUFFER,
+            )?;
+            destroy_buffer(device, &std::mem::replace(&mut self.quads[frame], larger));
+            self.write_quads(device, frame);
+        }
+        // SAFETY: the buffer is mapped and large enough, and the GPU is done with this
+        // frame's.
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                quads.as_ptr().cast::<u8>(),
+                self.quads[frame].mapped,
+                size_of_val(quads),
+            );
         }
         Ok(())
     }
@@ -479,9 +538,25 @@ impl Renderer {
         unsafe { device.update_descriptor_sets(&writes, &[]) };
     }
 
+    fn write_quads(&self, device: &ash::Device, frame: usize) {
+        let buffers = [vk::DescriptorBufferInfo::default()
+            .buffer(self.quads[frame].handle)
+            .range(vk::WHOLE_SIZE)];
+        let writes = [vk::WriteDescriptorSet::default()
+            .dst_set(self.sets[frame])
+            .dst_binding(3)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .buffer_info(&buffers)];
+        // SAFETY: as above.
+        unsafe { device.update_descriptor_sets(&writes, &[]) };
+    }
+
     /// Destroys everything; the device is idle.
     pub fn destroy(&mut self, device: &ash::Device) {
         for buffer in self.cells.drain(..).chain(self.staging.drain(..)).flatten() {
+            destroy_buffer(device, &buffer);
+        }
+        for buffer in self.quads.drain(..) {
             destroy_buffer(device, &buffer);
         }
         destroy_buffer(device, &self.glyphs);
@@ -493,6 +568,7 @@ impl Renderer {
             device.free_memory(self.atlas_memory, None);
             device.destroy_descriptor_pool(self.pool, None);
             device.destroy_pipeline(self.pipeline, None);
+            device.destroy_pipeline(self.frame_pipeline, None);
             device.destroy_pipeline_layout(self.layout, None);
             device.destroy_descriptor_set_layout(self.set_layout, None);
         }
@@ -513,6 +589,8 @@ fn make_pipeline(
     device: &ash::Device,
     layout: vk::PipelineLayout,
     format: vk::Format,
+    vertex: &[u8],
+    fragment: &[u8],
 ) -> Result<vk::Pipeline, GpuError> {
     let module = |spirv: &[u8]| -> Result<vk::ShaderModule, GpuError> {
         let code = ash::util::read_spv(&mut Cursor::new(spirv)).map_err(|_| GpuError::Shader)?;
@@ -522,8 +600,8 @@ fn make_pipeline(
         }
         .during("vkCreateShaderModule")
     };
-    let vertex = module(include_bytes!(concat!(env!("OUT_DIR"), "/cells.vert.spv")))?;
-    let fragment = module(include_bytes!(concat!(env!("OUT_DIR"), "/cells.frag.spv")))?;
+    let vertex = module(vertex)?;
+    let fragment = module(fragment)?;
     let stages = [
         vk::PipelineShaderStageCreateInfo::default()
             .stage(vk::ShaderStageFlags::VERTEX)
@@ -721,6 +799,40 @@ fn make_atlas(
     Ok((image, memory, view))
 }
 
+/// The bindings every draw reads: the atlas, its entries, the cells and the frame's quads.
+fn make_set_layout(device: &ash::Device) -> Result<vk::DescriptorSetLayout, GpuError> {
+    let bindings = [
+        vk::DescriptorSetLayoutBinding::default()
+            .binding(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT),
+        vk::DescriptorSetLayoutBinding::default()
+            .binding(1)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT),
+        vk::DescriptorSetLayoutBinding::default()
+            .binding(2)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT),
+        vk::DescriptorSetLayoutBinding::default()
+            .binding(3)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT),
+    ];
+    // SAFETY: the device is live and the infos live through the calls below.
+    unsafe {
+        device.create_descriptor_set_layout(
+            &vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings),
+            None,
+        )
+    }
+    .during("vkCreateDescriptorSetLayout")
+}
+
 /// A descriptor set for each of `frames` frames, from a pool of their own.
 fn make_sets(
     device: &ash::Device,
@@ -734,7 +846,7 @@ fn make_sets(
             .descriptor_count(count),
         vk::DescriptorPoolSize::default()
             .ty(vk::DescriptorType::STORAGE_BUFFER)
-            .descriptor_count(2 * count),
+            .descriptor_count(3 * count),
     ];
     // SAFETY: the device is live and the infos live through the call.
     let pool = unsafe {
