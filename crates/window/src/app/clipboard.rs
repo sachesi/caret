@@ -1,9 +1,9 @@
 //! The clipboard and the primary selection: what the window offers others, and what
-//! it pastes from them.
+//! it pastes from them; and what is dropped on it, typed as a paste is.
 
 use std::io::{Read, Write};
 
-use caret_protocol::Mode;
+use caret_protocol::{Mode, encode};
 use smithay_client_toolkit::data_device_manager::data_device::{DataDevice, DataDeviceHandler};
 use smithay_client_toolkit::data_device_manager::data_offer::{DataOfferHandler, DragOffer};
 use smithay_client_toolkit::data_device_manager::data_source::{
@@ -28,6 +28,9 @@ use smithay_client_toolkit::reexports::protocols::wp::primary_selection::zv1::cl
 use smithay_client_toolkit::reexports::protocols::wp::primary_selection::zv1::client::zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1;
 
 use super::App;
+
+/// What a drop of files comes as.
+const URI_LIST: &str = "text/uri-list";
 
 /// Text types offered and asked for, the preferred first.
 const TEXT: [&str; 4] = [
@@ -68,6 +71,11 @@ impl Clipboard {
             primary_text: String::new(),
             pastes,
         }
+    }
+
+    /// What is being dragged over the window.
+    fn drag_offer(&self) -> Option<DragOffer> {
+        self.device.as_ref()?.data().drag_offer()
     }
 
     pub fn add_seat(&mut self, qh: &QueueHandle<App>, seat: &WlSeat) {
@@ -170,6 +178,57 @@ fn chosen(offered: &[String]) -> Option<String> {
         .map(|mime| (*mime).to_owned())
 }
 
+/// What Caret takes a drop as: files, or else text.
+fn dropped_type(offered: &[String]) -> Option<String> {
+    if offered.iter().any(|mime| mime == URI_LIST) {
+        Some(URI_LIST.to_owned())
+    } else {
+        chosen(offered)
+    }
+}
+
+/// The files of a `text/uri-list` as a line of their paths, each quoted for the shell;
+/// an address not of a file is kept as it is written.
+fn paths(list: &[u8]) -> Vec<u8> {
+    let quoted: Vec<Vec<u8>> = list
+        .split(|&byte| byte == b'\n')
+        .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
+        .filter(|line| !line.is_empty() && !line.starts_with(b"#"))
+        .map(|uri| {
+            let path = uri
+                .strip_prefix(b"file://")
+                .and_then(|rest| {
+                    rest.iter()
+                        .position(|&byte| byte == b'/')
+                        .map(|at| &rest[at..])
+                })
+                .map_or_else(|| uri.to_vec(), unescaped);
+            encode::shell_quoted(&path)
+        })
+        .collect();
+    quoted.join(&b' ')
+}
+
+/// `text` with each `%XX` turned back into the byte it stands for.
+fn unescaped(text: &[u8]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(text.len());
+    let mut rest = text;
+    while let Some((&byte, tail)) = rest.split_first() {
+        let escaped = (byte == b'%')
+            .then(|| tail.get(..2))
+            .flatten()
+            .and_then(|hex| u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok());
+        if let Some(escaped) = escaped {
+            bytes.push(escaped);
+            rest = &tail[2..];
+        } else {
+            bytes.push(byte);
+            rest = tail;
+        }
+    }
+    bytes
+}
+
 /// Writes `text` to a program pasting it, off the loop, since it reads at its own pace.
 fn send(text: String, mut pipe: WritePipe) {
     let spawned = std::thread::Builder::new()
@@ -194,6 +253,17 @@ impl DataDeviceHandler for App {
         _: f64,
         _: &WlSurface,
     ) {
+        let Some(offer) = self.clipboard.drag_offer() else {
+            return;
+        };
+        let mime = offer.with_mime_types(dropped_type);
+        let action = if mime.is_some() {
+            DndAction::Copy
+        } else {
+            DndAction::None
+        };
+        offer.accept_mime_type(offer.serial, mime);
+        offer.set_actions(action, action);
     }
 
     fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {}
@@ -202,7 +272,46 @@ impl DataDeviceHandler for App {
 
     fn selection(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {}
 
-    fn drop_performed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {}
+    fn drop_performed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {
+        let Some(offer) = self.clipboard.drag_offer() else {
+            return;
+        };
+        let Some(mime) = offer.with_mime_types(dropped_type) else {
+            offer.destroy();
+            return;
+        };
+        let mut pipe = match offer.receive(mime.clone()) {
+            Ok(pipe) => pipe,
+            Err(error) => {
+                tracing::warn!("reading what was dropped: {error}");
+                offer.destroy();
+                return;
+            }
+        };
+        let pastes = self.clipboard.pastes.clone();
+        // The other program writes at its own pace, and may stop once the drop is
+        // finished, so the drop is finished once all of it is read.
+        let spawned = std::thread::Builder::new()
+            .name("drop".to_owned())
+            .spawn(move || {
+                let mut bytes = Vec::new();
+                let read = pipe.read_to_end(&mut bytes);
+                offer.finish();
+                offer.destroy();
+                match read {
+                    Ok(_) if mime == URI_LIST => {
+                        let _ = pastes.send(paths(&bytes));
+                    }
+                    Ok(_) => {
+                        let _ = pastes.send(bytes);
+                    }
+                    Err(error) => tracing::warn!("reading what was dropped: {error}"),
+                }
+            });
+        if let Err(error) = spawned {
+            tracing::warn!("starting to read a drop: {error}");
+        }
+    }
 }
 
 impl DataOfferHandler for App {
@@ -304,5 +413,21 @@ impl PrimarySelectionSourceHandler for App {
         {
             self.clipboard.primary_source = None;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dropped_files_become_their_quoted_paths() {
+        let list = b"# from a file manager\r\nfile:///home/me/My%20Notes.txt\r\n\
+            file://host/tmp/plain\r\nhttps://example.org/a\r\n";
+        assert_eq!(
+            paths(list),
+            b"'/home/me/My Notes.txt' /tmp/plain https://example.org/a"
+        );
+        assert_eq!(unescaped(b"100%25 %zz%4"), b"100% %zz%4");
     }
 }
