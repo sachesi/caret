@@ -1,0 +1,10 @@
+[Unit]
+Description=Caret terminal server socket
+
+[Socket]
+ListenStream=%t/io.github.sachesi.caret/server
+SocketMode=0600
+DirectoryMode=0700
+
+[Install]
+WantedBy=sockets.target

@@ -3,14 +3,15 @@
 //! and commands begin and end (OSC 133). `alacritty_terminal`'s parser drops these, so the
 //! output is read through a filter that takes them out before it.
 
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, Read};
+use std::os::unix::ffi::OsStringExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use alacritty_terminal::event::{OnResize, WindowSize};
 use alacritty_terminal::tty::{self, ChildEvent, EventedPty, EventedReadWrite};
-use gtk::glib;
 use polling::{Event, PollMode, Poller};
 
 /// The address prompts are marked with, as a hyperlink over their text, so that the grid
@@ -221,12 +222,31 @@ fn directory(uri: &str) -> Option<PathBuf> {
     let rest = uri.strip_prefix("file://")?;
     let slash = rest.find('/')?;
     let host = &rest[..slash];
-    let local = host.is_empty() || host == "localhost" || glib::host_name().as_str() == host;
+    let local = host.is_empty()
+        || host == "localhost"
+        || std::fs::read_to_string("/proc/sys/kernel/hostname")
+            .is_ok_and(|name| name.trim_end() == host);
     if !local {
         return None;
     }
-    let path = glib::Uri::unescape_string(&rest[slash..], None::<&str>)?;
-    Some(PathBuf::from(path.as_str()))
+    unescape(&rest[slash..]).map(|path| PathBuf::from(OsString::from_vec(path)))
+}
+
+/// `text` with its `%XX` escapes decoded; none for a broken escape or a NUL, which no
+/// path holds.
+fn unescape(text: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(text.len());
+    let mut bytes = text.bytes();
+    while let Some(byte) = bytes.next() {
+        if byte == b'%' {
+            let high = char::from(bytes.next()?).to_digit(16)?;
+            let low = char::from(bytes.next()?).to_digit(16)?;
+            out.push((high * 16 + low) as u8);
+        } else {
+            out.push(byte);
+        }
+    }
+    (!out.contains(&0)).then_some(out)
 }
 
 /// The pseudoterminal with its output read through a `Filter`.
@@ -398,6 +418,20 @@ mod tests {
             b"\x1b]777;container;push;a b;toolbox\x07",
         ]);
         assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn escaped_directories_are_decoded_and_broken_ones_dropped() {
+        let (_, reports) = filtered(&[
+            b"\x1b]7;file://localhost/caf%C3%A9/%ff\x07",
+            b"\x1b]7;file:///a%2\x07\x1b]7;file:///a%00b\x07",
+        ]);
+        assert_eq!(
+            reports,
+            [Report::Directory(PathBuf::from(OsString::from_vec(
+                b"/caf\xc3\xa9/\xff".to_vec()
+            )))]
+        );
     }
 
     #[test]

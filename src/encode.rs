@@ -1,9 +1,9 @@
-//! What the terminal writes to the program for keys, the mouse, pastes and focus, in the
+//! What the terminal writes to the program for keys, the mouse and pastes, in the
 //! encodings xterm set and `xterm-256color` describes.
 
 use std::fmt::Write as _;
 
-use alacritty_terminal::term::TermMode;
+use caret_protocol::Mode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -40,12 +40,12 @@ impl Modifiers {
 }
 
 /// The bytes for a key, or nothing for a key the terminal has no sequence for.
-pub fn key(key: Key, modifiers: Modifiers, mode: TermMode) -> Option<Vec<u8>> {
+pub fn key(key: Key, modifiers: Modifiers, mode: Mode) -> Option<Vec<u8>> {
     let parameter = modifiers.parameter();
     let bytes: Vec<u8> = match key {
         Key::Char(c) => return Some(char(c, modifiers)),
         Key::Enter if modifiers.alt => b"\x1b\r".to_vec(),
-        Key::Enter if mode.contains(TermMode::LINE_FEED_NEW_LINE) => b"\r\n".to_vec(),
+        Key::Enter if mode.contains(Mode::LINE_FEED_NEW_LINE) => b"\r\n".to_vec(),
         Key::Enter => b"\r".to_vec(),
         Key::Tab if modifiers.shift => b"\x1b[Z".to_vec(),
         Key::Tab if modifiers.alt => b"\x1b\t".to_vec(),
@@ -71,7 +71,7 @@ pub fn key(key: Key, modifiers: Modifiers, mode: TermMode) -> Option<Vec<u8>> {
             };
             if parameter > 1 {
                 format!("\x1b[1;{parameter}{letter}").into_bytes()
-            } else if mode.contains(TermMode::APP_CURSOR) {
+            } else if mode.contains(Mode::APP_CURSOR) {
                 format!("\x1bO{letter}").into_bytes()
             } else {
                 format!("\x1b[{letter}").into_bytes()
@@ -164,14 +164,14 @@ pub fn mouse(
     modifiers: Modifiers,
     column: usize,
     line: usize,
-    mode: TermMode,
+    mode: Mode,
 ) -> Option<Vec<u8>> {
     let wheel = matches!(button, MouseButton::WheelUp | MouseButton::WheelDown);
     let reported = match action {
-        MouseAction::Press => mode.intersects(TermMode::MOUSE_MODE),
-        MouseAction::Release => !wheel && mode.intersects(TermMode::MOUSE_MODE),
-        MouseAction::Motion if button == MouseButton::None => mode.contains(TermMode::MOUSE_MOTION),
-        MouseAction::Motion => mode.intersects(TermMode::MOUSE_MOTION | TermMode::MOUSE_DRAG),
+        MouseAction::Press => mode.intersects(Mode::MOUSE_MODE),
+        MouseAction::Release => !wheel && mode.intersects(Mode::MOUSE_MODE),
+        MouseAction::Motion if button == MouseButton::None => mode.contains(Mode::MOUSE_MOTION),
+        MouseAction::Motion => mode.intersects(Mode::MOUSE_MOTION | Mode::MOUSE_DRAG),
     };
     if !reported {
         return None;
@@ -191,7 +191,7 @@ pub fn mouse(
         code += 32;
     }
 
-    if mode.contains(TermMode::SGR_MOUSE) {
+    if mode.contains(Mode::SGR_MOUSE) {
         let end = if action == MouseAction::Release {
             'm'
         } else {
@@ -210,7 +210,7 @@ pub fn mouse(
     let mut bytes = b"\x1b[M".to_vec();
     for value in [code, column as u32 + 1, line as u32 + 1] {
         let value = value + 32;
-        if mode.contains(TermMode::UTF8_MOUSE) && value >= 0x80 {
+        if mode.contains(Mode::UTF8_MOUSE) && value >= 0x80 {
             let c = char::from_u32(value).filter(|_| value < 0x800)?;
             bytes.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes());
         } else {
@@ -275,10 +275,6 @@ pub fn shell_quoted(path: &[u8]) -> Vec<u8> {
     quoted
 }
 
-pub fn focus(focused: bool) -> &'static [u8] {
-    if focused { b"\x1b[I" } else { b"\x1b[O" }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,8 +296,8 @@ mod tests {
 
     #[test]
     fn arrows_follow_application_cursor_mode() {
-        let normal = TermMode::default();
-        let application = normal | TermMode::APP_CURSOR;
+        let normal = Mode::default();
+        let application = normal | Mode::APP_CURSOR;
         assert_eq!(sent(key(Key::Up, NONE, normal)), "\x1b[A");
         assert_eq!(sent(key(Key::Up, NONE, application)), "\x1bOA");
         assert_eq!(sent(key(Key::Left, CTRL, application)), "\x1b[1;5D");
@@ -314,7 +310,7 @@ mod tests {
             alt: true,
             ctrl: false,
         };
-        let mode = TermMode::default();
+        let mode = Mode::default();
         assert_eq!(sent(key(Key::Delete, NONE, mode)), "\x1b[3~");
         assert_eq!(sent(key(Key::PageUp, shift_alt, mode)), "\x1b[5;4~");
         assert_eq!(sent(key(Key::Function(1), NONE, mode)), "\x1bOP");
@@ -324,7 +320,7 @@ mod tests {
 
     #[test]
     fn ctrl_makes_control_codes() {
-        let mode = TermMode::default();
+        let mode = Mode::default();
         assert_eq!(key(Key::Char('c'), CTRL, mode), Some(vec![0x03]));
         assert_eq!(key(Key::Char('C'), CTRL, mode), Some(vec![0x03]));
         assert_eq!(key(Key::Char(' '), CTRL, mode), Some(vec![0x00]));
@@ -337,7 +333,7 @@ mod tests {
 
     #[test]
     fn sgr_mouse_reports_press_and_release() {
-        let mode = TermMode::MOUSE_REPORT_CLICK | TermMode::SGR_MOUSE;
+        let mode = Mode::MOUSE_REPORT_CLICK | Mode::SGR_MOUSE;
         let press = mouse(MouseButton::Left, MouseAction::Press, NONE, 4, 9, mode);
         assert_eq!(sent(press), "\x1b[<0;5;10M");
         let release = mouse(MouseButton::Left, MouseAction::Release, NONE, 4, 9, mode);
@@ -348,9 +344,9 @@ mod tests {
 
     #[test]
     fn motion_is_reported_only_when_asked_for() {
-        let click = TermMode::MOUSE_REPORT_CLICK | TermMode::SGR_MOUSE;
-        let drag = click | TermMode::MOUSE_DRAG;
-        let any = click | TermMode::MOUSE_MOTION;
+        let click = Mode::MOUSE_REPORT_CLICK | Mode::SGR_MOUSE;
+        let drag = click | Mode::MOUSE_DRAG;
+        let any = click | Mode::MOUSE_MOTION;
         let held = |mode| mouse(MouseButton::Left, MouseAction::Motion, NONE, 0, 0, mode);
         let hover = |mode| mouse(MouseButton::None, MouseAction::Motion, NONE, 0, 0, mode);
         assert_eq!(held(click), None);
@@ -361,7 +357,7 @@ mod tests {
 
     #[test]
     fn the_old_mouse_encoding_offsets_by_32_and_gives_up_past_223() {
-        let mode = TermMode::MOUSE_REPORT_CLICK;
+        let mode = Mode::MOUSE_REPORT_CLICK;
         let press = mouse(MouseButton::Right, MouseAction::Press, NONE, 0, 1, mode);
         assert_eq!(press, Some(vec![0x1b, b'[', b'M', 34, 33, 34]));
         let release = mouse(MouseButton::Right, MouseAction::Release, NONE, 0, 1, mode);
@@ -370,7 +366,7 @@ mod tests {
             mouse(MouseButton::Left, MouseAction::Press, NONE, 300, 0, mode),
             None
         );
-        let utf8 = mode | TermMode::UTF8_MOUSE;
+        let utf8 = mode | Mode::UTF8_MOUSE;
         let far = mouse(MouseButton::Left, MouseAction::Press, NONE, 300, 0, utf8).unwrap();
         assert_eq!(&far[4..6], "ō".as_bytes());
     }

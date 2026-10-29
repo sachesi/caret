@@ -2,8 +2,11 @@
 
 use std::ops::{Range, RangeInclusive};
 
-use alacritty_terminal::index::Point;
-use alacritty_terminal::term::cell::{Cell, Hyperlink};
+use alacritty_terminal::event::EventListener;
+use alacritty_terminal::grid::Dimensions;
+use alacritty_terminal::index::{Column, Line, Point};
+use alacritty_terminal::term::cell::{Cell, Flags, Hyperlink};
+use alacritty_terminal::term::{Term, viewport_to_point};
 
 const SCHEMES: [&str; 8] = [
     "https://",
@@ -113,9 +116,92 @@ pub fn address_at(text: &[char], column: usize) -> Option<Range<usize>> {
     (start..end).contains(&column).then_some(start..end)
 }
 
+/// Lines an address is followed through, up and down from the point.
+const LONGEST_ADDRESS: i32 = 64;
+
+/// The address at a point of the view: the hyperlink a program gave the text there, or
+/// one written out in it.
+pub fn link_in<T: EventListener>(term: &Term<T>, point: Point<usize>) -> Option<Link> {
+    // A cell a client hovered before the grid shrank may be outside it now.
+    if point.line >= term.screen_lines() || point.column >= term.columns() {
+        return None;
+    }
+    let point = viewport_to_point(term.grid().display_offset(), point);
+    if let Some(link) = term.grid()[point].hyperlink()
+        && openable(link.uri())
+    {
+        return Some(Link {
+            uri: link.uri().to_owned(),
+            span: Span::Program(link),
+        });
+    }
+    let grid = term.grid();
+
+    let last = term.last_column();
+    // A line goes on in the next where the terminal wrapped it, and where a program that
+    // breaks lines itself filled it to the last column with an address.
+    let goes_on = |line: i32| {
+        let end = &grid[Line(line)][last];
+        end.flags.contains(Flags::WRAPLINE)
+            || (continues_address(end.c) && continues_address(grid[Line(line + 1)][Column(0)].c))
+    };
+    let top = term.topmost_line().0.max(point.line.0 - LONGEST_ADDRESS);
+    let bottom = term.bottommost_line().0.min(point.line.0 + LONGEST_ADDRESS);
+    let mut first = point.line.0;
+    while first > top && goes_on(first - 1) {
+        first -= 1;
+    }
+    let mut end = point.line.0;
+    while end < bottom && goes_on(end) {
+        end += 1;
+    }
+    let columns = term.columns();
+    let mut text = Vec::with_capacity(columns * (end - first + 1) as usize);
+    for line in first..=end {
+        for column in 0..columns {
+            let cell = &grid[Line(line)][Column(column)];
+            let spacer = cell
+                .flags
+                .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER);
+            text.push(if spacer { '\0' } else { cell.c });
+        }
+    }
+    let index = (point.line.0 - first) as usize * columns + point.column.0;
+    let range = address_at(&text, index)?;
+    let cell = |index: usize| {
+        Point::new(
+            Line(first + (index / columns) as i32),
+            Column(index % columns),
+        )
+    };
+    Some(Link {
+        span: Span::Written(cell(range.start)..=cell(range.end - 1)),
+        uri: text[range].iter().filter(|&&c| c != '\0').collect(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    use alacritty_terminal::event::VoidListener;
+    use alacritty_terminal::term;
+
     use super::*;
+    use crate::terminal::GridSize;
+
+    #[test]
+    fn a_cell_outside_a_shrunk_grid_has_no_link() {
+        let size = GridSize {
+            columns: 80,
+            lines: 24,
+        };
+        let mut term = Term::new(term::Config::default(), &size, VoidListener);
+        term.resize(GridSize {
+            columns: 40,
+            lines: 10,
+        });
+        assert!(link_in(&term, Point::new(20, Column(70))).is_none());
+        assert!(link_in(&term, Point::new(5, Column(70))).is_none());
+    }
 
     #[test]
     fn links_open_only_with_known_schemes() {

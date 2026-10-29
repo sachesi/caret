@@ -1,6 +1,6 @@
 [workspace]
-members = ["crates/protocol"]
-default-members = [".", "crates/protocol"]
+members = ["crates/protocol", "crates/server"]
+default-members = [".", "crates/protocol", "crates/server"]
 
 [workspace.package]
 version = "0.2.0"
@@ -10,7 +10,13 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/sachesi/caret"
 
 [workspace.dependencies]
+alacritty_terminal = "0.26"
+caret-protocol = { path = "crates/protocol" }
+libc = "0.2"
+polling = "3"
 thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [package]
 name = "caret"
@@ -25,19 +31,17 @@ publish = false
 
 [dependencies]
 adw = { package = "libadwaita", version = "0.9", features = ["v1_9"] }
-alacritty_terminal = "0.26"
 async-channel = "2"
+caret-protocol.workspace = true
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 gio = { version = "0.22", features = ["v2_80"] }
 glow = "0.18"
 gtk = { package = "gtk4", version = "0.11", features = ["v4_22"] }
-libc = "0.2"
 libloading = "0.9"
 pangocairo = "0.22"
-polling = "3"
 thiserror.workspace = true
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [build-dependencies]
 glib-build-tools = "0.22"

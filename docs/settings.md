@@ -21,6 +21,7 @@ Changes apply immediately to open windows.
 | `program-notifications` | bool | true | Notifications |
 | `program-clipboard` | bool | true | Copying |
 | `audible-bell` | bool | true | Terminal Bell |
+| `close-detaches` | bool | false | Keep Closed Windows |
 | `title-bar` | bool | true | Title Bar |
 | `window-size` | (width, height) | (0, 0) | |
 | `window-maximized` | bool | false | |

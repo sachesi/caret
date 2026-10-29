@@ -1,0 +1,21 @@
+[package]
+name = "caret-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Caret's terminal server: the programs, their screens and history, kept for its windows"
+repository.workspace = true
+publish = false
+
+[dependencies]
+alacritty_terminal.workspace = true
+caret-protocol.workspace = true
+libc.workspace = true
+polling.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

@@ -18,6 +18,7 @@ Source1:        %{url}/releases/download/v%{version}/%{name}-%{version}-vendor.t
 BuildRequires:  cargo
 BuildRequires:  rust >= 1.92
 BuildRequires:  gcc
+BuildRequires:  systemd-rpm-macros
 BuildRequires:  blueprint-compiler
 BuildRequires:  desktop-file-utils
 BuildRequires:  gettext
@@ -62,6 +63,13 @@ target="%{_cargo_target_dir}/release"
 target="target/release"
 %endif
 install -Dpm 0755 "$target/caret" %{buildroot}%{_bindir}/caret
+%{_bindir}/caret-server
+%{_userunitdir}/caret-server.socket
+%{_userunitdir}/caret-server.service
+install -Dpm 0755 "$target/caret-server" %{buildroot}%{_bindir}/caret-server
+install -Dpm 0644 data/caret-server.socket %{buildroot}%{_userunitdir}/caret-server.socket
+sed 's|@bindir@|%{_bindir}|' data/caret-server.service.in > caret-server.service
+install -Dpm 0644 caret-server.service %{buildroot}%{_userunitdir}/caret-server.service
 
 install -d %{buildroot}%{_datadir}/applications %{buildroot}%{_metainfodir}
 msgfmt --desktop --template=data/%{app_id}.desktop -d po \
@@ -84,11 +92,18 @@ done
 desktop-file-validate %{buildroot}%{_datadir}/applications/%{app_id}.desktop
 appstreamcli validate --no-net %{buildroot}%{_metainfodir}/%{app_id}.metainfo.xml
 test -x %{buildroot}%{_bindir}/caret
+test -x %{buildroot}%{_bindir}/caret-server
+%{_bindir}/caret-server
+%{_userunitdir}/caret-server.socket
+%{_userunitdir}/caret-server.service
 
 %files -f %{name}.lang
 %license LICENSE
 %doc README.md docs
 %{_bindir}/caret
+%{_bindir}/caret-server
+%{_userunitdir}/caret-server.socket
+%{_userunitdir}/caret-server.service
 %{_datadir}/applications/%{app_id}.desktop
 %{_metainfodir}/%{app_id}.metainfo.xml
 %{_datadir}/glib-2.0/schemas/%{app_id}.gschema.xml

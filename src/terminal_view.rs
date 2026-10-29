@@ -1,39 +1,31 @@
-//! The terminal widget: one session, drawn by the GPU renderer into a texture at the
-//! size of the screen's pixels, scrolled through its history by a `GtkScrolledWindow`
-//! around it. Input, selection and the clipboard are in `input`.
+//! The terminal widget: one of the server's terminals, drawn by the GPU renderer into a
+//! texture at the size of the screen's pixels, scrolled through its history by a
+//! `GtkScrolledWindow` around it. Input, selection and the clipboard are in `input`.
 
 use std::borrow::Cow;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
-use std::os::unix::process::ExitStatusExt;
-use std::path::{Path, PathBuf};
-use std::process::ExitStatus;
+use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use alacritty_terminal::event::{Event, EventListener, WindowSize};
-use alacritty_terminal::grid::{Dimensions, Scroll};
-use alacritty_terminal::index::{Boundary, Column, Direction, Line, Point, Side};
-use alacritty_terminal::selection::{Selection, SelectionType};
-use alacritty_terminal::sync::FairMutex;
-use alacritty_terminal::term::search::RegexSearch;
-use alacritty_terminal::term::{self, ClipboardType, Term, TermMode};
-use alacritty_terminal::vte::ansi::{Color, CursorShape, CursorStyle, NamedColor, Processor, Rgb};
+use caret_protocol::{
+    Answer, Bytes, Command, Frame, Glyph, Hovered, Mode, Point, Question, Request, Scroll, Select,
+    Size, TerminalId,
+};
 use gettextrs::gettext;
 use glib::subclass::Signal;
 use gtk::{cairo, gdk, gio, glib, graphene, pango};
 
-use crate::fonts::{Bitmap, Fonts, GlyphKey, GlyphThread};
+use crate::connection::connection;
+use crate::fonts::{Bitmap, Fonts, GlyphThread};
 use crate::frame::{self, Look, Screen};
 use crate::i18n::gettext_f;
 use crate::palette::Palette;
 use crate::renderer::{Quads, RenderError, Renderer};
-use crate::session::{Command, Session};
 use crate::settings::{self, settings};
-use crate::shell::Report;
 
 mod accessible;
 mod draw;
@@ -45,6 +37,13 @@ const PADDING: f64 = 6.0;
 /// Each zoom step scales the font by this much.
 const ZOOM_STEP: f64 = 1.1;
 
+/// A tab still to be opened.
+pub enum Opening {
+    /// Its command is still to come.
+    Waiting,
+    Ready(Command),
+}
+
 mod imp {
     use super::*;
 
@@ -54,29 +53,27 @@ mod imp {
         pub title: RefCell<String>,
         pub program_title: RefCell<String>,
         pub name: RefCell<Option<String>>,
-        pub default_title: RefCell<String>,
         pub hadjustment: RefCell<Option<gtk::Adjustment>>,
         pub vadjustment: RefCell<Option<gtk::Adjustment>>,
         pub adjustment_handler: RefCell<Option<glib::SignalHandlerId>>,
         /// Set while the widget moves the adjustment itself.
         pub updating_adjustment: Cell<bool>,
-        /// Counts searches, so that one that is no longer the latest stops.
-        pub searches: Arc<AtomicU64>,
-        /// History, lines and offset from the last frame, for the scroll bar to catch up
-        /// with once the frame is done.
-        pub frame_scroll: Cell<Option<(usize, usize, usize)>>,
+        /// Counts searches, so that the answer to one a later search replaced is ignored.
+        pub searches: Cell<u64>,
 
-        /// What to run, until the first allocation says how big the grid is.
-        pub command: RefCell<Option<Command>>,
-        pub session: RefCell<Option<Session>>,
-        /// Why nothing is shown: the program could not be started, or the GPU refused.
-        /// Nothing is started or sent to the program while there is one.
+        /// The tab is still to be opened, when the grid has a size and the window a
+        /// session.
+        pub pending: RefCell<Option<Opening>>,
+        pub terminal: Cell<Option<TerminalId>>,
+        /// Why nothing is shown: the program could not be started, the server is out of
+        /// reach, or the GPU refused. Nothing is sent to the program while there is one.
         pub failure: RefCell<Option<String>>,
-        /// A program named on the command line, whose failure stays on screen.
+        /// The program the command names, for saying it failed; none for the shell.
         pub named_program: RefCell<Option<String>>,
-        pub exit_status: Cell<Option<ExitStatus>>,
-        /// The program ended and the terminal asked to be closed.
+        /// The server closed the tab.
         pub exited: Cell<bool>,
+        /// A frame was asked for and has not come yet.
+        pub frame_asked: Cell<bool>,
 
         pub gl: RefCell<Option<(gdk::GLContext, Renderer)>>,
         pub fonts: RefCell<Option<Fonts>>,
@@ -85,7 +82,7 @@ mod imp {
         pub glyphs_stale: Cell<bool>,
         pub glyph_thread: RefCell<Option<GlyphThread>>,
         /// Glyphs back from the thread, for the next frame.
-        pub finished_glyphs: RefCell<HashMap<GlyphKey, Option<Bitmap>>>,
+        pub finished_glyphs: RefCell<HashMap<Glyph, Option<Bitmap>>>,
         pub zoom: Cell<i32>,
         pub palette: Cell<Palette>,
         pub screen: RefCell<Screen>,
@@ -101,21 +98,17 @@ mod imp {
 
         pub pointer: Cell<(f64, f64)>,
         /// The cell of the screen the pointer is over.
-        pub hovered_cell: Cell<Option<Point<usize>>>,
-        /// The last frame underlined a link there.
-        pub link_underlined: Cell<bool>,
+        pub hovered_cell: Cell<Option<Point>>,
+        /// The address under it, as the last frame found it.
+        pub hovered: RefCell<Option<Hovered>>,
+        /// Ctrl was held at the pointer's last move.
+        pub ctrl: Cell<bool>,
         /// The button whose press went to the program, whose release must follow it.
         pub reported_button: Cell<Option<crate::encode::MouseButton>>,
         pub reported_cell: Cell<Option<(usize, usize)>>,
         pub selecting: Cell<bool>,
-        /// Where the shell said it is, which is right where `/proc` is not: in a container
-        /// or on another machine the shell was started from.
-        pub shell_directory: RefCell<Option<PathBuf>>,
-        /// The toolbox or distrobox containers the shell entered, innermost last, by name
-        /// and tool.
-        pub containers: RefCell<Vec<(String, String)>>,
-        /// When the command the shell is running started, from its OSC 133 marks.
-        pub command_started: Cell<Option<Instant>>,
+        /// The shell is running a command it marked.
+        pub command_running: Cell<bool>,
         /// Tells views apart in notifications, which outlive them.
         pub serial: Cell<u64>,
         /// Where a selecting drag is, for scrolling on while it stays outside the text.
@@ -219,8 +212,9 @@ mod imp {
         }
 
         fn dispose(&self) {
-            // Hangs up on the program.
-            self.session.take();
+            if let (Some(terminal), Ok(connection)) = (self.terminal.take(), connection()) {
+                connection.forget_view(terminal);
+            }
             if let Some(popover) = self.popover.take() {
                 popover.unparent();
             }
@@ -317,7 +311,10 @@ mod imp {
         }
 
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
-            self.obj().draw(snapshot);
+            let obj = self.obj();
+            obj.draw(snapshot);
+            // Drawn, so ready for the next: a view out of sight asks the server for nothing.
+            obj.ask_frame();
         }
     }
 
@@ -329,12 +326,6 @@ glib::wrapper! {
         @extends gtk::Widget,
         @implements gtk::Accessible, gtk::AccessibleText, gtk::Buildable, gtk::ConstraintTarget,
                     gtk::Scrollable;
-}
-
-impl Default for TerminalView {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 fn padding(scale: f64) -> i32 {
@@ -350,22 +341,99 @@ fn renderer_for(surface: &gdk::Surface) -> Result<(gdk::GLContext, Renderer), Re
     Ok((context, renderer))
 }
 
+/// The name of the program `command` runs, as its tab is called until the program gives
+/// it a title: the one named, or the user's shell.
+fn program_name(command: &Command) -> String {
+    let program = command
+        .argv
+        .first()
+        .cloned()
+        .or_else(|| std::env::var("SHELL").ok())
+        .unwrap_or_else(|| "sh".to_owned());
+    std::path::Path::new(&program)
+        .file_name()
+        .map_or(program.clone(), |name| name.to_string_lossy().into_owned())
+}
+
 impl TerminalView {
-    pub fn new() -> Self {
-        glib::Object::new()
+    /// A view of `terminal`, a tab the server already has.
+    pub fn new(terminal: TerminalId, title: &str, name: Option<String>) -> Self {
+        let view: Self = glib::Object::new();
+        view.imp().name.replace(name);
+        view.set_title(title);
+        view.bind(terminal);
+        view
+    }
+
+    /// A view of a tab to be opened, once the widget has a size, so the program starts
+    /// at the size it will be shown at. Without a command it waits for `set_command`.
+    pub fn opening(command: Option<Command>) -> Self {
+        let view: Self = glib::Object::new();
+        view.imp().pending.replace(Some(Opening::Waiting));
+        if let Some(command) = command {
+            view.set_command(command);
+        }
+        view
+    }
+
+    /// What the tab still to be opened runs.
+    pub fn set_command(&self, mut command: Command) {
+        let imp = self.imp();
+        if imp.pending.borrow().is_none() {
+            return;
+        }
+        let custom = settings().string("custom-command");
+        if command.argv.is_empty() && !custom.trim().is_empty() {
+            // A line that does not parse is run whole, so that the tab says it failed.
+            command.argv = glib::shell_parse_argv(custom.as_str()).map_or_else(
+                |_| vec![custom.to_string()],
+                |argv| {
+                    argv.iter()
+                        .map(|word| word.to_string_lossy().into_owned())
+                        .collect()
+                },
+            );
+        }
+        // The server's own environment is the user manager's, without the session's.
+        if command.env.is_empty() {
+            command.env = std::env::vars_os()
+                .filter_map(|(name, value)| {
+                    Some((name.into_string().ok()?, value.into_string().ok()?))
+                })
+                .collect();
+        }
+        self.set_title(&program_name(&command));
+        imp.named_program.replace(command.argv.first().cloned());
+        imp.pending.replace(Some(Opening::Ready(command)));
+        self.try_open();
+    }
+
+    pub fn terminal(&self) -> Option<TerminalId> {
+        self.imp().terminal.get()
     }
 
     pub fn title(&self) -> String {
         self.imp().title.borrow().clone()
     }
 
-    fn set_title(&self, title: &str) {
+    pub fn set_title(&self, title: &str) {
         self.imp().program_title.replace(title.to_owned());
         self.show_title();
     }
 
     /// Names the tab, or with `None` lets it show the program's title again.
     pub fn set_name(&self, name: Option<String>) {
+        if let (Some(terminal), Ok(connection)) = (self.terminal(), connection()) {
+            connection.send(&Request::NameTab {
+                terminal,
+                name: name.clone(),
+            });
+        }
+        self.named(name);
+    }
+
+    /// The tab was named, here or in another window showing it.
+    pub fn named(&self, name: Option<String>) {
         self.imp().name.replace(name);
         self.show_title();
     }
@@ -399,65 +467,192 @@ impl TerminalView {
         )
     }
 
-    /// Runs `command` once the widget has a size, so the program starts at the size it
-    /// will be shown at.
-    pub fn spawn(&self, mut command: Command) {
-        let custom = settings().string("custom-command");
-        if command.argv.is_empty() && !custom.trim().is_empty() {
-            // A line that does not parse is run whole, so that the tab says it failed.
-            command.argv = glib::shell_parse_argv(custom.as_str()).map_or_else(
-                |_| vec![custom.to_string()],
-                |argv| {
-                    argv.iter()
-                        .map(|word| word.to_string_lossy().into_owned())
-                        .collect()
-                },
-            );
-        }
-        let program = command.program();
-        let name = Path::new(&program)
-            .file_name()
-            .map_or(program.clone(), |name| name.to_string_lossy().into_owned());
+    fn bind(&self, terminal: TerminalId) {
         let imp = self.imp();
-        imp.default_title.replace(name.clone());
-        self.set_title(&name);
-        imp.named_program.replace(command.argv.first().cloned());
-        imp.command.replace(Some(command));
-        self.queue_allocate();
+        imp.terminal.set(Some(terminal));
+        match connection() {
+            Ok(connection) => {
+                connection.register_view(terminal, self);
+                if let Some(size) = self.window_size() {
+                    connection.send(&Request::Resize { terminal, size });
+                }
+                if imp.focused.get() {
+                    connection.send(&Request::Focus {
+                        terminal,
+                        focused: true,
+                    });
+                }
+            }
+            Err(reason) => self.server_lost(&reason),
+        }
+        imp.frame_asked.set(false);
+        self.ask_frame();
     }
 
-    /// The program ended and the tab was asked to close.
+    /// The tab came to another window: what the server shows of it starts again there.
+    pub fn reshow(&self) {
+        let imp = self.imp();
+        let Some(terminal) = self.terminal() else {
+            return;
+        };
+        if let Ok(connection) = connection() {
+            if let Some(size) = self.window_size() {
+                connection.send(&Request::Resize { terminal, size });
+            }
+            if imp.focused.get() {
+                connection.send(&Request::Focus {
+                    terminal,
+                    focused: true,
+                });
+            }
+        }
+        imp.frame_asked.set(false);
+        self.ask_frame();
+    }
+
+    /// Asks the server for the next frame, unless one is on its way.
+    fn ask_frame(&self) {
+        let imp = self.imp();
+        let Some(terminal) = self.terminal() else {
+            return;
+        };
+        if imp.failure.borrow().is_some() || imp.frame_asked.replace(true) {
+            return;
+        }
+        if let Ok(connection) = connection() {
+            connection.send(&Request::Frame { terminal });
+        }
+    }
+
+    /// What changed on screen, from the server.
+    pub fn frame(&self, frame: Frame) {
+        let imp = self.imp();
+        imp.frame_asked.set(false);
+        // The server sends a frame only once something changed, if only the cursor, as
+        // after a typed space.
+        crate::timings::output();
+        imp.hovered.replace(frame.hovered.clone());
+        imp.screen.borrow_mut().apply(frame);
+        self.show_link();
+        let scroll = {
+            let screen = imp.screen.borrow();
+            (screen.history, screen.lines, screen.offset)
+        };
+        if let Some(adjustment) = imp.vadjustment.borrow().clone() {
+            self.show_scroll(&adjustment, scroll);
+        }
+        self.queue_draw();
+    }
+
+    /// The program ended and the tab was closed.
     pub fn has_exited(&self) -> bool {
         self.imp().exited.get()
     }
 
-    /// The program in the foreground if it is not the one started, which closing the
-    /// terminal would interrupt.
-    pub fn busy(&self) -> Option<String> {
-        self.imp().session.borrow().as_ref()?.busy()
+    /// The server closed the tab.
+    pub fn closed(&self) {
+        self.imp().exited.set(true);
+        self.emit_by_name::<()>("exited", &[]);
     }
 
-    pub fn directory(&self) -> Option<PathBuf> {
-        let reported = self.imp().shell_directory.borrow().clone();
-        reported
-            .filter(|directory| directory.is_dir())
-            .or_else(|| self.imp().session.borrow().as_ref()?.directory())
+    pub fn server_lost(&self, reason: &str) {
+        self.imp().failure.replace(Some(gettext_f(
+            "The terminal server cannot be reached: {reason}",
+            &[("reason", reason)],
+        )));
+        self.queue_draw();
     }
 
-    /// What a new tab from this one runs: the shell, where this one's is, in the same
-    /// container.
-    pub fn next_command(&self) -> Command {
-        let argv = match self.imp().containers.borrow().last() {
-            Some((name, runtime)) if ["toolbox", "distrobox"].contains(&runtime.as_str()) => {
-                vec![runtime.clone(), "enter".to_owned(), name.clone()]
-            }
-            _ => Vec::new(),
+    pub fn failed(&self, reason: &str) {
+        let message = match self.imp().named_program.borrow().as_ref() {
+            Some(program) => gettext_f(
+                "Could not start “{program}”: {reason}",
+                &[("program", program), ("reason", reason)],
+            ),
+            None => gettext_f("Could not start the shell: {reason}", &[("reason", reason)]),
         };
-        Command {
-            argv,
-            directory: self.directory(),
-            ..Command::default()
+        self.imp().failure.replace(Some(message));
+        self.queue_draw();
+    }
+
+    /// A program named on the command line failed: what it wrote stays, with how it
+    /// ended under it.
+    pub fn ended(&self, code: Option<i32>, signal: Option<i32>) {
+        let program = self
+            .imp()
+            .named_program
+            .borrow()
+            .clone()
+            .unwrap_or_default();
+        let text = match (code, signal) {
+            (Some(code), _) => gettext_f(
+                "“{program}” exited with status {status}",
+                &[("program", &program), ("status", &code.to_string())],
+            ),
+            (None, Some(signal)) => gettext_f(
+                "“{program}” was ended by signal {signal}",
+                &[("program", &program), ("signal", &signal.to_string())],
+            ),
+            (None, None) => gettext_f("“{program}” ended", &[("program", &program)]),
+        };
+        self.send(|terminal| Request::Annotate { terminal, text });
+    }
+
+    pub fn bell(&self) {
+        if settings().boolean("audible-bell")
+            && let Some(surface) = self.native().and_then(|native| native.surface())
+        {
+            surface.beep();
         }
+        self.emit_by_name::<()>("bell", &[]);
+    }
+
+    pub fn program_notification(&self, title: &str, body: &str) {
+        if settings().boolean("program-notifications") {
+            self.emit_by_name::<()>("notification", &[&title, &body]);
+        }
+    }
+
+    pub fn command_started(&self) {
+        self.imp().command_running.set(true);
+        self.emit_by_name::<()>("command-started", &[]);
+    }
+
+    pub fn command_finished(&self, seconds: u64, status: Option<i32>) {
+        self.imp().command_running.set(false);
+        self.emit_by_name::<()>(
+            "command-finished",
+            &[&seconds, &status.unwrap_or_default(), &status.is_some()],
+        );
+    }
+
+    /// Has `answered` told the program in the foreground if it is not the one started,
+    /// which closing the terminal would interrupt.
+    pub fn busy(&self, answered: impl FnOnce(Option<String>) + 'static) {
+        let (Some(terminal), Ok(connection)) = (self.terminal(), connection()) else {
+            answered(None);
+            return;
+        };
+        connection.ask(Question::Busy { terminal }, move |answer| match answer {
+            Answer::Busy { program } => answered(program),
+            _ => answered(None),
+        });
+    }
+
+    /// Has `answered` told what a new tab from this one runs: the shell, where this
+    /// one's is, in the same container.
+    pub fn next_command(&self, answered: impl FnOnce(Command) + 'static) {
+        let (Some(terminal), Ok(connection)) = (self.terminal(), connection()) else {
+            answered(Command::default());
+            return;
+        };
+        connection.ask(
+            Question::NextCommand { terminal },
+            move |answer| match answer {
+                Answer::Command { command } => answered(command),
+                _ => answered(Command::default()),
+            },
+        );
     }
 
     pub fn serial(&self) -> u64 {
@@ -465,7 +660,7 @@ impl TerminalView {
     }
 
     pub fn command_running(&self) -> bool {
-        self.imp().command_started.get().is_some()
+        self.imp().command_running.get()
     }
 
     pub fn connect_notification<F: Fn(&Self, &str, &str) + 'static>(
@@ -500,43 +695,6 @@ impl TerminalView {
         )
     }
 
-    fn report(&self, report: Report) {
-        let imp = self.imp();
-        // While a command runs, what reaches the terminal is its output, which may be a
-        // file or another machine's: only the shell says where it is.
-        let from_command = imp.command_started.get().is_some();
-        match report {
-            Report::Directory(_) | Report::ContainerEntered { .. } | Report::ContainerLeft
-                if from_command => {}
-            Report::Directory(directory) => {
-                imp.shell_directory.replace(Some(directory));
-            }
-            Report::Notification { .. } if !settings().boolean("program-notifications") => {}
-            Report::Notification { title, body } => {
-                self.emit_by_name::<()>("notification", &[&title, &body]);
-            }
-            Report::CommandStarted => {
-                imp.command_started.set(Some(Instant::now()));
-                self.emit_by_name::<()>("command-started", &[]);
-            }
-            Report::CommandFinished(status) => {
-                if let Some(started) = imp.command_started.take() {
-                    let seconds = started.elapsed().as_secs();
-                    self.emit_by_name::<()>(
-                        "command-finished",
-                        &[&seconds, &status.unwrap_or_default(), &status.is_some()],
-                    );
-                }
-            }
-            Report::ContainerEntered { name, runtime } => {
-                imp.containers.borrow_mut().push((name, runtime));
-            }
-            Report::ContainerLeft => {
-                imp.containers.borrow_mut().pop();
-            }
-        }
-    }
-
     fn scale(&self) -> f64 {
         self.native()
             .and_then(|native| native.surface())
@@ -560,13 +718,24 @@ impl TerminalView {
         )
     }
 
-    fn write(&self, bytes: impl Into<Cow<'static, [u8]>>) {
+    /// Sends the request `request` makes for this view's terminal, unless there is none
+    /// or nothing is shown.
+    fn send(&self, request: impl FnOnce(TerminalId) -> Request) {
         if self.imp().failure.borrow().is_some() {
             return;
         }
-        if let Some(session) = self.imp().session.borrow().as_ref() {
-            session.write(bytes);
+        if let (Some(terminal), Ok(connection)) = (self.terminal(), connection()) {
+            connection.send(&request(terminal));
         }
+    }
+
+    fn write(&self, bytes: impl Into<Cow<'static, [u8]>>) {
+        let bytes = Bytes(bytes.into().into_owned());
+        self.send(|terminal| Request::Input {
+            terminal,
+            bytes,
+            bottom: false,
+        });
     }
 
     /// Bytes the user typed or pasted: they bring the view back to the bottom and the
@@ -575,141 +744,20 @@ impl TerminalView {
         if self.imp().failure.borrow().is_some() {
             return;
         }
-        if let Some(session) = self.imp().session.borrow().as_ref() {
-            let mut term = session.lock();
-            if term.grid().display_offset() != 0 && settings().boolean("scroll-on-keystroke") {
-                term.scroll_display(Scroll::Bottom);
-            }
-            drop(term);
-            session.write(bytes);
-            crate::timings::key();
-        }
+        let bytes = Bytes(bytes.into().into_owned());
+        let bottom = settings().boolean("scroll-on-keystroke");
+        self.send(|terminal| Request::Input {
+            terminal,
+            bytes,
+            bottom,
+        });
+        crate::timings::key();
         self.restart_blink();
-        self.sync_scroll();
         self.queue_draw();
     }
 
-    fn handle(&self, event: Event) {
-        let imp = self.imp();
-        match event {
-            // The frame takes the terminal's lock once for all the output since the last one.
-            Event::Wakeup => {
-                crate::timings::output();
-                if settings().boolean("scroll-on-output")
-                    && let Some(session) = imp.session.borrow().as_ref()
-                {
-                    let mut term = session.lock();
-                    if term.grid().display_offset() != 0 {
-                        term.scroll_display(Scroll::Bottom);
-                    }
-                }
-                self.queue_draw();
-            }
-            Event::Title(title) => self.set_title(&title),
-            Event::ResetTitle => {
-                let title = imp.default_title.borrow().clone();
-                self.set_title(&title);
-            }
-            Event::ClipboardStore(ClipboardType::Clipboard, text) => {
-                self.clipboard().set_text(&text);
-            }
-            Event::ClipboardStore(ClipboardType::Selection, text) => {
-                self.primary_clipboard().set_text(&text);
-            }
-            Event::ColorRequest(index, format) => {
-                let color = match index {
-                    0..=255 => Color::Indexed(index as u8),
-                    256 => Color::Named(NamedColor::Foreground),
-                    257 => Color::Named(NamedColor::Background),
-                    _ => Color::Named(NamedColor::Cursor),
-                };
-                let reply = imp.session.borrow().as_ref().map(|session| {
-                    let term = session.lock();
-                    format(imp.palette.get().resolve(color, term.colors()))
-                });
-                if let Some(reply) = reply {
-                    self.write(reply.into_bytes());
-                }
-            }
-            Event::PtyWrite(text) => self.write(text.into_bytes()),
-            Event::TextAreaSizeRequest(format) => {
-                if let Some(size) = self.window_size() {
-                    self.write(format(size).into_bytes());
-                }
-            }
-            Event::Bell => {
-                if settings().boolean("audible-bell")
-                    && let Some(surface) = self.native().and_then(|native| native.surface())
-                {
-                    surface.beep();
-                }
-                self.emit_by_name::<()>("bell", &[]);
-            }
-            Event::ChildExit(status) => imp.exit_status.set(Some(status)),
-            // After the program's last output has been read.
-            Event::Exit => self.program_ended(),
-            // OSC 52 reads are refused by the terminal's configuration.
-            _ => {}
-        }
-    }
-
-    /// Closes the tab, unless a program named on the command line failed: then what it
-    /// wrote stays, with how it ended under it.
-    fn program_ended(&self) {
-        let imp = self.imp();
-        let failed = imp.exit_status.get().filter(|status| !status.success());
-        let (Some(status), Some(program)) = (failed, imp.named_program.borrow().clone()) else {
-            imp.exited.set(true);
-            self.emit_by_name::<()>("exited", &[]);
-            return;
-        };
-        let program: String = program.chars().filter(|c| !c.is_control()).collect();
-        let message = match (status.code(), status.signal()) {
-            (Some(code), _) => gettext_f(
-                "“{program}” exited with status {status}",
-                &[("program", &program), ("status", &code.to_string())],
-            ),
-            (None, Some(signal)) => gettext_f(
-                "“{program}” was ended by signal {signal}",
-                &[("program", &program), ("signal", &signal.to_string())],
-            ),
-            (None, None) => gettext_f("“{program}” ended", &[("program", &program)]),
-        };
-        if let Some(session) = imp.session.borrow().as_ref() {
-            let mut term = session.lock();
-            term.scroll_display(Scroll::Bottom);
-            let newline = if term.grid().cursor.point.column.0 > 0 {
-                "\r\n"
-            } else {
-                ""
-            };
-            // Bold, then the cursor hidden: nothing is left to type into.
-            let text = format!("{newline}\x1b[1m{message}\x1b[0m\x1b[?25l");
-            let mut parser: Processor = Processor::new();
-            parser.advance(&mut *term, text.as_bytes());
-        }
-        self.sync_scroll();
-        self.queue_draw();
-    }
-
-    fn term_config() -> term::Config {
-        let settings = settings();
-        let shape = match settings.string("cursor-shape").as_str() {
-            "beam" => CursorShape::Beam,
-            "underline" => CursorShape::Underline,
-            _ => CursorShape::Block,
-        };
-        let blinking = gtk::Settings::default().is_none_or(|gtk| gtk.is_gtk_cursor_blink());
-        term::Config {
-            scrolling_history: settings.uint("scrollback-lines") as usize,
-            default_cursor_style: CursorStyle { shape, blinking },
-            osc52: if settings.boolean("program-clipboard") {
-                term::Osc52::OnlyCopy
-            } else {
-                term::Osc52::Disabled
-            },
-            ..term::Config::default()
-        }
+    fn mode(&self) -> Mode {
+        self.imp().screen.borrow().mode
     }
 
     fn watch_settings(&self) {
@@ -723,13 +771,6 @@ impl TerminalView {
             match key {
                 "font" | "font-features" => view.font_changed(),
                 "ligatures" => view.queue_draw(),
-                "cursor-shape" | "scrollback-lines" | "program-clipboard" => {
-                    let config = Self::term_config();
-                    if let Some(session) = view.imp().session.borrow().as_ref() {
-                        session.lock().set_options(config);
-                    }
-                    view.queue_draw();
-                }
                 _ => {}
             }
         });
@@ -764,10 +805,6 @@ impl TerminalView {
             let weak = self.downgrade();
             let handler = gtk_settings.connect_gtk_cursor_blink_notify(move |_| {
                 if let Some(view) = weak.upgrade() {
-                    let config = Self::term_config();
-                    if let Some(session) = view.imp().session.borrow().as_ref() {
-                        session.lock().set_options(config);
-                    }
                     view.restart_blink();
                 }
             });
@@ -776,12 +813,7 @@ impl TerminalView {
     }
 
     fn update_palette(&self) {
-        let palette = if adw::StyleManager::default().is_dark() {
-            Palette::dark()
-        } else {
-            Palette::light()
-        };
-        self.imp().palette.set(palette);
+        self.imp().palette.set(settings::palette());
         self.queue_draw();
     }
 
@@ -802,19 +834,22 @@ impl TerminalView {
         }
     }
 
-    fn window_size(&self) -> Option<WindowSize> {
+    fn window_size(&self) -> Option<Size> {
         let fonts = self.imp().fonts.borrow();
         let cell = fonts.as_ref()?.cell;
         let (columns, lines) = self.imp().grid.get();
-        Some(WindowSize {
-            num_lines: u16::try_from(lines).ok()?,
-            num_cols: u16::try_from(columns).ok()?,
+        if columns == 0 || lines == 0 {
+            return None;
+        }
+        Some(Size {
+            lines: u16::try_from(lines).ok()?,
+            columns: u16::try_from(columns).ok()?,
             cell_width: u16::try_from(cell.width).ok()?,
             cell_height: u16::try_from(cell.height).ok()?,
         })
     }
 
-    /// Fits the grid to the allocation, and starts the program at the first one.
+    /// Fits the grid to the allocation, and opens the tab at the first one.
     fn update_grid(&self) {
         let imp = self.imp();
         if self.width() <= 0 || self.height() <= 0 || imp.failure.borrow().is_some() {
@@ -839,56 +874,50 @@ impl TerminalView {
             return;
         };
 
-        let pending = imp.command.borrow_mut().take();
-        if let Some(command) = pending {
-            self.start(&command, size);
-        } else if previous != (columns, lines)
-            && let Some(session) = imp.session.borrow().as_ref()
-        {
-            session.resize(size);
-            // The history can change with the width.
-            glib::idle_add_local_once(glib::clone!(
-                #[weak(rename_to = view)]
-                self,
-                move || view.sync_scroll()
-            ));
+        if imp.pending.borrow().is_some() {
+            self.try_open();
+        } else if previous != (columns, lines) {
+            self.send(|terminal| Request::Resize { terminal, size });
         }
     }
 
-    fn start(&self, command: &Command, size: WindowSize) {
+    /// Opens the tab, once its command, its size and its window's session are known.
+    pub fn try_open(&self) {
         let imp = self.imp();
-        match Session::spawn(command, size, Self::term_config()) {
-            Ok((session, events, reports)) => {
-                session.lock().is_focused = imp.focused.get();
-                imp.session.replace(Some(session));
-                let weak = self.downgrade();
-                glib::spawn_future_local(async move {
-                    while let Ok(event) = events.recv().await {
-                        let Some(view) = weak.upgrade() else { break };
-                        view.handle(event);
-                    }
-                });
-                let weak = self.downgrade();
-                glib::spawn_future_local(async move {
-                    while let Ok(report) = reports.recv().await {
-                        let Some(view) = weak.upgrade() else { break };
-                        view.report(report);
-                    }
-                });
+        let Some(window) = self.root().and_downcast::<crate::window::Window>() else {
+            return;
+        };
+        let (Some(session), Some(size), Some(Opening::Ready(_))) = (
+            window.session(),
+            self.window_size(),
+            imp.pending.borrow().as_ref(),
+        ) else {
+            return;
+        };
+        let Some(Opening::Ready(command)) = imp.pending.take() else {
+            return;
+        };
+        let connection = match connection() {
+            Ok(connection) => connection,
+            Err(reason) => {
+                self.server_lost(&reason);
+                return;
             }
-            Err(error) => {
-                let error = error.to_string();
-                let message = match command.argv.first() {
-                    Some(program) => gettext_f(
-                        "Could not start “{program}”: {reason}",
-                        &[("program", program), ("reason", &error)],
-                    ),
-                    None => gettext_f("Could not start the shell: {reason}", &[("reason", &error)]),
-                };
-                imp.failure.replace(Some(message));
-                self.queue_draw();
+        };
+        let question = Question::OpenTab {
+            session,
+            index: window.position_of(self),
+            command,
+            size,
+        };
+        let weak = self.downgrade();
+        connection.ask(question, move |answer| {
+            let Some(view) = weak.upgrade() else { return };
+            match answer {
+                Answer::Opened { terminal } => view.bind(terminal),
+                _ => view.closed(),
             }
-        }
+        });
     }
 
     fn set_vadjustment(&self, adjustment: Option<gtk::Adjustment>) {
@@ -905,98 +934,49 @@ impl TerminalView {
                 }
             });
             imp.adjustment_handler.replace(Some(handler));
+            let scroll = {
+                let screen = imp.screen.borrow();
+                (screen.history, screen.lines, screen.offset)
+            };
+            self.show_scroll(adjustment, scroll);
         }
         imp.vadjustment.replace(adjustment);
-        self.sync_scroll();
     }
 
     /// Scrolls the history to where the scroll bar was dragged, in lines from the top.
     fn scroll_to(&self, value: f64) {
-        let imp = self.imp();
-        if imp.updating_adjustment.get() {
+        if self.imp().updating_adjustment.get() {
             return;
         }
-        if let Some(session) = imp.session.borrow().as_ref() {
-            let mut term = session.lock();
-            let offset = term.history_size().saturating_sub(value.round() as usize);
-            let delta = offset as i32 - term.grid().display_offset() as i32;
-            if delta != 0 {
-                term.scroll_display(Scroll::Delta(delta));
-            }
-        }
-        self.queue_draw();
+        let line = value.round().max(0.0) as u32;
+        self.send(|terminal| Request::Scroll {
+            terminal,
+            scroll: Scroll::To { line },
+        });
     }
 
     /// Scrolls by `lines`, towards the history for positive ones.
     pub(super) fn scroll_lines(&self, lines: i32) {
-        if let Some(session) = self.imp().session.borrow().as_ref() {
-            session.lock().scroll_display(Scroll::Delta(lines));
-        }
-        self.sync_scroll();
-        self.queue_draw();
+        self.send(|terminal| Request::Scroll {
+            terminal,
+            scroll: Scroll::Lines { lines },
+        });
     }
 
     /// Scrolls to put the previous or next prompt the shell marked at the top; past the
     /// last one, back to the bottom.
     pub fn scroll_to_prompt(&self, up: bool) {
-        if let Some(session) = self.imp().session.borrow().as_ref() {
-            let mut term = session.lock();
-            let grid = term.grid();
-            let columns = grid.columns();
-            let marked = |line: i32| {
-                (0..columns).any(|column| {
-                    grid[Line(line)][Column(column)]
-                        .hyperlink()
-                        .is_some_and(|link| link.uri() == crate::shell::PROMPT)
-                })
-            };
-            let starts =
-                |line: i32| marked(line) && (line == term.topmost_line().0 || !marked(line - 1));
-            let top = -(grid.display_offset() as i32);
-            let found = if up {
-                (term.topmost_line().0..top)
-                    .rev()
-                    .find(|&line| starts(line))
-            } else {
-                (top + 1..=term.bottommost_line().0).find(|&line| starts(line))
-            };
-            let scroll = match found {
-                Some(line) => Scroll::Delta(-line - grid.display_offset() as i32),
-                None if up => return,
-                None => Scroll::Bottom,
-            };
-            term.scroll_display(scroll);
-        }
-        self.sync_scroll();
-        self.queue_draw();
+        self.send(|terminal| Request::Scroll {
+            terminal,
+            scroll: Scroll::Prompt { up },
+        });
     }
 
     pub fn scroll_page(&self, up: bool) {
-        if let Some(session) = self.imp().session.borrow().as_ref() {
-            let scroll = if up { Scroll::PageUp } else { Scroll::PageDown };
-            session.lock().scroll_display(scroll);
-        }
-        self.sync_scroll();
-        self.queue_draw();
-    }
-
-    /// Puts the scroll bar where the view is in the history.
-    fn sync_scroll(&self) {
-        let imp = self.imp();
-        let Some(adjustment) = imp.vadjustment.borrow().clone() else {
-            return;
-        };
-        let Some(scroll) = imp.session.borrow().as_ref().map(|session| {
-            let term = session.lock();
-            (
-                term.history_size(),
-                term.screen_lines(),
-                term.grid().display_offset(),
-            )
-        }) else {
-            return;
-        };
-        self.show_scroll(&adjustment, scroll);
+        self.send(|terminal| Request::Scroll {
+            terminal,
+            scroll: Scroll::Page { up },
+        });
     }
 
     fn show_scroll(
@@ -1016,27 +996,6 @@ impl TerminalView {
             lines,
         );
         imp.updating_adjustment.set(false);
-    }
-
-    /// Moves the scroll bar to where a frame found the view, after the frame: changing the
-    /// adjustment while drawing would lay out the scroll bar in the middle of a snapshot.
-    fn follow_scroll(&self, scroll: (usize, usize, usize)) {
-        let imp = self.imp();
-        if imp.frame_scroll.replace(Some(scroll)).is_some() {
-            return;
-        }
-        glib::idle_add_local_once(glib::clone!(
-            #[weak(rename_to = view)]
-            self,
-            move || {
-                let imp = view.imp();
-                if let (Some(scroll), Some(adjustment)) =
-                    (imp.frame_scroll.take(), imp.vadjustment.borrow().clone())
-                {
-                    view.show_scroll(&adjustment, scroll);
-                }
-            }
-        ));
     }
 
     fn restart_blink(&self) {
@@ -1076,43 +1035,33 @@ impl TerminalView {
         imp.blink.replace(Some(blink));
     }
 
+    /// Whether some of what is selected is on screen.
     pub fn has_selection(&self) -> bool {
-        self.selection_text().is_some()
+        self.imp().screen.borrow().selection.is_some()
     }
 
-    fn selection_text(&self) -> Option<String> {
-        let session = self.imp().session.borrow();
-        let text = session.as_ref()?.lock().selection_to_string()?;
-        (!text.is_empty()).then_some(text)
+    /// Has `answered` told the text selected, if there is any.
+    fn selection_text(&self, answered: impl FnOnce(String) + 'static) {
+        let (Some(terminal), Ok(connection)) = (self.terminal(), connection()) else {
+            return;
+        };
+        connection.ask(Question::SelectionText { terminal }, move |answer| {
+            if let Answer::Text { text: Some(text) } = answer {
+                answered(text);
+            }
+        });
     }
 
     pub fn copy(&self) {
-        if let Some(text) = self.selection_text() {
-            self.clipboard().set_text(&text);
-        }
+        let clipboard = self.clipboard();
+        self.selection_text(move |text| clipboard.set_text(&text));
     }
 
     pub fn select_all(&self) {
-        if let Some(session) = self.imp().session.borrow().as_ref() {
-            let mut term = session.lock();
-            let top = term.topmost_line();
-            let blank = |line: Line| {
-                let row = &term.grid()[line];
-                (0..term.columns()).all(|column| row[Column(column)].c == ' ')
-            };
-            let mut bottom = term.bottommost_line();
-            while bottom > top && blank(bottom) {
-                bottom -= 1;
-            }
-            let mut selection = Selection::new(
-                SelectionType::Simple,
-                Point::new(top, Column(0)),
-                Side::Left,
-            );
-            selection.update(Point::new(bottom, term.last_column()), Side::Right);
-            term.selection = Some(selection);
-        }
-        self.queue_draw();
+        self.send(|terminal| Request::Select {
+            terminal,
+            select: Select::All,
+        });
     }
 
     pub fn paste(&self) {
@@ -1133,12 +1082,7 @@ impl TerminalView {
     }
 
     fn paste_text(&self, text: &[u8]) {
-        let bracketed = self.imp().session.borrow().as_ref().is_some_and(|session| {
-            session
-                .lock()
-                .mode()
-                .contains(term::TermMode::BRACKETED_PASTE)
-        });
+        let bracketed = self.mode().contains(Mode::BRACKETED_PASTE);
         let lines = text.iter().any(|&byte| byte == b'\n' || byte == b'\r');
         if bracketed || !lines {
             self.input(crate::encode::paste(text, bracketed));
@@ -1176,10 +1120,11 @@ impl TerminalView {
     }
 
     pub fn clear_selection(&self) {
-        self.imp().searches.fetch_add(1, Ordering::SeqCst);
-        if let Some(session) = self.imp().session.borrow().as_ref() {
-            session.lock().selection = None;
-        }
-        self.queue_draw();
+        let imp = self.imp();
+        imp.searches.set(imp.searches.get() + 1);
+        self.send(|terminal| Request::Select {
+            terminal,
+            select: Select::Clear,
+        });
     }
 }

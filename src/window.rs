@@ -1,17 +1,19 @@
 //! A window of terminal tabs, with the find bar and the `win.*` actions.
 
 use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
+use caret_protocol::{Answer, Command, Question, Request, SessionId, Tab, TerminalId};
 use gettextrs::gettext;
 use gtk::{gio, glib};
 
 use crate::application::Application;
 use crate::config;
+use crate::connection::connection;
 use crate::i18n::{gettext_f, ngettext_f};
-use crate::session::Command;
 use crate::settings::settings;
 use crate::terminal_view::TerminalView;
 
@@ -37,8 +39,18 @@ mod imp {
         pub search_bar: TemplateChild<gtk::SearchBar>,
         #[template_child]
         pub search_entry: TemplateChild<gtk::SearchEntry>,
+        #[template_child]
+        pub toast_overlay: TemplateChild<adw::ToastOverlay>,
         /// Closing was confirmed, or needs no confirmation.
         pub closing: Cell<bool>,
+        /// The server's session the window shows, once it has one.
+        pub session: Cell<Option<SessionId>>,
+        /// The server closed the session.
+        pub ended: Cell<bool>,
+        /// The window goes but its terminals stay in the server.
+        pub detaching: Cell<bool>,
+        /// The window is adding a page itself, which needs no telling the server.
+        pub adding: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -51,7 +63,13 @@ mod imp {
             klass.bind_template();
             klass.bind_template_callbacks();
             klass.install_action("win.new-tab", None, |window, _, _| {
-                window.add_tab(window.next_command());
+                window.new_tab();
+            });
+            klass.install_action("win.detach", None, |window, _, _| {
+                let imp = window.imp();
+                imp.detaching.set(true);
+                imp.closing.set(true);
+                window.close();
             });
             klass.install_action("win.close-tab", None, |window, _, _| {
                 let tab_view = &window.imp().tab_view;
@@ -117,6 +135,11 @@ mod imp {
                     | adw::TabViewShortcuts::ALT_ZERO,
             );
             let obj = self.obj();
+            self.tab_view.connect_page_attached(glib::clone!(
+                #[weak]
+                obj,
+                move |_, page, position| obj.page_attached(page, position)
+            ));
             settings().connect_changed(
                 Some("title-bar"),
                 glib::clone!(
@@ -163,14 +186,25 @@ mod imp {
     impl WindowImpl for Window {
         fn close_request(&self) -> glib::Propagation {
             let obj = self.obj();
-            if !self.closing.get() {
-                let busy = obj.busy_tabs();
-                if busy > 0 {
-                    obj.confirm_close(busy);
-                    return glib::Propagation::Stop;
-                }
+            let detach = self.detaching.get() || settings().boolean("close-detaches");
+            if !self.closing.get() && !detach {
+                obj.ask_to_close();
+                return glib::Propagation::Stop;
             }
             obj.save_size();
+            if let (Some(session), Ok(connection)) = (self.session.get(), connection()) {
+                connection.forget_window(session);
+                // A window left with no tabs gave its last away, or the server closed
+                // them: the session goes once it is empty.
+                if !self.ended.get() {
+                    let request = if detach || self.tab_view.n_pages() == 0 {
+                        Request::Detach { session }
+                    } else {
+                        Request::CloseSession { session }
+                    };
+                    connection.send(&request);
+                }
+            }
             self.parent_close_request()
         }
     }
@@ -182,8 +216,7 @@ mod imp {
     impl Window {
         #[template_callback]
         fn on_create_tab(&self) -> adw::TabPage {
-            let obj = self.obj();
-            obj.add_tab(obj.next_command())
+            self.obj().new_tab()
         }
 
         /// The tab menu acts on the selected tab, so the tab it opens for is selected.
@@ -197,7 +230,7 @@ mod imp {
         #[template_callback]
         fn on_create_window(&self) -> adw::TabView {
             let application = self.obj().application().and_downcast::<Application>();
-            let window = super::Window::new(application.as_ref());
+            let window = super::Window::with_session(application.as_ref());
             window.present();
             window.imp().tab_view.clone()
         }
@@ -205,10 +238,25 @@ mod imp {
         #[template_callback]
         fn on_close_page(&self, page: &adw::TabPage) -> bool {
             let obj = self.obj();
-            match super::view_of(page).and_then(|view| view.busy()) {
-                None => self.tab_view.close_page_finish(page, true),
-                Some(program) => obj.confirm_close_tab(page, &program),
+            let Some(view) = super::view_of(page) else {
+                self.tab_view.close_page_finish(page, true);
+                return true;
+            };
+            if view.has_exited() {
+                self.tab_view.close_page_finish(page, true);
+                return true;
             }
+            let page = page.clone();
+            view.busy(glib::clone!(
+                #[weak]
+                obj,
+                #[weak]
+                view,
+                move |busy| match busy {
+                    None => obj.close_page(&page, &view),
+                    Some(program) => obj.confirm_close_tab(&page, &program),
+                }
+            ));
             true
         }
 
@@ -322,45 +370,204 @@ fn view_of(page: &adw::TabPage) -> Option<TerminalView> {
 }
 
 impl Window {
-    /// What a new tab runs: the shell, where the current tab's is.
-    pub fn next_command(&self) -> Command {
-        self.current_view()
-            .map(|view| view.next_command())
-            .unwrap_or_default()
-    }
-
-    pub fn new(application: Option<&Application>) -> Self {
+    fn new(application: Option<&Application>) -> Self {
         glib::Object::builder()
             .property("application", application)
             .build()
+    }
+
+    /// A window with a new session of its own, running `commands` in tabs once the
+    /// server made it.
+    fn with_session(application: Option<&Application>) -> Self {
+        let window = Self::new(application);
+        match connection() {
+            Ok(connection) => {
+                let weak = window.downgrade();
+                connection.ask(Question::NewSession, move |answer| {
+                    let Some(window) = weak.upgrade() else { return };
+                    match answer {
+                        Answer::Session { session } => window.attach(session),
+                        _ => window.session_closed(),
+                    }
+                });
+            }
+            Err(reason) => tracing::warn!("opening a window: {reason}"),
+        }
+        window
+    }
+
+    /// A window running `command` in its first tab.
+    pub fn open(application: Option<&Application>, command: Command) -> Self {
+        let window = Self::with_session(application);
+        window.add_tab(command);
+        window
+    }
+
+    /// A window showing a session the server has, with its tabs.
+    pub fn reattach(application: Option<&Application>, session: SessionId) -> Self {
+        let window = Self::new(application);
+        window.attach(session);
+        window
+    }
+
+    fn attach(&self, session: SessionId) {
+        let imp = self.imp();
+        imp.session.set(Some(session));
+        let Ok(connection) = connection() else {
+            return;
+        };
+        connection.register_window(session, self);
+        connection.send(&Request::Attach { session });
+        // Tabs opened, or dragged here, before the session came.
+        let pages = imp.tab_view.pages();
+        for index in 0..pages.n_items() {
+            if let Some(page) = pages.item(index).and_downcast::<adw::TabPage>() {
+                self.page_attached(&page, index as i32);
+                if let Some(view) = view_of(&page) {
+                    view.try_open();
+                }
+            }
+        }
+    }
+
+    pub fn session(&self) -> Option<SessionId> {
+        self.imp().session.get()
+    }
+
+    /// Where `view`'s tab is among the window's.
+    pub fn position_of(&self, view: &TerminalView) -> u32 {
+        let pages = self.imp().tab_view.pages();
+        (0..pages.n_items())
+            .find(|&index| {
+                pages
+                    .item(index)
+                    .and_downcast::<adw::TabPage>()
+                    .and_then(|page| view_of(&page))
+                    .as_ref()
+                    == Some(view)
+            })
+            .unwrap_or(0)
+    }
+
+    /// The server's tabs of the session, as the window attached to it.
+    pub fn attached(&self, tabs: Vec<Tab>) {
+        for (index, tab) in tabs.into_iter().enumerate() {
+            self.tab_opened(index as u32, tab);
+        }
+    }
+
+    fn page_of(&self, terminal: TerminalId) -> Option<adw::TabPage> {
+        let pages = self.imp().tab_view.pages();
+        (0..pages.n_items())
+            .filter_map(|index| pages.item(index).and_downcast::<adw::TabPage>())
+            .find(|page| view_of(page).is_some_and(|view| view.terminal() == Some(terminal)))
+    }
+
+    /// A tab of the session the window does not show yet: opened by another window of
+    /// the same session, or there before this one attached.
+    pub fn tab_opened(&self, index: u32, tab: Tab) {
+        if self.page_of(tab.terminal).is_some() {
+            return;
+        }
+        let view = TerminalView::new(tab.terminal, &tab.title, tab.name);
+        let page = self.add_view(&view, Some(index));
+        if self.imp().tab_view.selected_page().is_none() {
+            self.imp().tab_view.set_selected_page(&page);
+        }
+    }
+
+    pub fn tab_moved(&self, terminal: TerminalId, index: u32) {
+        if let Some(page) = self.page_of(terminal) {
+            let imp = self.imp();
+            imp.adding.set(true);
+            imp.tab_view.reorder_page(&page, index as i32);
+            imp.adding.set(false);
+        }
+    }
+
+    /// The server closed the session, with its last tab.
+    pub fn session_closed(&self) {
+        let imp = self.imp();
+        imp.ended.set(true);
+        imp.closing.set(true);
+        self.close();
+    }
+
+    /// A page came to this window, perhaps dragged from another: the server moves its
+    /// terminal to this window's session.
+    fn page_attached(&self, page: &adw::TabPage, position: i32) {
+        let imp = self.imp();
+        if imp.adding.get() {
+            return;
+        }
+        let (Some(session), Some(view)) = (imp.session.get(), view_of(page)) else {
+            return;
+        };
+        let (Some(terminal), Ok(connection)) = (view.terminal(), connection()) else {
+            return;
+        };
+        connection.send(&Request::MoveTab {
+            terminal,
+            session,
+            index: position.max(0) as u32,
+        });
+        view.reshow();
+    }
+
+    /// A new tab running the shell where the current tab's is.
+    fn new_tab(&self) -> adw::TabPage {
+        let current = self.current_view();
+        let view = TerminalView::opening(None);
+        let page = self.add_view(&view, None);
+        self.imp().tab_view.set_selected_page(&page);
+        view.grab_focus();
+        match current {
+            Some(current) => current.next_command(move |command| view.set_command(command)),
+            None => view.set_command(Command::default()),
+        }
+        page
     }
 
     pub fn current_view(&self) -> Option<TerminalView> {
         view_of(&self.imp().tab_view.selected_page()?)
     }
 
+    /// A tab running `command`, opened by the server once the tab knows its size and the
+    /// window its session.
     pub fn add_tab(&self, command: Command) -> adw::TabPage {
-        let tab_view = &self.imp().tab_view;
-        let view = TerminalView::new();
+        let view = TerminalView::opening(Some(command));
+        let page = self.add_view(&view, None);
+        self.imp().tab_view.set_selected_page(&page);
+        view.grab_focus();
+        page
+    }
+
+    /// A page for `view`, after the selected one or at `index`.
+    fn add_view(&self, view: &TerminalView, index: Option<u32>) -> adw::TabPage {
+        let imp = self.imp();
+        let tab_view = &imp.tab_view;
         let scrolled = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
-            .child(&view)
+            .child(view)
             .build();
-        let page = match tab_view.selected_page() {
-            Some(parent) => tab_view.add_page(&scrolled, Some(&parent)),
-            None => tab_view.append(&scrolled),
+        imp.adding.set(true);
+        let page = match (index, tab_view.selected_page()) {
+            (Some(index), _) => tab_view.insert(&scrolled, (index as i32).min(tab_view.n_pages())),
+            (None, Some(parent)) => tab_view.add_page(&scrolled, Some(&parent)),
+            (None, None) => tab_view.append(&scrolled),
         };
+        imp.adding.set(false);
+        page.connect_title_notify(glib::clone!(
+            #[weak(rename_to = window)]
+            self,
+            move |_| window.update_title()
+        ));
         view.bind_property("title", &page, "title")
             .sync_create()
             .build();
         view.bind_property("title", &page, "tooltip")
             .sync_create()
             .build();
-        page.connect_title_notify(glib::clone!(
-            #[weak(rename_to = window)]
-            self,
-            move |_| window.update_title()
-        ));
         view.connect_exited(glib::clone!(
             #[weak]
             tab_view,
@@ -431,9 +638,6 @@ impl Window {
                 window.notify(view, &title, body);
             }
         ));
-        view.spawn(command);
-        tab_view.set_selected_page(&page);
-        view.grab_focus();
         page
     }
 
@@ -506,6 +710,12 @@ impl Window {
         true
     }
 
+    pub fn toast(&self, text: &str) {
+        self.imp()
+            .toast_overlay
+            .add_toast(adw::Toast::builder().title(text).use_markup(false).build());
+    }
+
     /// Whether the title bar is hidden, by the setting or by full screen.
     pub fn header_bar_hidden(&self) -> bool {
         !settings().boolean("title-bar") || self.is_fullscreen()
@@ -533,12 +743,59 @@ impl Window {
         self.set_title(Some(&title));
     }
 
-    fn busy_tabs(&self) -> u32 {
+    /// Closes the window once no tab runs a program that closing would interrupt, or
+    /// asks first.
+    fn ask_to_close(&self) {
         let pages = self.imp().tab_view.pages();
-        (0..pages.n_items())
+        let views: Vec<TerminalView> = (0..pages.n_items())
             .filter_map(|index| pages.item(index).and_downcast::<adw::TabPage>())
-            .filter(|page| view_of(page).is_some_and(|view| view.busy().is_some()))
-            .count() as u32
+            .filter_map(|page| view_of(&page))
+            .collect();
+        let left = Rc::new(Cell::new(views.len()));
+        let busy = Rc::new(Cell::new(0));
+        let answered = glib::clone!(
+            #[weak(rename_to = window)]
+            self,
+            #[strong]
+            left,
+            #[strong]
+            busy,
+            move || {
+                if left.get() > 0 {
+                    return;
+                }
+                if busy.get() > 0 {
+                    window.confirm_close(busy.get());
+                } else {
+                    window.imp().closing.set(true);
+                    window.close();
+                }
+            }
+        );
+        if views.is_empty() {
+            answered();
+            return;
+        }
+        let answered = Rc::new(answered);
+        for view in views {
+            let (left, busy, answered) = (left.clone(), busy.clone(), answered.clone());
+            view.busy(move |program| {
+                left.set(left.get() - 1);
+                if program.is_some() {
+                    busy.set(busy.get() + 1);
+                }
+                answered();
+            });
+        }
+    }
+
+    /// Ends the tab's program and closes the page, which the user confirmed or which
+    /// needed no confirmation.
+    fn close_page(&self, page: &adw::TabPage, view: &TerminalView) {
+        if let (Some(terminal), Ok(connection)) = (view.terminal(), connection()) {
+            connection.send(&Request::CloseTab { terminal });
+        }
+        self.imp().tab_view.close_page_finish(page, true);
     }
 
     fn confirm_close_tab(&self, page: &adw::TabPage, program: &str) {
@@ -558,13 +815,26 @@ impl Window {
         dialog.set_response_appearance("close", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
-        let tab_view = self.imp().tab_view.clone();
         let page = page.clone();
-        dialog.choose(Some(self), gio::Cancellable::NONE, move |response| {
-            // A program that ended meanwhile asked to close the tab, which had to wait.
-            let exited = view_of(&page).is_some_and(|view| view.has_exited());
-            tab_view.close_page_finish(&page, response == "close" || exited);
-        });
+        dialog.choose(
+            Some(self),
+            gio::Cancellable::NONE,
+            glib::clone!(
+                #[weak(rename_to = window)]
+                self,
+                move |response| {
+                    let Some(view) = view_of(&page) else { return };
+                    // A program that ended meanwhile asked to close the tab, which had to wait.
+                    if view.has_exited() {
+                        window.imp().tab_view.close_page_finish(&page, true);
+                    } else if response == "close" {
+                        window.close_page(&page, &view);
+                    } else {
+                        window.imp().tab_view.close_page_finish(&page, false);
+                    }
+                }
+            ),
+        );
     }
 
     fn confirm_close(&self, busy: u32) {

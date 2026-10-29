@@ -1,3 +1,5 @@
+use caret_protocol::Rgb;
+
 use super::*;
 
 /// How long a frame rasterises glyphs itself before it leaves the rest to the glyph thread.
@@ -63,7 +65,7 @@ impl TerminalView {
 
     /// Has the glyph thread rasterise `key`, starting it the first time, and draws again
     /// as glyphs come back; false when the thread cannot be started.
-    fn request_glyph(&self, fonts: &Fonts, key: &GlyphKey) -> bool {
+    fn request_glyph(&self, fonts: &Fonts, key: &Glyph) -> bool {
         let mut thread = self.imp().glyph_thread.borrow_mut();
         if thread.is_none() {
             let (spawned, results) = match GlyphThread::spawn(fonts) {
@@ -99,7 +101,7 @@ impl TerminalView {
         true
     }
 
-    fn glyph_pending(&self, key: &GlyphKey) -> bool {
+    fn glyph_pending(&self, key: &Glyph) -> bool {
         let thread = self.imp().glyph_thread.borrow();
         thread.as_ref().is_some_and(|thread| thread.is_pending(key))
     }
@@ -126,36 +128,17 @@ impl TerminalView {
         }
 
         self.ensure_fonts();
-        let session = imp.session.borrow();
         let mut gl = imp.gl.borrow_mut();
         let fonts = imp.fonts.borrow();
-        let (Some(session), Some((context, renderer)), Some(fonts)) =
-            (session.as_ref(), gl.as_mut(), fonts.as_ref())
+        let screen = imp.screen.borrow();
+        let (true, Some((context, renderer)), Some(fonts)) =
+            (screen.lines > 0, gl.as_mut(), fonts.as_ref())
         else {
             snapshot.append_color(&rgba(palette.background), &bounds);
             return;
         };
 
-        let mut screen = imp.screen.borrow_mut();
         let started = Instant::now();
-        let term = session.lock();
-        // Rearmed under the lock: output after the capture wakes the widget again.
-        session.rearm();
-        // A click on a link goes to a program that reports the mouse, so it is not marked.
-        let link = imp
-            .hovered_cell
-            .get()
-            .filter(|_| !term.mode().intersects(TermMode::MOUSE_MODE))
-            .and_then(|point| input::link_in(&term, point));
-        imp.link_underlined.set(link.is_some());
-        screen.capture(&term, &palette, link.as_ref().map(|link| &link.span));
-        let scroll = (
-            term.history_size(),
-            term.screen_lines(),
-            term.grid().display_offset(),
-        );
-        drop(term);
-        self.follow_scroll(scroll);
         self.update_accessible_text(&screen);
         let scale = self.scale();
         let look = Look {
@@ -175,7 +158,7 @@ impl TerminalView {
         let mut quads = imp.quads.borrow_mut();
         let mut finished = imp.finished_glyphs.take();
         let deadline = Instant::now() + GLYPH_TIME;
-        let mut rasterize = |key: &GlyphKey| {
+        let mut rasterize = |key: &Glyph| {
             if let Some(bitmap) = finished.remove(key) {
                 Some(bitmap)
             } else if self.glyph_pending(key) {

@@ -72,6 +72,11 @@
       <summary>Terminal bell</summary>
       <description>Whether the bell a program rings makes a sound. A tab in the background is marked either way.</description>
     </key>
+    <key name="close-detaches" type="b">
+      <default>false</default>
+      <summary>Keep closed windows</summary>
+      <description>Whether closing a window detaches it instead of ending its programs, so that Reattach Windows brings it back.</description>
+    </key>
     <key name="title-bar" type="b">
       <default>true</default>
       <summary>Title bar</summary>

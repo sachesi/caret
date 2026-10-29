@@ -20,7 +20,9 @@ use glow::HasContext;
 use gtk::gdk::prelude::*;
 use gtk::{gdk, glib};
 
-use crate::fonts::{Bitmap, GlyphKey, GlyphText};
+use caret_protocol::{Glyph, GlyphText};
+
+use crate::fonts::Bitmap;
 
 /// What a quad draws; the fragment shader branches on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,7 +84,7 @@ pub struct AtlasGlyph {
 }
 
 /// Where an ASCII glyph in one of the four styles is kept in the atlas's table.
-fn ascii_index(key: &GlyphKey) -> Option<usize> {
+fn ascii_index(key: &Glyph) -> Option<usize> {
     match key.text {
         GlyphText::Char(c) if c.is_ascii() && !key.wide => {
             Some(usize::from(key.style & 3) * 128 + c as usize)
@@ -102,7 +104,7 @@ struct Atlas {
     x: i32,
     y: i32,
     row: i32,
-    glyphs: HashMap<GlyphKey, Option<AtlasGlyph>>,
+    glyphs: HashMap<Glyph, Option<AtlasGlyph>>,
     /// ASCII in each style, most of what a frame draws, looked up without hashing.
     #[expect(clippy::option_option, reason = "as `glyph` returns them")]
     ascii: Vec<Option<Option<AtlasGlyph>>>,
@@ -363,7 +365,7 @@ impl Renderer {
         clippy::option_option,
         reason = "not uploaded differs from uploaded without ink"
     )]
-    pub fn glyph(&self, key: &GlyphKey) -> Option<Option<AtlasGlyph>> {
+    pub fn glyph(&self, key: &Glyph) -> Option<Option<AtlasGlyph>> {
         match ascii_index(key) {
             Some(index) => self.atlas.ascii[index],
             None => self.atlas.glyphs.get(key).copied(),
@@ -373,7 +375,7 @@ impl Renderer {
     /// Uploads `key`'s glyph to the atlas and says where it went.
     pub fn insert_glyph(
         &mut self,
-        key: &GlyphKey,
+        key: &Glyph,
         bitmap: Option<Bitmap>,
     ) -> Result<Option<AtlasGlyph>, AtlasFull> {
         let glyph = match bitmap {

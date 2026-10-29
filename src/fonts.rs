@@ -9,26 +9,9 @@ use std::sync::mpsc;
 use gtk::pango::prelude::*;
 use gtk::{cairo, pango};
 
+use caret_protocol::{Glyph, GlyphText};
+
 use crate::box_drawing;
-
-pub const BOLD: u8 = 1;
-pub const ITALIC: u8 = 2;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum GlyphText {
-    Char(char),
-    /// A character with combining marks after it.
-    Cluster(Box<str>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct GlyphKey {
-    pub text: GlyphText,
-    /// [`BOLD`] and [`ITALIC`].
-    pub style: u8,
-    /// Two cells wide.
-    pub wide: bool,
-}
 
 /// A glyph's pixels, premultiplied RGBA, and where they go relative to the cell's top left.
 pub struct Bitmap {
@@ -153,7 +136,7 @@ impl Fonts {
     }
 
     /// The glyph for `key`, or nothing when it has no ink, a space say.
-    pub fn rasterize(&self, key: &GlyphKey) -> Option<Bitmap> {
+    pub fn rasterize(&self, key: &Glyph) -> Option<Bitmap> {
         let cells = if key.wide { 2 } else { 1 };
         if let GlyphText::Char(c) = key.text
             && box_drawing::is_drawn(c)
@@ -210,22 +193,22 @@ impl Fonts {
 }
 
 /// Glyphs as the thread sends them back.
-type Rasterized = async_channel::Receiver<(GlyphKey, Option<Bitmap>)>;
+type Rasterized = async_channel::Receiver<(Glyph, Option<Bitmap>)>;
 
 /// Rasterises glyphs on a thread of its own, with the same fonts, for frames that would
 /// otherwise wait for many: a screenful of new CJK text takes a quarter of a second.
 pub struct GlyphThread {
-    requests: mpsc::Sender<GlyphKey>,
+    requests: mpsc::Sender<Glyph>,
     results: Rasterized,
     /// Asked for and not yet taken back, so that each is asked for once.
-    pending: HashSet<GlyphKey>,
+    pending: HashSet<Glyph>,
 }
 
 impl GlyphThread {
     /// A thread rasterising with fonts made as `fonts` were. Its glyphs come back on the
     /// receiver, until the thread is dropped.
     pub fn spawn(fonts: &Fonts) -> std::io::Result<(Self, Rasterized)> {
-        let (requests, requested) = mpsc::channel::<GlyphKey>();
+        let (requests, requested) = mpsc::channel::<Glyph>();
         let (done, results) = async_channel::unbounded();
         let (font, dpi, options, features) = fonts.made_from.clone();
         std::thread::Builder::new()
@@ -247,18 +230,18 @@ impl GlyphThread {
         Ok((thread, results))
     }
 
-    pub fn request(&mut self, key: &GlyphKey) {
+    pub fn request(&mut self, key: &Glyph) {
         if self.pending.insert(key.clone()) {
             let _ = self.requests.send(key.clone());
         }
     }
 
-    pub fn is_pending(&self, key: &GlyphKey) -> bool {
+    pub fn is_pending(&self, key: &Glyph) -> bool {
         self.pending.contains(key)
     }
 
     /// Takes back a glyph the thread sent.
-    pub fn received(&mut self, key: &GlyphKey) {
+    pub fn received(&mut self, key: &Glyph) {
         self.pending.remove(key);
     }
 }

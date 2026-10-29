@@ -1,15 +1,10 @@
-//! The colours cells are drawn in: a light and a dark set of the 16 ANSI colours, the
-//! 256-colour cube and ramp, and what programs changed through OSC 4, 10, 11 and 12.
+//! The colours cells are drawn in: a light and a dark set of the 16 ANSI colours, which
+//! the server resolves the cells' colours with, and the selection's.
 
-use alacritty_terminal::term::color::Colors;
-use alacritty_terminal::vte::ansi::{Color, NamedColor, Rgb};
+use caret_protocol::Rgb;
 
 const fn rgb(value: u32) -> Rgb {
-    Rgb {
-        r: (value >> 16) as u8,
-        g: (value >> 8) as u8,
-        b: value as u8,
-    }
+    Rgb::from_u32(value)
 }
 
 /// The accent the selection is tinted with, libadwaita's default blue.
@@ -78,66 +73,13 @@ impl Palette {
         }
     }
 
-    /// `color` as the terminal shows it now, overrides from escape sequences first.
-    pub fn resolve(&self, color: Color, overrides: &Colors) -> Rgb {
-        match color {
-            Color::Spec(rgb) => rgb,
-            Color::Indexed(index) => self.indexed(usize::from(index), overrides),
-            Color::Named(name) => self.named(name, overrides),
+    /// The colours the server shows cells in.
+    pub fn colors(&self) -> caret_protocol::Palette {
+        caret_protocol::Palette {
+            foreground: self.foreground,
+            background: self.background,
+            ansi: self.ansi.to_vec(),
         }
-    }
-
-    fn indexed(&self, index: usize, overrides: &Colors) -> Rgb {
-        if let Some(rgb) = overrides[index] {
-            return rgb;
-        }
-        match index {
-            0..16 => self.ansi[index],
-            16..232 => {
-                const LEVELS: [u8; 6] = [0, 95, 135, 175, 215, 255];
-                let cube = index - 16;
-                Rgb {
-                    r: LEVELS[cube / 36],
-                    g: LEVELS[cube / 6 % 6],
-                    b: LEVELS[cube % 6],
-                }
-            }
-            _ => {
-                let level = 8 + 10 * (index - 232) as u8;
-                Rgb {
-                    r: level,
-                    g: level,
-                    b: level,
-                }
-            }
-        }
-    }
-
-    fn named(&self, name: NamedColor, overrides: &Colors) -> Rgb {
-        let index = name as usize;
-        if index < 16 {
-            return self.indexed(index, overrides);
-        }
-        if let Some(rgb) = overrides[index] {
-            return rgb;
-        }
-        match name {
-            NamedColor::Background => self.background,
-            NamedColor::Cursor | NamedColor::Foreground | NamedColor::BrightForeground => {
-                overrides[NamedColor::Foreground].unwrap_or(self.foreground)
-            }
-            NamedColor::DimForeground => self.dim(self.named(NamedColor::Foreground, overrides)),
-            _ => {
-                let normal = index - NamedColor::DimBlack as usize;
-                self.dim(self.indexed(normal, overrides))
-            }
-        }
-    }
-
-    /// Faint text: pulled towards the background, so it fades in the light style as well
-    /// as in the dark one.
-    pub fn dim(&self, color: Rgb) -> Rgb {
-        mix(color, self.background, 0.4)
     }
 }
 
@@ -148,55 +90,12 @@ impl Default for Palette {
 }
 
 /// `from` moved `amount` of the way to `to`.
-pub fn mix(from: Rgb, to: Rgb, amount: f32) -> Rgb {
+fn mix(from: Rgb, to: Rgb, amount: f32) -> Rgb {
     let channel =
         |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
     Rgb {
         r: channel(from.r, to.r),
         g: channel(from.g, to.g),
         b: channel(from.b, to.b),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_cube_and_the_ramp_follow_xterm() {
-        let palette = Palette::dark();
-        let none = Colors::default();
-        assert_eq!(palette.resolve(Color::Indexed(16), &none), rgb(0x000000));
-        assert_eq!(palette.resolve(Color::Indexed(196), &none), rgb(0xff0000));
-        assert_eq!(palette.resolve(Color::Indexed(231), &none), rgb(0xffffff));
-        assert_eq!(palette.resolve(Color::Indexed(232), &none), rgb(0x080808));
-        assert_eq!(palette.resolve(Color::Indexed(255), &none), rgb(0xeeeeee));
-    }
-
-    #[test]
-    fn a_colour_set_by_a_program_wins() {
-        let palette = Palette::light();
-        let mut colors = Colors::default();
-        colors[1] = Some(rgb(0x123456));
-        colors[NamedColor::Background] = Some(rgb(0x000000));
-        assert_eq!(
-            palette.resolve(Color::Named(NamedColor::Red), &colors),
-            rgb(0x123456)
-        );
-        assert_eq!(palette.resolve(Color::Indexed(1), &colors), rgb(0x123456));
-        assert_eq!(
-            palette.resolve(Color::Named(NamedColor::Background), &colors),
-            rgb(0x000000)
-        );
-    }
-
-    #[test]
-    fn dim_colours_fade_towards_the_background() {
-        let palette = Palette::dark();
-        let none = Colors::default();
-        let dim = palette.resolve(Color::Named(NamedColor::DimForeground), &none);
-        assert_eq!(dim, mix(palette.foreground, palette.background, 0.4));
-        let dim_red = palette.resolve(Color::Named(NamedColor::DimRed), &none);
-        assert_eq!(dim_red, mix(palette.ansi[1], palette.background, 0.4));
     }
 }

@@ -1,28 +1,21 @@
-//! A frame of the terminal: what is on screen, copied out while the terminal is locked,
-//! then turned into quads for the renderer without holding the lock.
+//! A frame of the terminal: the screen as the server last sent it, turned into quads for
+//! the renderer.
 
-use alacritty_terminal::event::EventListener;
-use alacritty_terminal::grid::Dimensions;
-use alacritty_terminal::index::{Column, Point};
-use alacritty_terminal::term::cell::Flags;
-use alacritty_terminal::term::{Term, TermMode};
-use alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor, Rgb};
-
-use crate::fonts::{self, Bitmap, CellMetrics, GlyphKey, GlyphText};
 use std::rc::Rc;
 
-use crate::links::Span;
-use crate::palette::Palette;
+use caret_protocol::{CellFlags, CursorShape, Frame, Glyph, GlyphText, Mode, Rgb, Row};
+
+use crate::fonts::{Bitmap, CellMetrics};
 use crate::renderer::{AtlasFull, Kind, Quads, Renderer};
 
 pub struct ScreenCell {
     pub line: usize,
     pub column: usize,
-    pub glyph: Option<GlyphKey>,
+    pub glyph: Option<Glyph>,
     pub fg: Rgb,
     pub bg: Rgb,
     pub underline: Rgb,
-    pub flags: Flags,
+    pub flags: CellFlags,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,11 +26,18 @@ pub struct ScreenCursor {
     pub wide: bool,
 }
 
+/// A cell of the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Place {
+    pub line: usize,
+    pub column: usize,
+}
+
 /// The selection in lines of the screen, first and last cell included.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScreenSelection {
-    pub start: Point<usize>,
-    pub end: Point<usize>,
+    pub start: Place,
+    pub end: Place,
     pub block: bool,
 }
 
@@ -47,148 +47,62 @@ pub struct ScreenSelection {
 pub struct Screen {
     pub columns: usize,
     pub lines: usize,
+    rows: Vec<Row>,
     pub cells: Vec<ScreenCell>,
     pub cursor: Option<ScreenCursor>,
     pub cursor_blinks: bool,
     pub selection: Option<ScreenSelection>,
     pub background: Rgb,
     pub cursor_color: Rgb,
-    pub mode: TermMode,
+    pub mode: Mode,
+    pub history: usize,
+    pub offset: usize,
 }
 
 impl Screen {
-    /// `link` is underlined, as the one a click would open.
-    #[expect(clippy::too_many_lines, reason = "one pass over the visible cells")]
-    pub fn capture<T: EventListener>(
-        &mut self,
-        term: &Term<T>,
-        palette: &Palette,
-        link: Option<&Span>,
-    ) {
-        let content = term.renderable_content();
-        let colors = content.colors;
-        let offset = content.display_offset as i32;
-        self.columns = term.columns();
-        self.lines = term.screen_lines();
-        self.mode = content.mode;
-        self.background = palette.resolve(Color::Named(NamedColor::Background), colors);
-        self.cursor_color = palette.resolve(Color::Named(NamedColor::Cursor), colors);
-        self.cursor_blinks = term.cursor_style().blinking;
-
-        let lines = self.lines as i32;
-        let cursor_line = content.cursor.point.line.0 + offset;
-        self.cursor = (content.cursor.shape != CursorShape::Hidden
-            && (0..lines).contains(&cursor_line))
-        .then_some(ScreenCursor {
-            line: cursor_line as usize,
-            column: content.cursor.point.column.0,
-            shape: content.cursor.shape,
-            wide: false,
-        });
-
-        let last_column = self.columns.saturating_sub(1);
-        self.selection = content.selection.and_then(|range| {
-            let start_line = range.start.line.0 + offset;
-            let end_line = range.end.line.0 + offset;
-            if end_line < 0 || start_line >= lines {
-                return None;
+    /// Takes in what changed, as the server sent it.
+    pub fn apply(&mut self, frame: Frame) {
+        self.columns = usize::from(frame.columns);
+        self.lines = usize::from(frame.lines);
+        self.rows.resize_with(self.lines, Row::default);
+        for row in frame.rows {
+            if let Some(kept) = self.rows.get_mut(usize::from(row.line)) {
+                *kept = row;
             }
-            let start = if start_line < 0 {
-                Point::new(
-                    0,
-                    if range.is_block {
-                        range.start.column
-                    } else {
-                        Column(0)
-                    },
-                )
-            } else {
-                Point::new(start_line as usize, range.start.column)
-            };
-            let end = if end_line >= lines {
-                let column = if range.is_block {
-                    range.end.column
-                } else {
-                    Column(last_column)
-                };
-                Point::new(self.lines - 1, column)
-            } else {
-                Point::new(end_line as usize, range.end.column)
-            };
-            Some(ScreenSelection {
-                start,
-                end,
-                block: range.is_block,
-            })
-        });
-
-        self.cells.clear();
-        for indexed in content.display_iter {
-            let cell = indexed.cell;
-            let line = (indexed.point.line.0 + offset) as usize;
-            let column = indexed.point.column.0;
-            let mut flags = cell.flags;
-            if !flags.intersects(Flags::ALL_UNDERLINES)
-                && link.is_some_and(|link| link.covers(indexed.point, cell))
-            {
-                flags |= Flags::UNDERLINE;
-            }
-
-            let mut fg = palette.resolve(cell.fg, colors);
-            let mut bg = palette.resolve(cell.bg, colors);
-            if flags.contains(Flags::DIM) {
-                fg = palette.dim(fg);
-            }
-            if flags.contains(Flags::INVERSE) {
-                std::mem::swap(&mut fg, &mut bg);
-            }
-            let underline = cell
-                .underline_color()
-                .map_or(fg, |color| palette.resolve(color, colors));
-
-            let spacer =
-                flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER);
-            let text = match cell.zerowidth() {
-                _ if spacer || flags.contains(Flags::HIDDEN) => None,
-                Some(marks) if !marks.is_empty() => Some(GlyphText::Cluster(
-                    std::iter::once(cell.c)
-                        .chain(marks.iter().copied())
-                        .collect(),
-                )),
-                _ if cell.c == ' ' || cell.c == '\t' || cell.c == '\0' => None,
-                _ => Some(GlyphText::Char(cell.c)),
-            };
-            let decorated = flags.intersects(Flags::ALL_UNDERLINES | Flags::STRIKEOUT);
-            if let Some(cursor) = &mut self.cursor
-                && cursor.line == line
-                && cursor.column == column
-            {
-                cursor.wide = flags.contains(Flags::WIDE_CHAR);
-            }
-            if text.is_none() && bg == self.background && !decorated {
-                continue;
-            }
-            let mut style = 0;
-            if flags.contains(Flags::BOLD) {
-                style |= fonts::BOLD;
-            }
-            if flags.contains(Flags::ITALIC) {
-                style |= fonts::ITALIC;
-            }
-            self.cells.push(ScreenCell {
-                line,
-                column,
-                glyph: text.map(|text| GlyphKey {
-                    text,
-                    style,
-                    wide: flags.contains(Flags::WIDE_CHAR),
-                }),
-                fg,
-                bg,
-                underline,
-                flags,
-            });
         }
+        self.cells.clear();
+        for (line, row) in self.rows.iter().enumerate() {
+            self.cells.extend(row.cells.iter().map(|cell| ScreenCell {
+                line,
+                column: usize::from(cell.column),
+                glyph: cell.glyph.clone(),
+                fg: cell.fg,
+                bg: cell.bg,
+                underline: cell.underline,
+                flags: cell.flags,
+            }));
+        }
+        let place = |point: caret_protocol::Point| Place {
+            line: usize::from(point.line),
+            column: usize::from(point.column),
+        };
+        self.cursor = frame.cursor.map(|cursor| ScreenCursor {
+            line: usize::from(cursor.point.line),
+            column: usize::from(cursor.point.column),
+            shape: cursor.shape,
+            wide: cursor.wide,
+        });
+        self.cursor_blinks = frame.cursor_blinks;
+        self.selection = frame.selection.map(|selection| ScreenSelection {
+            start: place(selection.start),
+            end: place(selection.end),
+            block: selection.block,
+        });
+        self.background = frame.background;
+        self.cursor_color = frame.cursor_color;
+        self.mode = frame.mode;
+        self.history = frame.history as usize;
+        self.offset = frame.offset as usize;
     }
 }
 
@@ -227,7 +141,7 @@ pub fn build(
     look: &Look,
     metrics: CellMetrics,
     ligatures: &impl Fn(&str, u8) -> Rc<[u8]>,
-    rasterize: &mut impl FnMut(&GlyphKey) -> Option<Option<Bitmap>>,
+    rasterize: &mut impl FnMut(&Glyph) -> Option<Option<Bitmap>>,
     renderer: &mut Renderer,
     quads: &mut Quads,
     partial: bool,
@@ -271,16 +185,16 @@ pub fn build(
     if let Some(selection) = screen.selection {
         for line in selection.start.line..=selection.end.line {
             let (first, last) = if selection.block {
-                (selection.start.column.0, selection.end.column.0)
+                (selection.start.column, selection.end.column)
             } else {
                 (
                     if line == selection.start.line {
-                        selection.start.column.0
+                        selection.start.column
                     } else {
                         0
                     },
                     if line == selection.end.line {
-                        selection.end.column.0
+                        selection.end.column
                     } else {
                         screen.columns - 1
                     },
@@ -317,7 +231,7 @@ pub fn build(
     let under_cursor = |cell: &ScreenCell| {
         block.is_some_and(|cursor| cursor.line == cell.line && cursor.column == cell.column)
     };
-    let mut draw = |key: &GlyphKey, cell: &ScreenCell| {
+    let mut draw = |key: &Glyph, cell: &ScreenCell| {
         let glyph = match renderer.glyph(key) {
             Some(glyph) => glyph,
             None => match rasterize(key) {
@@ -406,10 +320,10 @@ fn glyphs<E>(
     cells: &[ScreenCell],
     apart: &impl Fn(&ScreenCell) -> bool,
     ligatures: &impl Fn(&str, u8) -> Rc<[u8]>,
-    draw: &mut impl FnMut(&GlyphKey, &ScreenCell) -> Result<(), E>,
+    draw: &mut impl FnMut(&Glyph, &ScreenCell) -> Result<(), E>,
 ) -> Result<(), E> {
     let symbol = |cell: &ScreenCell| match &cell.glyph {
-        Some(GlyphKey {
+        Some(Glyph {
             text: GlyphText::Char(c),
             style,
             wide: false,
@@ -447,7 +361,7 @@ fn glyphs<E>(
         for &length in ligatures(&run, key.style).iter() {
             let part = &cells[at..at + usize::from(length)];
             if length > 1 && !part.iter().any(apart) {
-                let joined = GlyphKey {
+                let joined = Glyph {
                     text: GlyphText::Cluster(run[at - index..][..part.len()].into()),
                     style: key.style,
                     wide: false,
@@ -470,36 +384,36 @@ fn glyphs<E>(
 /// Underlines of every style and the line through struck-out text.
 fn decorate(cell: &ScreenCell, metrics: &CellMetrics, x: f32, y: f32, quads: &mut Quads) {
     let flags = cell.flags;
-    if !flags.intersects(Flags::ALL_UNDERLINES | Flags::STRIKEOUT) {
+    if !flags.intersects(CellFlags::ALL_UNDERLINES | CellFlags::STRIKEOUT) {
         return;
     }
     let width = metrics.width as f32;
     let height = metrics.height;
     let thickness = metrics.underline_thickness;
     let color = rgba(cell.underline);
-    if flags.contains(Flags::DOUBLE_UNDERLINE) {
+    if flags.contains(CellFlags::DOUBLE_UNDERLINE) {
         let top = metrics.underline.min(height - 3 * thickness).max(0);
         for offset in [0, 2 * thickness] {
             let line = y + (top + offset) as f32;
             quads.rect([x, line, width, thickness as f32], color, Kind::Solid);
         }
-    } else if flags.contains(Flags::UNDERCURL) {
+    } else if flags.contains(CellFlags::UNDERCURL) {
         let band = (3 * thickness).max(3);
         let top = y + (height - band) as f32;
         quads.rect([x, top, width, band as f32], color, Kind::Undercurl);
-    } else if flags.intersects(Flags::DOTTED_UNDERLINE | Flags::DASHED_UNDERLINE) {
-        let kind = if flags.contains(Flags::DOTTED_UNDERLINE) {
+    } else if flags.intersects(CellFlags::DOTTED_UNDERLINE | CellFlags::DASHED_UNDERLINE) {
+        let kind = if flags.contains(CellFlags::DOTTED_UNDERLINE) {
             Kind::Dotted
         } else {
             Kind::Dashed
         };
         let line = y + metrics.underline as f32;
         quads.rect([x, line, width, thickness as f32], color, kind);
-    } else if flags.contains(Flags::UNDERLINE) {
+    } else if flags.contains(CellFlags::UNDERLINE) {
         let line = y + metrics.underline as f32;
         quads.rect([x, line, width, thickness as f32], color, Kind::Solid);
     }
-    if flags.contains(Flags::STRIKEOUT) {
+    if flags.contains(CellFlags::STRIKEOUT) {
         let line = y + metrics.strikeout as f32;
         let thickness = metrics.strikeout_thickness as f32;
         quads.rect([x, line, width, thickness], rgba(cell.fg), Kind::Solid);
@@ -521,7 +435,7 @@ mod tests {
         ScreenCell {
             line: 0,
             column,
-            glyph: (c != ' ').then_some(GlyphKey {
+            glyph: (c != ' ').then_some(Glyph {
                 text: GlyphText::Char(c),
                 style: 0,
                 wide: false,
@@ -529,7 +443,7 @@ mod tests {
             fg: WHITE,
             bg: Rgb::default(),
             underline: WHITE,
-            flags: Flags::empty(),
+            flags: CellFlags::empty(),
         }
     }
 
@@ -562,7 +476,7 @@ mod tests {
             cells,
             &|cell: &ScreenCell| Some(cell.column) == apart,
             &ligatures,
-            &mut |key: &GlyphKey, cell: &ScreenCell| {
+            &mut |key: &Glyph, cell: &ScreenCell| {
                 let text = match &key.text {
                     GlyphText::Char(c) => c.to_string(),
                     GlyphText::Cluster(text) => text.to_string(),
@@ -602,7 +516,7 @@ mod tests {
                 asked.set(asked.get() + 1);
                 vec![1; run.len()].into()
             },
-            &mut |_: &GlyphKey, _: &ScreenCell| Ok::<(), ()>(()),
+            &mut |_: &Glyph, _: &ScreenCell| Ok::<(), ()>(()),
         )
         .unwrap();
         assert_eq!(asked.get(), 0);
@@ -621,7 +535,7 @@ mod tests {
         assert_eq!(texts(&drawn(&coloured, None)), [(0, "-"), (1, ">")]);
 
         let mut bold = line("->");
-        bold[1].glyph.as_mut().unwrap().style = fonts::BOLD;
+        bold[1].glyph.as_mut().unwrap().style = caret_protocol::BOLD;
         assert_eq!(texts(&drawn(&bold, None)), [(0, "-"), (1, ">")]);
 
         let mut wrapped = line("->");

@@ -52,6 +52,15 @@ off under Programs in Preferences.
 Closing a tab, or a window, where something other than the shell is running in the
 foreground asks first.
 
+## Detaching
+
+The programs in the tabs run in Caret's terminal server, which keeps them while no
+window shows them. Detach Window in the main menu closes the window and leaves its tabs
+running, with their history; Reattach Windows, or `caret --attach`, opens a window for
+each detached one. A window that crashes or is killed is detached the same way. With
+Keep Closed Windows in Preferences, closing a window detaches it too; otherwise closing
+it ends its programs, as closing a tab does.
+
 ## Selecting, copying and pasting
 
 Dragging selects, a double click selects a word and a triple click a line, and Shift and a

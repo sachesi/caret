@@ -232,6 +232,16 @@ pub fn preferences_dialog() -> adw::PreferencesDialog {
         .build();
     settings.bind("audible-bell", &bell, "active").build();
     behaviour.add(&bell);
+    let close_detaches = adw::SwitchRow::builder()
+        .title(gettext("Keep Closed Windows"))
+        .subtitle(gettext(
+            "Closing a window detaches it, and its programs go on running",
+        ))
+        .build();
+    settings
+        .bind("close-detaches", &close_detaches, "active")
+        .build();
+    behaviour.add(&close_detaches);
     page.add(&behaviour);
 
     let programs = adw::PreferencesGroup::builder()

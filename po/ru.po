@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-04 13:42+0300\n"
+"POT-Creation-Date: 2026-10-29 22:34+0200\n"
 "PO-Revision-Date: 2026-09-27 19:00+0300\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Russian\n"
@@ -17,8 +17,8 @@ msgstr ""
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
 #: data/io.github.sachesi.caret.desktop:2
-#: data/io.github.sachesi.caret.metainfo.xml:6 src/window.rs:531
-#: ui/window.ui:58 ui/window.ui:83
+#: data/io.github.sachesi.caret.metainfo.xml:6 src/window.rs:741
+#: ui/window.ui:68 ui/window.ui:93
 msgid "Caret"
 msgstr "Caret"
 
@@ -165,25 +165,35 @@ msgstr ""
 "случае."
 
 #: data/io.github.sachesi.caret.gschema.xml:77
+msgid "Keep closed windows"
+msgstr "Сохранять закрытые окна"
+
+#: data/io.github.sachesi.caret.gschema.xml:78
+msgid ""
+"Whether closing a window detaches it instead of ending its programs, so that "
+"Reattach Windows brings it back."
+msgstr "Отсоединять ли окно при закрытии вместо завершения его программ, чтобы «Вернуть окна» снова его открыло."
+
+#: data/io.github.sachesi.caret.gschema.xml:82
 msgid "Title bar"
 msgstr "Заголовок окна"
 
-#: data/io.github.sachesi.caret.gschema.xml:78
+#: data/io.github.sachesi.caret.gschema.xml:83
 msgid ""
 "Whether windows show the title bar. Without it, the context menu has its "
 "commands."
 msgstr ""
 "Показывать ли заголовок окна. Без него его команды есть в контекстном меню."
 
-#: data/io.github.sachesi.caret.gschema.xml:82
+#: data/io.github.sachesi.caret.gschema.xml:87
 msgid "Window size"
 msgstr "Размер окна"
 
-#: data/io.github.sachesi.caret.gschema.xml:83
+#: data/io.github.sachesi.caret.gschema.xml:88
 msgid "The size of new windows; 0 fits 80 columns by 24 lines of the font."
 msgstr "Размер новых окон; 0 — 80 столбцов на 24 строки шрифта."
 
-#: data/io.github.sachesi.caret.gschema.xml:87
+#: data/io.github.sachesi.caret.gschema.xml:92
 msgid "Window maximized"
 msgstr "Окно развёрнуто"
 
@@ -297,28 +307,36 @@ msgstr ""
 msgid "The first release."
 msgstr "Первый выпуск."
 
-#: src/application.rs:144
+#: src/application.rs:178
 msgid "Start in this directory"
 msgstr "Запустить в этом каталоге"
 
-#: src/application.rs:145
+#: src/application.rs:179
 msgid "DIRECTORY"
 msgstr "КАТАЛОГ"
 
-#: src/application.rs:152
+#: src/application.rs:186
+msgid "Show the windows that were detached"
+msgstr "Показать отсоединённые окна"
+
+#: src/application.rs:194
 msgid "Print the version and exit"
 msgstr "Показать версию и выйти"
 
-#: src/application.rs:161
+#: src/application.rs:203
 msgid "[-e] [COMMAND [ARGUMENT…]]"
 msgstr "[-e] [КОМАНДА [АРГУМЕНТ…]]"
 
-#: src/application.rs:243
+#: src/application.rs:234
+msgid "No windows were detached"
+msgstr "Нет отсоединённых окон"
+
+#: src/application.rs:328
 msgid "A terminal drawn by the GPU"
 msgstr "Терминал с аппаратным ускорением"
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:245
+#: src/application.rs:330
 msgid "translator-credits"
 msgstr "sachesi"
 
@@ -434,11 +452,19 @@ msgstr "Звонок терминала"
 msgid "Sound the bell when a program rings it"
 msgstr "Звук, когда программа подаёт звонок"
 
+#: src/preferences.rs:236
+msgid "Keep Closed Windows"
+msgstr "Сохранять закрытые окна"
+
 #: src/preferences.rs:238
+msgid "Closing a window detaches it, and its programs go on running"
+msgstr "Закрытое окно отсоединяется, а его программы продолжают работать"
+
+#: src/preferences.rs:248
 msgid "Programs"
 msgstr "Программы"
 
-#: src/preferences.rs:240
+#: src/preferences.rs:250
 msgid ""
 "What programs in the terminal may do, including ones on other machines and "
 "files that are shown"
@@ -446,57 +472,62 @@ msgstr ""
 "Что могут делать программы в терминале, в том числе на других машинах и в "
 "показываемых файлах"
 
-#: src/preferences.rs:244
+#: src/preferences.rs:254
 msgid "Notifications"
 msgstr "Уведомления"
 
-#: src/preferences.rs:246
+#: src/preferences.rs:256
 msgid "Programs can notify you while their tab is out of sight"
 msgstr "Программы могут уведомлять, пока их вкладка не видна"
 
-#: src/preferences.rs:254
+#: src/preferences.rs:264
 msgid "Copying"
 msgstr "Копирование"
 
-#: src/preferences.rs:256
+#: src/preferences.rs:266
 msgid "Programs can put text on the clipboard, but never read it"
 msgstr "Программы могут помещать текст в буфер обмена, но не читать его"
 
-#: src/terminal_view.rs:257
+#: src/terminal_view.rs:251
 #, rust-format
 msgid "The terminal cannot be drawn: {reason}"
 msgstr "Не удаётся нарисовать терминал: {reason}"
 
-#: src/terminal_view.rs:667
+#: src/terminal_view.rs:560
 #, rust-format
-msgid "“{program}” exited with status {status}"
-msgstr "«{program}» завершилась с кодом {status}"
+msgid "The terminal server cannot be reached: {reason}"
+msgstr "Сервер терминалов недоступен: {reason}"
 
-#: src/terminal_view.rs:671
-#, rust-format
-msgid "“{program}” was ended by signal {signal}"
-msgstr "«{program}» завершена сигналом {signal}"
-
-#: src/terminal_view.rs:674
-#, rust-format
-msgid "“{program}” ended"
-msgstr "«{program}» завершилась"
-
-#: src/terminal_view.rs:881
+#: src/terminal_view.rs:569
 #, rust-format
 msgid "Could not start “{program}”: {reason}"
 msgstr "Не удалось запустить «{program}»: {reason}"
 
-#: src/terminal_view.rs:884
+#: src/terminal_view.rs:572
 #, rust-format
 msgid "Could not start the shell: {reason}"
 msgstr "Не удалось запустить командную оболочку: {reason}"
 
-#: src/terminal_view.rs:1147
+#: src/terminal_view.rs:589
+#, rust-format
+msgid "“{program}” exited with status {status}"
+msgstr "«{program}» завершилась с кодом {status}"
+
+#: src/terminal_view.rs:593
+#, rust-format
+msgid "“{program}” was ended by signal {signal}"
+msgstr "«{program}» завершена сигналом {signal}"
+
+#: src/terminal_view.rs:596
+#, rust-format
+msgid "“{program}” ended"
+msgstr "«{program}» завершилась"
+
+#: src/terminal_view.rs:1093
 msgid "Paste Several Lines?"
 msgstr "Вставить несколько строк?"
 
-#: src/terminal_view.rs:1149
+#: src/terminal_view.rs:1095
 msgid ""
 "The program here does not mark pasted text, so each line runs as if typed "
 "and entered."
@@ -504,122 +535,122 @@ msgstr ""
 "Эта программа не отмечает вставленный текст, поэтому каждая строка "
 "выполнится, как если бы её набрали и нажали Enter."
 
-#: src/terminal_view.rs:1153 src/window.rs:456 src/window.rs:555
-#: src/window.rs:581
+#: src/terminal_view.rs:1099 src/window.rs:660 src/window.rs:812
+#: src/window.rs:851
 msgid "_Cancel"
 msgstr "_Отмена"
 
-#: src/terminal_view.rs:1154 src/terminal_view/input.rs:719
+#: src/terminal_view.rs:1100 src/terminal_view/input.rs:651
 msgid "_Paste"
 msgstr "_Вставить"
 
-#: src/terminal_view/input.rs:694
+#: src/terminal_view/input.rs:623
 #, rust-format
 msgid "Could not open the link: {reason}"
 msgstr "Не удалось открыть ссылку: {reason}"
 
-#: src/terminal_view/input.rs:718
+#: src/terminal_view/input.rs:650
 msgid "_Copy"
 msgstr "_Копировать"
 
-#: src/terminal_view/input.rs:721
+#: src/terminal_view/input.rs:653
 msgid "Select _All"
 msgstr "Выделить _всё"
 
-#: src/terminal_view/input.rs:725
+#: src/terminal_view/input.rs:657
 msgid "_Deselect"
 msgstr "_Снять выделение"
 
-#: src/terminal_view/input.rs:734
+#: src/terminal_view/input.rs:666
 msgid "_Open Link"
 msgstr "_Открыть ссылку"
 
-#: src/terminal_view/input.rs:735
+#: src/terminal_view/input.rs:667
 msgid "Copy _Link Address"
 msgstr "Копировать _адрес ссылки"
 
-#: src/terminal_view/input.rs:744 ui/window.ui:12
+#: src/terminal_view/input.rs:676 ui/window.ui:12
 msgid "New _Window"
 msgstr "Новое _окно"
 
-#: src/terminal_view/input.rs:746 ui/window.ui:16
+#: src/terminal_view/input.rs:678 ui/window.ui:16
 msgid "New _Tab"
 msgstr "Новая _вкладка"
 
-#: src/terminal_view/input.rs:747
+#: src/terminal_view/input.rs:679
 msgid "_Find…"
 msgstr "_Найти…"
 
-#: src/terminal_view/input.rs:750
+#: src/terminal_view/input.rs:682
 msgid "Show _All Tabs"
 msgstr "Показать _все вкладки"
 
-#: src/terminal_view/input.rs:755
+#: src/terminal_view/input.rs:687
 msgid "Title _Bar"
 msgstr "_Заголовок окна"
 
-#: src/terminal_view/input.rs:756 ui/window.ui:22
+#: src/terminal_view/input.rs:688 ui/window.ui:32
 msgid "_Full Screen"
 msgstr "_Во весь экран"
 
-#: src/terminal_view/input.rs:757 ui/window.ui:28
+#: src/terminal_view/input.rs:689 ui/window.ui:38
 msgid "_Preferences"
 msgstr "_Параметры"
 
-#: src/terminal_view/input.rs:758 ui/window.ui:32
+#: src/terminal_view/input.rs:690 ui/window.ui:42
 msgid "_Keyboard Shortcuts"
 msgstr "_Комбинации клавиш"
 
-#: src/terminal_view/input.rs:759 ui/window.ui:36
+#: src/terminal_view/input.rs:691 ui/window.ui:46
 msgid "_About Caret"
 msgstr "_О Caret"
 
-#: src/terminal_view/input.rs:762
+#: src/terminal_view/input.rs:694
 msgid "_Close Window"
 msgstr "_Закрыть окно"
 
-#: src/window.rs:311
+#: src/window.rs:359
 msgid "Command Finished"
 msgstr "Команда завершена"
 
-#: src/window.rs:312
+#: src/window.rs:360
 msgid "Command Failed"
 msgstr "Команда завершилась с ошибкой"
 
-#: src/window.rs:449
+#: src/window.rs:653
 msgid "Rename Tab"
 msgstr "Переименовать вкладку"
 
-#: src/window.rs:451
+#: src/window.rs:655
 msgid "Without a name, the tab shows the program’s title."
 msgstr "Без имени вкладка показывает заголовок программы."
 
-#: src/window.rs:457
+#: src/window.rs:661
 msgid "_Rename"
 msgstr "_Переименовать"
 
-#: src/window.rs:546
+#: src/window.rs:803
 msgid "A program is still running in this tab and will be stopped."
 msgstr "В этой вкладке ещё работает программа, её работа будет прервана."
 
-#: src/window.rs:549
+#: src/window.rs:806
 #, rust-format
 msgid "“{program}” is still running in this tab and will be stopped."
 msgstr "В этой вкладке ещё работает «{program}», и её работа будет прервана."
 
-#: src/window.rs:553
+#: src/window.rs:810
 msgid "Close Tab?"
 msgstr "Закрыть вкладку?"
 
-#: src/window.rs:556 src/window.rs:582
+#: src/window.rs:813 src/window.rs:852
 msgid "C_lose"
 msgstr "_Закрыть"
 
-#: src/window.rs:572
+#: src/window.rs:842
 msgid "Close Window?"
 msgstr "Закрыть окно?"
 
-#: src/window.rs:574
+#: src/window.rs:844
 #, rust-format
 msgid "A program is still running in {count} tab and will be stopped."
 msgid_plural "Programs are still running in {count} tabs and will be stopped."
@@ -631,7 +662,7 @@ msgstr[2] "Работа программ в {count} вкладках будет 
 msgid "Windows and Tabs"
 msgstr "Окна и вкладки"
 
-#: ui/shortcuts_dialog.ui:21 ui/window.ui:77
+#: ui/shortcuts_dialog.ui:21 ui/window.ui:87
 msgid "New Tab"
 msgstr "Новая вкладка"
 
@@ -695,7 +726,7 @@ msgstr "Выделить всё"
 msgid "Deselect"
 msgstr "Снять выделение"
 
-#: ui/shortcuts_dialog.ui:117 ui/window.ui:103
+#: ui/shortcuts_dialog.ui:117 ui/window.ui:113
 msgid "Find"
 msgstr "Найти"
 
@@ -731,26 +762,34 @@ msgstr "Обычный размер"
 msgid "Keyboard Shortcuts"
 msgstr "Комбинации клавиш"
 
-#: ui/window.ui:44
+#: ui/window.ui:22
+msgid "_Detach Window"
+msgstr "_Отсоединить окно"
+
+#: ui/window.ui:26
+msgid "_Reattach Windows"
+msgstr "_Вернуть окна"
+
+#: ui/window.ui:54
 msgid "_Rename Tab…"
 msgstr "_Переименовать вкладку…"
 
-#: ui/window.ui:50
+#: ui/window.ui:60
 msgid "_Close Tab"
 msgstr "_Закрыть вкладку"
 
-#: ui/window.ui:91
+#: ui/window.ui:101
 msgid "Main Menu"
 msgstr "Главное меню"
 
-#: ui/window.ui:127
+#: ui/window.ui:137
 msgid "Find in the history"
 msgstr "Поиск в истории"
 
-#: ui/window.ui:143
+#: ui/window.ui:153
 msgid "Find Upwards"
 msgstr "Найти выше"
 
-#: ui/window.ui:150
+#: ui/window.ui:160
 msgid "Find Downwards"
 msgstr "Найти ниже"

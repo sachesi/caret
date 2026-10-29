@@ -120,18 +120,16 @@ dependencies = [
 name = "caret"
 version = "0.2.0"
 dependencies = [
- "alacritty_terminal",
  "async-channel",
+ "caret-protocol",
  "gettext-rs",
  "gio",
  "glib-build-tools",
  "glow",
  "gtk4",
  "libadwaita",
- "libc",
  "libloading",
  "pangocairo",
- "polling",
  "thiserror",
  "tracing",
  "tracing-subscriber",
@@ -142,6 +140,19 @@ name = "caret-protocol"
 version = "0.2.0"
 dependencies = [
  "thiserror",
+]
+
+[[package]]
+name = "caret-server"
+version = "0.2.0"
+dependencies = [
+ "alacritty_terminal",
+ "caret-protocol",
+ "libc",
+ "polling",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

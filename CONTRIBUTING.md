@@ -27,26 +27,42 @@ Before a change goes in:
     src/terminal_view.rs      one terminal: the widget, its GL context, sizing, scrolling
                               and clipboard; in terminal_view/ its input, drawing, find
                               and accessible text
-    src/session.rs            the terminal state, the pty and the thread that reads it
-    src/encode.rs             keys, mouse events, pastes and focus as bytes for the program
-    src/frame.rs              a screen captured from the terminal, turned into quads
+    src/connection.rs         the connection to the terminal server, started if none
+                              listens, and what it sends routed to windows and tabs
+    src/encode.rs             keys, mouse events and pastes as bytes for the program
+    src/frame.rs              the screen as the server sent it, turned into quads
     src/renderer.rs           OpenGL: shaders, the glyph atlas, the textures GTK composites
     src/fonts.rs              cell metrics and glyphs rasterised by Pango and cairo
     src/box_drawing.rs        box drawing and block characters drawn to fill their cells
-    src/palette.rs            the default colours and the 256-colour palette
-    src/links.rs              addresses in the text
+    src/palette.rs            the default colours, sent to the server
+    crates/protocol           what clients and the server send each other, and how it
+                              is written on the socket
+    crates/server             caret-server: terminals, their screens and history, the
+                              sessions windows attach to, links and search
 
 Widgets are GObject subclasses; the window has a composite template from the Blueprint
 file. Actions use the usual prefixes: `app.`, `win.`, and `term.` on the terminal for its
 context menu.
 
-The terminal state is alacritty_terminal's `Term`, behind a lock that its reader thread
-and the main context share. The thread parses what the program writes and wakes the main
-context through a channel; the next frame takes the lock long enough to copy what is on
-screen, and draws from that copy. A search runs on a thread of its own, holding the
-lock's lease so no output moves the lines under it, and the lock itself a few thousand
-lines at a time; the main context takes the lock without the lease, so it never waits
-for more than one of those steps.
+Terminals live in `caret-server`, so that a window can detach and attach again later,
+or crash, without its programs ending. The server keeps sessions, each a list of tabs a
+window shows; one window attaches to one session. It parses what each program writes
+with alacritty_terminal and sends a client the rows that changed when the client asks for
+a frame, already resolved to colours and glyphs, so a client never sees the terminal
+state itself. A client sends input, sizes, scrolling and selection as requests, and asks
+questions (the selected text, the link under a point, a search) whose answers come back
+in order with everything else on the connection.
+
+The server runs one loop that owns every session and terminal; each client has a reader
+and a writer thread, and each terminal alacritty's thread that reads its pty. A search
+runs on a thread of its own, holding the terminal lock's lease so no output moves the
+lines under it, and the lock itself a few thousand lines at a time. The server ends once
+it keeps nothing and no client is connected. systemd starts it for its socket where its
+units are installed; otherwise the first window starts it.
+
+The protocol's version is exchanged first on each connection, and the server speaks
+every version from its oldest to its newest. A tag of a message or field is never
+reused.
 
 ## Drawing
 

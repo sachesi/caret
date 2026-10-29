@@ -4,11 +4,12 @@ use std::path::PathBuf;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
+use caret_protocol::{Answer, Bytes, Command, Question};
 use gettextrs::gettext;
 use gtk::{gio, glib};
 
 use crate::config;
-use crate::session::Command;
+use crate::connection::connection;
 use crate::settings::{self, settings};
 use crate::window::Window;
 
@@ -33,12 +34,13 @@ mod imp {
             settings::apply_color_scheme();
             settings().connect_changed(Some("color-scheme"), |_, _| settings::apply_color_scheme());
             self.obj().setup_actions();
+            tell_look();
         }
 
         /// D-Bus activation without arguments: a window with the shell at home.
         fn activate(&self) {
             self.obj().open_window(Command {
-                directory: Some(glib::home_dir()),
+                directory: Some(Bytes(glib::home_dir().as_os_str().as_bytes().to_vec())),
                 ..Command::default()
             });
         }
@@ -69,13 +71,17 @@ mod imp {
                     }
                 })
                 .or_else(|| cmdline.cwd());
-            let argv = options
+            let argv: Vec<String> = options
                 .lookup_value("", Some(glib::VariantTy::BYTE_STRING_ARRAY))
                 .and_then(|value| value.get::<Vec<Vec<u8>>>())
                 .unwrap_or_default()
                 .into_iter()
                 .map(|arg| bytes(arg).to_string_lossy().into_owned())
                 .collect();
+            if options.contains("attach") {
+                self.obj().reattach();
+                return glib::ExitCode::SUCCESS;
+            }
             // Variables that are not UTF-8 cannot be passed on, and are left out.
             let env = cmdline
                 .environ()
@@ -83,10 +89,12 @@ mod imp {
                 .filter_map(|variable| variable.to_str()?.split_once('='))
                 .map(|(name, value)| (name.to_owned(), value.to_owned()))
                 .collect();
+            let hold = !argv.is_empty();
             self.obj().open_window(Command {
                 argv,
-                directory,
+                directory: directory.map(|path| Bytes(path.as_os_str().as_bytes().to_vec())),
                 env,
+                hold,
             });
             glib::ExitCode::SUCCESS
         }
@@ -125,6 +133,32 @@ pub fn arguments() -> Vec<String> {
     arguments
 }
 
+/// Tells the server the terminals' colours and options, now and as they change.
+fn tell_look() {
+    let tell = || {
+        if let Ok(connection) = connection() {
+            connection.send(&settings::look());
+        }
+    };
+    tell();
+    settings().connect_changed(None, move |_, key| {
+        if [
+            "cursor-shape",
+            "scrollback-lines",
+            "program-clipboard",
+            "scroll-on-output",
+        ]
+        .contains(&key)
+        {
+            tell();
+        }
+    });
+    adw::StyleManager::default().connect_dark_notify(move |_| tell());
+    if let Some(gtk_settings) = gtk::Settings::default() {
+        gtk_settings.connect_gtk_cursor_blink_notify(move |_| tell());
+    }
+}
+
 impl Application {
     pub fn new() -> Self {
         let app: Self = glib::Object::builder()
@@ -143,6 +177,14 @@ impl Application {
             glib::OptionArg::Filename,
             &gettext("Start in this directory"),
             Some(&gettext("DIRECTORY")),
+        );
+        app.add_main_option(
+            "attach",
+            glib::Char::from(0),
+            glib::OptionFlags::NONE,
+            glib::OptionArg::None,
+            &gettext("Show the windows that were detached"),
+            None,
         );
         app.add_main_option(
             "version",
@@ -164,21 +206,64 @@ impl Application {
     }
 
     fn open_window(&self, command: Command) {
-        let window = Window::new(Some(self));
-        window.add_tab(command);
-        window.present();
+        Window::open(Some(self), command).present();
+    }
+
+    /// A window for each session no window shows, as they were detached.
+    fn reattach(&self) {
+        let connection = match connection() {
+            Ok(connection) => connection,
+            Err(reason) => {
+                tracing::warn!("reattaching: {reason}");
+                return;
+            }
+        };
+        let app = self.clone();
+        // Held until the windows show, so the application does not quit meanwhile.
+        let hold = self.hold();
+        connection.ask(Question::Sessions, move |answer| {
+            drop(hold);
+            let Answer::Sessions { sessions } = answer else {
+                return;
+            };
+            let detached: Vec<_> = sessions
+                .into_iter()
+                .filter(|session| session.clients == 0 && !session.tabs.is_empty())
+                .collect();
+            if detached.is_empty() {
+                app.toast(&gettext("No windows were detached"));
+            }
+            for session in detached {
+                Window::reattach(Some(&app), session.session).present();
+            }
+        });
+    }
+
+    /// A message over the active window, or none without one.
+    fn toast(&self, text: &str) {
+        if let Some(window) = self.active_window().and_downcast::<Window>() {
+            window.toast(text);
+        }
     }
 
     fn setup_actions(&self) {
         let new_window = gio::ActionEntry::builder("new-window")
             .activate(|app: &Self, _, _| {
-                let command = app
+                let current = app
                     .active_window()
                     .and_downcast::<Window>()
-                    .map(|window| window.next_command())
-                    .unwrap_or_default();
-                app.open_window(command);
+                    .and_then(|window| window.current_view());
+                match current {
+                    Some(view) => {
+                        let app = app.clone();
+                        view.next_command(move |command| app.open_window(command));
+                    }
+                    None => app.open_window(Command::default()),
+                }
             })
+            .build();
+        let reattach = gio::ActionEntry::builder("reattach")
+            .activate(|app: &Self, _, _| app.reattach())
             .build();
         let about = gio::ActionEntry::builder("about")
             .activate(|app: &Self, _, _| app.show_about())
@@ -203,7 +288,7 @@ impl Application {
                 }
             })
             .build();
-        self.add_action_entries([new_window, about, preferences, show_tab]);
+        self.add_action_entries([new_window, reattach, about, preferences, show_tab]);
         self.add_action(&settings().create_action("title-bar"));
 
         // Ctrl with Shift: plain Ctrl and a letter belong to the programs in the terminal.

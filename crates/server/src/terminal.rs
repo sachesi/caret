@@ -1,17 +1,18 @@
 //! One program in a pseudoterminal: `alacritty_terminal`'s parser and grid, fed on a thread
-//! of its own, and the events it raises passed to the main context.
+//! of its own, and the events it raises passed to the server's loop.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::ffi::CStr;
+use std::ffi::{CStr, OsStr};
 use std::fs::File;
 use std::io;
 use std::ops::DerefMut;
 use std::os::fd::AsRawFd;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
 
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::event_loop::{EventLoop, EventLoopSender, Msg};
@@ -19,16 +20,18 @@ use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::{self, Term};
 use alacritty_terminal::tty;
+use caret_protocol::{Command, TerminalId};
 
-use crate::config;
-use crate::shell::{FilteredPty, Report};
+use crate::server::Input;
+use crate::shell::FilteredPty;
 
-/// What the widget hears from the terminal. A wakeup is sent once until the widget has
-/// taken it, however much output arrives meanwhile, so the channel holds at most one of
-/// them and a few rare events besides.
+/// What the server's loop hears from the terminal. A wakeup is sent once until the loop
+/// has taken it, however much output arrives meanwhile, so the channel holds at most one
+/// of them for each terminal and a few rare events besides.
 #[derive(Clone)]
 pub struct Listener {
-    events: async_channel::Sender<Event>,
+    terminal: TerminalId,
+    events: mpsc::Sender<Input>,
     woken: Arc<AtomicBool>,
 }
 
@@ -40,9 +43,9 @@ impl EventListener for Listener {
             _ => {}
         }
         // Unbounded: the sender is the parser, which holds the terminal's lock, and a
-        // full channel would stall it while the main context waits for the same lock. It
-        // fails only once the view, which receives, is gone.
-        let _ = self.events.try_send(event);
+        // full channel would stall it while the loop waits for the same lock. It fails
+        // only once the loop has ended.
+        let _ = self.events.send(Input::Terminal(self.terminal, event));
     }
 }
 
@@ -66,7 +69,7 @@ impl Dimensions for GridSize {
     }
 }
 
-pub struct Session {
+pub struct Terminal {
     pub term: Arc<FairMutex<Term<Listener>>>,
     sender: EventLoopSender,
     woken: Arc<AtomicBool>,
@@ -76,16 +79,9 @@ pub struct Session {
     controller: File,
 }
 
-/// What to run, where, and with what environment.
-#[derive(Debug, Clone, Default)]
-pub struct Command {
-    /// A program and its arguments; the user's shell when empty.
-    pub argv: Vec<String>,
-    pub directory: Option<PathBuf>,
-    /// The environment of the command line that asked for the program, which may not be
-    /// the one Caret was started from; Caret's own when empty.
-    pub env: HashMap<String, String>,
-}
+/// Set beside `GSK_RENDERER` when the window chose GTK's renderer itself, so that the
+/// programs it starts get neither.
+const CHOSE_RENDERER: &str = "CARET_CHOSE_GSK_RENDERER";
 
 /// Variables that describe the terminal a command line was typed in, or a multiplexer
 /// running in it, and would mislead programs in this one; and those `alacritty_terminal`
@@ -161,20 +157,37 @@ fn account() -> Option<(String, String, String)> {
     ))
 }
 
-impl Command {
+/// What to run, read from a client's command.
+struct Launch<'a>(&'a Command);
+
+/// The name of the program `command` runs, as a tab is called until the program gives
+/// it a title.
+pub fn program_name(command: &Command) -> String {
+    let program = Launch(command).program();
+    Path::new(&program)
+        .file_name()
+        .map_or(program.clone(), |name| name.to_string_lossy().into_owned())
+}
+
+impl Launch<'_> {
+    fn directory(&self) -> Option<PathBuf> {
+        let directory = self.0.directory.as_ref()?;
+        Some(PathBuf::from(OsStr::from_bytes(&directory.0)))
+    }
+
     /// The environment the program gets, whole.
     fn environment(&self) -> HashMap<String, String> {
-        let mut env: HashMap<String, String> = if self.env.is_empty() {
+        let mut env: HashMap<String, String> = if self.0.env.is_empty() {
             std::env::vars_os()
                 .filter_map(|(name, value)| {
                     Some((name.into_string().ok()?, value.into_string().ok()?))
                 })
                 .collect()
         } else {
-            self.env.clone()
+            self.0.env.iter().cloned().collect()
         };
         env.retain(|name, _| !FOREIGN.contains(&name.as_str()));
-        if env.remove(crate::CHOSE_RENDERER).is_some() {
+        if env.remove(CHOSE_RENDERER).is_some() {
             env.remove("GSK_RENDERER");
         }
         if !["USER", "HOME", "SHELL"]
@@ -191,7 +204,7 @@ impl Command {
                 ("TERM", "xterm-256color"),
                 ("COLORTERM", "truecolor"),
                 ("TERM_PROGRAM", "caret"),
-                ("TERM_PROGRAM_VERSION", config::VERSION),
+                ("TERM_PROGRAM_VERSION", crate::VERSION),
             ]
             .map(|(name, value)| (name.to_owned(), value.to_owned())),
         );
@@ -199,15 +212,18 @@ impl Command {
     }
 
     /// The program to run: the one named, or the user's shell.
-    pub fn program(&self) -> String {
+    fn program(&self) -> String {
         let shell = || {
-            self.env
-                .get("SHELL")
-                .cloned()
+            self.0
+                .env
+                .iter()
+                .find(|(name, _)| name == "SHELL")
+                .map(|(_, value)| value.clone())
                 .or_else(|| std::env::var("SHELL").ok())
                 .or_else(|| account().map(|(_, _, shell)| shell))
         };
-        self.argv
+        self.0
+            .argv
             .first()
             .cloned()
             .or_else(shell)
@@ -224,7 +240,7 @@ impl Command {
         };
         let found = if program.contains('/') {
             let path = Path::new(program);
-            match &self.directory {
+            match self.directory() {
                 Some(directory) if path.is_relative() => runnable(&directory.join(path)),
                 _ => runnable(path),
             }
@@ -243,45 +259,44 @@ impl Command {
     }
 }
 
-impl Session {
+impl Terminal {
     pub fn spawn(
+        id: TerminalId,
         command: &Command,
         size: WindowSize,
         config: term::Config,
-    ) -> io::Result<(
-        Self,
-        async_channel::Receiver<Event>,
-        async_channel::Receiver<Report>,
-    )> {
-        let (events, received) = async_channel::unbounded();
+        events: &mpsc::Sender<Input>,
+    ) -> io::Result<Self> {
         let woken = Arc::new(AtomicBool::new(false));
         let listener = Listener {
-            events,
+            terminal: id,
+            events: events.clone(),
             woken: woken.clone(),
         };
 
         // alacritty_terminal can add variables but not take any away, so the program is
         // started by `env -i` with the environment it is meant to have, whole.
-        let env = command.environment();
-        let program = command.program();
-        command.check(&program, &env)?;
+        let launch = Launch(command);
+        let env = launch.environment();
+        let program = launch.program();
+        launch.check(&program, &env)?;
         let mut args = vec!["-i".to_owned(), "--".to_owned()];
         args.extend(env.iter().map(|(name, value)| format!("{name}={value}")));
         args.push(program);
         args.extend(command.argv.iter().skip(1).cloned());
         let options = tty::Options {
             shell: Some(tty::Shell::new("env".to_owned(), args)),
-            working_directory: command.directory.clone(),
+            working_directory: launch.directory(),
             drain_on_exit: true,
             env: HashMap::new(),
         };
         let pty = tty::new(&options, size, 0)?;
         let child = pty.child().id();
         let controller = pty.file().try_clone()?;
-        let (reports, reported) = async_channel::unbounded();
+        let reports = events.clone();
         let pty = FilteredPty::new(pty, move |report| {
-            // Fails only once the view, which receives, is gone.
-            let _ = reports.try_send(report);
+            // Fails only once the loop has ended.
+            let _ = reports.send(Input::Report(id, report));
         })?;
 
         let grid = GridSize {
@@ -295,20 +310,16 @@ impl Session {
         // the pseudoterminal with it.
         drop(event_loop.spawn());
 
-        Ok((
-            Self {
-                term,
-                sender,
-                woken,
-                child,
-                controller,
-            },
-            received,
-            reported,
-        ))
+        Ok(Self {
+            term,
+            sender,
+            woken,
+            child,
+            controller,
+        })
     }
 
-    /// Lets the next output wake the widget again; called when it takes a wakeup.
+    /// Lets the next output wake the loop again; called when it takes a wakeup.
     pub fn rearm(&self) {
         self.woken.store(false, Ordering::SeqCst);
     }
@@ -321,7 +332,7 @@ impl Session {
         }
     }
 
-    /// The terminal, for the main context. It takes the lock without the lease a search
+    /// The terminal, for the server's loop. It takes the lock without the lease a search
     /// holds from start to end, so it waits for one step of a search at most, as for one
     /// read of the program's output.
     pub fn lock(&self) -> impl DerefMut<Target = Term<Listener>> + '_ {
@@ -337,7 +348,7 @@ impl Session {
         let _ = self.sender.send(Msg::Resize(size));
     }
 
-    /// The name of the program in the foreground when it is not the one the session
+    /// The name of the program in the foreground when it is not the one the terminal
     /// started, the shell usually: something that closing would interrupt.
     #[expect(unsafe_code, reason = "tcgetpgrp through libc")]
     pub fn busy(&self) -> Option<String> {
@@ -356,7 +367,7 @@ impl Session {
     }
 }
 
-impl Drop for Session {
+impl Drop for Terminal {
     fn drop(&mut self) {
         // An event loop that has ended needs no shutdown.
         let _ = self.sender.send(Msg::Shutdown);
@@ -388,30 +399,34 @@ mod tests {
             ("HOME", "/home/someone"),
             ("SHELL", "/bin/zsh"),
         ]);
-        let env = command.environment();
+        let env = Launch(&command).environment();
         assert_eq!(env.get("EDITOR").map(String::as_str), Some("vi"));
         assert_eq!(env.get("TERM").map(String::as_str), Some("xterm-256color"));
         assert!(!env.contains_key("TMUX"));
         assert!(!env.contains_key("VTE_VERSION"));
-        assert_eq!(command.program(), "/bin/zsh");
+        assert_eq!(Launch(&command).program(), "/bin/zsh");
     }
 
     #[test]
     fn the_renderer_caret_chose_is_not_passed_on() {
-        let chosen = command(&[("GSK_RENDERER", "gl"), (crate::CHOSE_RENDERER, "1")]);
-        let env = chosen.environment();
+        let chosen = command(&[("GSK_RENDERER", "gl"), (CHOSE_RENDERER, "1")]);
+        let env = Launch(&chosen).environment();
         assert!(!env.contains_key("GSK_RENDERER"));
-        assert!(!env.contains_key(crate::CHOSE_RENDERER));
+        assert!(!env.contains_key(CHOSE_RENDERER));
         let own = command(&[("GSK_RENDERER", "vulkan")]);
         assert_eq!(
-            own.environment().get("GSK_RENDERER").map(String::as_str),
+            Launch(&own)
+                .environment()
+                .get("GSK_RENDERER")
+                .map(String::as_str),
             Some("vulkan")
         );
     }
 
     #[test]
     fn a_program_is_looked_for_in_the_path_it_will_run_with() {
-        let command = Command::default();
+        let default = Command::default();
+        let command = Launch(&default);
         let path = HashMap::from([("PATH".to_owned(), "/usr/bin:/bin".to_owned())]);
         assert!(command.check("sh", &path).is_ok());
         assert!(command.check("/bin/sh", &HashMap::new()).is_ok());

@@ -9,7 +9,8 @@ It runs on Wayland and X11 and does not depend on any desktop session. You need 
 3.3 or OpenGL ES 3.0 through EGL, GTK 4.22 and libadwaita 1.9.
 
 It has tabs, with an overview, and new tabs and windows start in the folder of the current
-one. You can search the history, select a word or a line with a double or triple click,
+one. The programs run in a terminal server, so a window can be detached and attached
+again later with its programs still running. You can search the history, select a word or a line with a double or triple click,
 and open an address with Ctrl and a click. Programs get mouse reporting, bracketed paste,
 true colour and double, curly, dotted and dashed underlines. Box drawing and block
 characters are drawn to fill their cells, so lines join without gaps. The font and the

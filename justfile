@@ -15,6 +15,7 @@ prefix := env("PREFIX", "/usr/local")
 destdir := env("DESTDIR", "")
 bindir := destdir + prefix + "/bin"
 datadir := destdir + prefix + "/share"
+unitdir := destdir + prefix + "/lib/systemd/user"
 release := "target/release"
 schema_dir := "target/schemas"
 pot_dir := "target/pot"
@@ -38,9 +39,10 @@ schemas:
         data/{{app_id}}.gschema.xml > {{schema_dir}}/{{app_id}}.Devel.gschema.xml
     glib-compile-schemas --strict {{schema_dir}}
 
-# Run a debug build uninstalled, as the separate {{app_id}}.Devel application: just run [-e COMMAND…]
-run *args: schemas
-    GSETTINGS_SCHEMA_DIR={{schema_dir}} cargo run --locked -- {{args}}
+# Run a debug build uninstalled, as the separate {{app_id}}.Devel application, which starts
+# the debug terminal server beside it: just run [-e COMMAND…]
+run *args: schemas build-debug
+    GSETTINGS_SCHEMA_DIR={{schema_dir}} target/debug/caret {{args}}
 
 # Formatting, clippy, Blueprint formatting, schema, desktop entry, metainfo and catalogues.
 check:
@@ -85,7 +87,12 @@ deny:
 # Install the release build. Does not build: run `just build` first, with the same prefix.
 install:
     @test -x {{release}}/caret || { echo "error: {{release}}/caret missing; run 'just build' first" >&2; exit 1; }
+    @test -x {{release}}/caret-server || { echo "error: {{release}}/caret-server missing; run 'just build' first" >&2; exit 1; }
     install -Dm755 {{release}}/caret {{bindir}}/caret
+    install -Dm755 {{release}}/caret-server {{bindir}}/caret-server
+    mkdir -p {{unitdir}}
+    install -Dm644 data/caret-server.socket {{unitdir}}/caret-server.socket
+    sed 's|@bindir@|{{prefix}}/bin|' data/caret-server.service.in > {{unitdir}}/caret-server.service
     mkdir -p {{datadir}}/applications {{datadir}}/metainfo
     msgfmt --desktop --template=data/{{app_id}}.desktop -d po -o {{datadir}}/applications/{{app_id}}.desktop
     msgfmt --xml --template=data/{{app_id}}.metainfo.xml -d po -o {{datadir}}/metainfo/{{app_id}}.metainfo.xml
@@ -101,7 +108,8 @@ install:
 
 # Remove what install put under the prefix.
 uninstall:
-    rm -f {{bindir}}/caret
+    rm -f {{bindir}}/caret {{bindir}}/caret-server
+    rm -f {{unitdir}}/caret-server.socket {{unitdir}}/caret-server.service
     rm -f {{datadir}}/applications/{{app_id}}.desktop {{datadir}}/metainfo/{{app_id}}.metainfo.xml
     rm -f {{datadir}}/glib-2.0/schemas/{{app_id}}.gschema.xml
     rm -f {{datadir}}/icons/hicolor/scalable/apps/{{app_id}}.svg {{datadir}}/icons/hicolor/symbolic/apps/{{app_id}}-symbolic.svg

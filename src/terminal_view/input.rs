@@ -2,16 +2,11 @@
 
 use std::os::unix::ffi::OsStrExt;
 
-use alacritty_terminal::grid::Dimensions;
-use alacritty_terminal::index::{Column, Line, Point, Side};
-use alacritty_terminal::selection::{Selection, SelectionType};
-use alacritty_terminal::term::cell::Flags;
-use alacritty_terminal::term::{Term, TermMode, viewport_to_point};
+use caret_protocol::SelectionKind;
 use gettextrs::gettext;
 
 use super::*;
 use crate::encode::{self, Key, Modifiers, MouseAction, MouseButton};
-use crate::links::{self, Link, Span};
 
 fn modifiers(state: gdk::ModifierType) -> Modifiers {
     Modifiers {
@@ -61,71 +56,6 @@ fn mouse_button(button: u32) -> Option<MouseButton> {
         gdk::BUTTON_SECONDARY => Some(MouseButton::Right),
         _ => None,
     }
-}
-
-/// Lines an address is followed through, up and down from the point.
-const LONGEST_ADDRESS: i32 = 64;
-
-/// The address at a point of the view: the hyperlink a program gave the text there, or
-/// one written out in it.
-pub(super) fn link_in<T: EventListener>(term: &Term<T>, point: Point<usize>) -> Option<Link> {
-    // A cell the pointer was over before the grid shrank may be outside it now.
-    if point.line >= term.screen_lines() || point.column >= term.columns() {
-        return None;
-    }
-    let point = viewport_to_point(term.grid().display_offset(), point);
-    if let Some(link) = term.grid()[point].hyperlink()
-        && links::openable(link.uri())
-    {
-        return Some(Link {
-            uri: link.uri().to_owned(),
-            span: Span::Program(link),
-        });
-    }
-    let grid = term.grid();
-
-    let last = term.last_column();
-    // A line goes on in the next where the terminal wrapped it, and where a program that
-    // breaks lines itself filled it to the last column with an address.
-    let goes_on = |line: i32| {
-        let end = &grid[Line(line)][last];
-        end.flags.contains(Flags::WRAPLINE)
-            || (links::continues_address(end.c)
-                && links::continues_address(grid[Line(line + 1)][Column(0)].c))
-    };
-    let top = term.topmost_line().0.max(point.line.0 - LONGEST_ADDRESS);
-    let bottom = term.bottommost_line().0.min(point.line.0 + LONGEST_ADDRESS);
-    let mut first = point.line.0;
-    while first > top && goes_on(first - 1) {
-        first -= 1;
-    }
-    let mut end = point.line.0;
-    while end < bottom && goes_on(end) {
-        end += 1;
-    }
-    let columns = term.columns();
-    let mut text = Vec::with_capacity(columns * (end - first + 1) as usize);
-    for line in first..=end {
-        for column in 0..columns {
-            let cell = &grid[Line(line)][Column(column)];
-            let spacer = cell
-                .flags
-                .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER);
-            text.push(if spacer { '\0' } else { cell.c });
-        }
-    }
-    let index = (point.line.0 - first) as usize * columns + point.column.0;
-    let range = links::address_at(&text, index)?;
-    let cell = |index: usize| {
-        Point::new(
-            Line(first + (index / columns) as i32),
-            Column(index % columns),
-        )
-    };
-    Some(Link {
-        span: Span::Written(cell(range.start)..=cell(range.end - 1)),
-        uri: text[range].iter().filter(|&&c| c != '\0').collect(),
-    })
 }
 
 impl TerminalView {
@@ -208,10 +138,11 @@ impl TerminalView {
             #[weak(rename_to = view)]
             self,
             move |_| {
-                let imp = view.imp();
-                imp.hovered_cell.set(None);
-                if imp.link_underlined.get() {
-                    view.queue_draw();
+                if view.imp().hovered_cell.replace(None).is_some() {
+                    view.send(|terminal| Request::Hover {
+                        terminal,
+                        point: None,
+                    });
                 }
             }
         ));
@@ -237,14 +168,6 @@ impl TerminalView {
             move |_, value, _, _| view.dropped(value)
         ));
         self.add_controller(drop);
-    }
-
-    fn mode(&self) -> TermMode {
-        self.imp()
-            .session
-            .borrow()
-            .as_ref()
-            .map_or(TermMode::empty(), |session| *session.lock().mode())
     }
 
     fn key_pressed(
@@ -328,14 +251,7 @@ impl TerminalView {
                 im.focus_out();
             }
         }
-        let report = imp.session.borrow().as_ref().is_some_and(|session| {
-            let mut term = session.lock();
-            term.is_focused = focused;
-            term.mode().contains(TermMode::FOCUS_IN_OUT)
-        });
-        if report {
-            self.write(encode::focus(focused));
-        }
+        self.send(|terminal| Request::Focus { terminal, focused });
         self.restart_blink();
         self.queue_draw();
     }
@@ -357,9 +273,9 @@ impl TerminalView {
         (x / scale, y / scale)
     }
 
-    /// The cell under a point of the widget, as a line of the screen and a column, and
-    /// the half of the cell it is in. Points outside the grid go to its nearest cell.
-    pub(super) fn cell_at(&self, x: f64, y: f64) -> Option<(Point<usize>, Side)> {
+    /// The cell under a point of the widget, and whether the point is in the right half
+    /// of it. Points outside the grid go to its nearest cell.
+    pub(super) fn cell_at(&self, x: f64, y: f64) -> Option<(Point, bool)> {
         let imp = self.imp();
         let cell = imp.fonts.borrow().as_ref()?.cell;
         let (columns, lines) = imp.grid.get();
@@ -375,12 +291,14 @@ impl TerminalView {
         let line = (y / f64::from(cell.height))
             .floor()
             .clamp(0.0, (lines - 1) as f64) as usize;
-        let side = if x - column as f64 * width < width / 2.0 {
-            Side::Left
-        } else {
-            Side::Right
-        };
-        Some((Point::new(line, Column(column)), side))
+        let right = x - column as f64 * width >= width / 2.0;
+        Some((
+            Point {
+                line: line as u16,
+                column: column as u16,
+            },
+            right,
+        ))
     }
 
     /// Sends a mouse event to the program if it asked for them and Shift, which keeps
@@ -395,21 +313,20 @@ impl TerminalView {
     ) -> bool {
         let modifiers = modifiers(state);
         let mode = self.mode();
-        if modifiers.shift || !mode.intersects(TermMode::MOUSE_MODE) {
+        if modifiers.shift || !mode.intersects(Mode::MOUSE_MODE) {
             return false;
         }
         let Some((point, _)) = self.cell_at(x, y) else {
             return false;
         };
+        let (line, column) = (usize::from(point.line), usize::from(point.column));
         if action == MouseAction::Motion {
-            let cell = (point.line, point.column.0);
+            let cell = (line, column);
             if self.imp().reported_cell.replace(Some(cell)) == Some(cell) {
                 return true;
             }
         }
-        if let Some(bytes) =
-            encode::mouse(button, action, modifiers, point.column.0, point.line, mode)
-        {
+        if let Some(bytes) = encode::mouse(button, action, modifiers, column, line, mode) {
             self.write(bytes);
         }
         true
@@ -428,15 +345,17 @@ impl TerminalView {
         }
         match button {
             MouseButton::Left if state.contains(gdk::ModifierType::CONTROL_MASK) => {
-                if let Some(link) = self.link_at(x, y) {
-                    self.open(&link);
-                }
+                self.link_at(x, y, |view, link| {
+                    if let Some(link) = link {
+                        view.open(&link);
+                    }
+                });
             }
             MouseButton::Left => {
                 let kind = match presses {
-                    1 => SelectionType::Simple,
-                    2 => SelectionType::Semantic,
-                    _ => SelectionType::Lines,
+                    1 => SelectionKind::Simple,
+                    2 => SelectionKind::Word,
+                    _ => SelectionKind::Line,
                 };
                 let extend = presses == 1 && state.contains(gdk::ModifierType::SHIFT_MASK);
                 self.select(kind, x, y, extend);
@@ -460,7 +379,7 @@ impl TerminalView {
             );
         } else if imp.selecting.get() {
             imp.drag_point.set((x, y));
-            self.select(SelectionType::Simple, x, y, true);
+            self.select(SelectionKind::Simple, x, y, true);
             if self.autoscroll_lines() != 0 && imp.autoscroll.borrow().is_none() {
                 let source = glib::timeout_add_local(
                     std::time::Duration::from_millis(50),
@@ -504,7 +423,7 @@ impl TerminalView {
         }
         self.scroll_lines(lines);
         let (x, y) = imp.drag_point.get();
-        self.select(SelectionType::Simple, x, y, true);
+        self.select(SelectionKind::Simple, x, y, true);
         glib::ControlFlow::Continue
     }
 
@@ -523,10 +442,9 @@ impl TerminalView {
         if let Some(autoscroll) = imp.autoscroll.take() {
             autoscroll.remove();
         }
-        if imp.selecting.replace(false)
-            && let Some(text) = self.selection_text()
-        {
-            self.primary_clipboard().set_text(&text);
+        if imp.selecting.replace(false) {
+            let primary = self.primary_clipboard();
+            self.selection_text(move |text| primary.set_text(&text));
         }
     }
 
@@ -535,7 +453,7 @@ impl TerminalView {
         imp.pointer.set((x, y));
         let state = controller.current_event_state();
         if imp.reported_button.get().is_none()
-            && self.mode().contains(TermMode::MOUSE_MOTION)
+            && self.mode().contains(Mode::MOUSE_MOTION)
             && !state.intersects(
                 gdk::ModifierType::BUTTON1_MASK
                     | gdk::ModifierType::BUTTON2_MASK
@@ -545,30 +463,31 @@ impl TerminalView {
             self.report_mouse(MouseButton::None, MouseAction::Motion, x, y, state);
         }
         let cell = self.cell_at(x, y).map(|(point, _)| point);
-        let moved = imp.hovered_cell.replace(cell) != cell;
-        let ctrl = state.contains(gdk::ModifierType::CONTROL_MASK);
-        let link = {
-            let session = imp.session.borrow();
-            let Some(session) = session.as_ref() else {
-                return;
-            };
-            // While output is being read, the pointer keeps what it showed rather than
-            // waiting on every move.
-            let Some(term) = session.term.try_lock_unfair() else {
-                return;
-            };
-            cell.and_then(|point| link_in(&term, point))
-        };
-        if moved && (link.is_some() || imp.link_underlined.get()) {
-            self.queue_draw();
+        if imp.hovered_cell.replace(cell) != cell {
+            self.send(|terminal| Request::Hover {
+                terminal,
+                point: cell,
+            });
         }
+        imp.ctrl
+            .set(state.contains(gdk::ModifierType::CONTROL_MASK));
+        self.show_link();
+    }
+
+    /// The pointer and the tooltip for the address under the pointer, as the last frame
+    /// found it.
+    pub(super) fn show_link(&self) {
+        let imp = self.imp();
+        let ctrl = imp.ctrl.get();
         // With Ctrl, any address opens; without, a program's link still shows where it goes,
         // since its text may say otherwise.
-        let link = link
-            .filter(|link| ctrl || matches!(link.span, Span::Program(_)))
-            .map(|link| link.uri);
-        let reporting = self.mode().intersects(TermMode::MOUSE_MODE)
-            && !state.contains(gdk::ModifierType::SHIFT_MASK);
+        let link = imp
+            .hovered
+            .borrow()
+            .as_ref()
+            .filter(|link| ctrl || link.marked)
+            .map(|link| link.uri.clone());
+        let reporting = self.mode().intersects(Mode::MOUSE_MODE);
         let cursor = if ctrl && link.is_some() {
             "pointer"
         } else if reporting {
@@ -584,19 +503,16 @@ impl TerminalView {
 
     /// Starts a selection of `kind` at a point, or with `extend` moves the end of the one
     /// there is.
-    fn select(&self, kind: SelectionType, x: f64, y: f64, extend: bool) {
-        let Some((point, side)) = self.cell_at(x, y) else {
+    fn select(&self, kind: SelectionKind, x: f64, y: f64, extend: bool) {
+        let Some((point, right)) = self.cell_at(x, y) else {
             return;
         };
-        if let Some(session) = self.imp().session.borrow().as_ref() {
-            let mut term = session.lock();
-            let point = viewport_to_point(term.grid().display_offset(), point);
-            match term.selection.as_mut() {
-                Some(selection) if extend => selection.update(point, side),
-                _ => term.selection = Some(Selection::new(kind, point, side)),
-            }
-        }
-        self.queue_draw();
+        let select = if extend {
+            Select::Extend { point, right }
+        } else {
+            Select::Start { kind, point, right }
+        };
+        self.send(|terminal| Request::Select { terminal, select });
     }
 
     fn scrolled(&self, controller: &gtk::EventControllerScroll, dy: f64) -> glib::Propagation {
@@ -636,11 +552,11 @@ impl TerminalView {
         } else {
             MouseButton::WheelDown
         };
-        if mode.intersects(TermMode::MOUSE_MODE) && !state.contains(gdk::ModifierType::SHIFT_MASK) {
+        if mode.intersects(Mode::MOUSE_MODE) && !state.contains(gdk::ModifierType::SHIFT_MASK) {
             for _ in 0..whole.unsigned_abs() {
                 self.report_mouse(button, MouseAction::Press, x, y, state);
             }
-        } else if mode.contains(TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL)
+        } else if mode.contains(Mode::ALT_SCREEN | Mode::ALTERNATE_SCROLL)
             && !state.contains(gdk::ModifierType::SHIFT_MASK)
         {
             // Programs on the alternate screen have no history to scroll: they get arrows.
@@ -673,12 +589,25 @@ impl TerminalView {
         true
     }
 
-    /// The address under a point: a hyperlink a program gave the text, or one written
-    /// out in it, followed across wrapped lines.
-    fn link_at(&self, x: f64, y: f64) -> Option<String> {
-        let (point, _) = self.cell_at(x, y)?;
-        let session = self.imp().session.borrow();
-        link_in(&session.as_ref()?.lock(), point).map(|link| link.uri)
+    /// Has `answered` told the address under a point: a hyperlink a program gave the
+    /// text, or one written out in it, followed across wrapped lines.
+    fn link_at(&self, x: f64, y: f64, answered: impl FnOnce(&Self, Option<String>) + 'static) {
+        let (Some((point, _)), Some(terminal), Ok(connection)) =
+            (self.cell_at(x, y), self.terminal(), connection())
+        else {
+            answered(self, None);
+            return;
+        };
+        let weak = self.downgrade();
+        connection.ask(Question::LinkAt { terminal, point }, move |answer| {
+            if let Some(view) = weak.upgrade() {
+                let uri = match answer {
+                    Answer::Link { uri } => uri,
+                    _ => None,
+                };
+                answered(&view, uri);
+            }
+        });
     }
 
     fn open(&self, uri: &str) {
@@ -709,8 +638,11 @@ impl TerminalView {
     }
 
     fn show_menu(&self, x: f64, y: f64) {
+        self.link_at(x, y, move |view, link| view.show_menu_for(x, y, link));
+    }
+
+    fn show_menu_for(&self, x: f64, y: f64, link: Option<String>) {
         let imp = self.imp();
-        let link = self.link_at(x, y);
         let menu = gio::Menu::new();
         let edit = gio::Menu::new();
         // The window's Ctrl+Shift shortcuts do the same; shown here, not bound twice.
@@ -793,26 +725,5 @@ impl TerminalView {
         if let Some(link) = self.imp().menu_link.borrow().as_ref() {
             self.clipboard().set_text(link);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use alacritty_terminal::event::VoidListener;
-
-    #[test]
-    fn a_cell_outside_a_shrunk_grid_has_no_link() {
-        let size = crate::session::GridSize {
-            columns: 80,
-            lines: 24,
-        };
-        let mut term = Term::new(term::Config::default(), &size, VoidListener);
-        term.resize(crate::session::GridSize {
-            columns: 40,
-            lines: 10,
-        });
-        assert!(link_in(&term, Point::new(20, Column(70))).is_none());
-        assert!(link_in(&term, Point::new(5, Column(70))).is_none());
     }
 }

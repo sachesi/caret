@@ -3,10 +3,9 @@
 
 use std::ops::Range;
 
-use alacritty_terminal::index::Point;
+use caret_protocol::GlyphText;
 
 use super::*;
-use crate::fonts::GlyphText;
 use crate::frame::ScreenSelection;
 
 /// A character of the text and the cells it stands for.
@@ -101,8 +100,8 @@ impl ScreenText {
     }
 
     fn range_of(&self, selection: ScreenSelection) -> Range<usize> {
-        let start = self.offset_of(selection.start.line, selection.start.column.0);
-        let end = self.offset_of(selection.end.line, selection.end.column.0 + 1);
+        let start = self.offset_of(selection.start.line, selection.start.column);
+        let end = self.offset_of(selection.end.line, selection.end.column + 1);
         start..end.max(start)
     }
 
@@ -293,25 +292,25 @@ impl gtk::subclass::accessible_text::AccessibleTextImpl for imp::TerminalView {
         let (Point { line, column }, _) = self
             .obj()
             .cell_at(f64::from(point.x()), f64::from(point.y()))?;
-        let offset = self.text.borrow().offset_of(line, column.0);
+        let offset = self
+            .text
+            .borrow()
+            .offset_of(usize::from(line), usize::from(column));
         u32::try_from(offset).ok()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use caret_protocol::{CellFlags, CursorShape, Glyph, Rgb};
+
     use super::*;
-    use crate::fonts::GlyphKey;
-    use crate::frame::{ScreenCell, ScreenCursor};
-    use alacritty_terminal::index::Column;
-    use alacritty_terminal::term::cell::Flags;
+    use crate::frame::{Place, ScreenCell, ScreenCursor};
 
     fn screen(lines: &[&str], cursor: (usize, usize)) -> Screen {
-        let mut screen = Screen {
-            lines: lines.len(),
-            columns: 20,
-            ..Screen::default()
-        };
+        let mut screen = Screen::default();
+        screen.lines = lines.len();
+        screen.columns = 20;
         for (line, text) in lines.iter().enumerate() {
             let mut column = 0;
             for c in text.chars() {
@@ -320,7 +319,7 @@ mod tests {
                     screen.cells.push(ScreenCell {
                         line,
                         column,
-                        glyph: Some(GlyphKey {
+                        glyph: Some(Glyph {
                             text: GlyphText::Char(c),
                             style: 0,
                             wide,
@@ -328,7 +327,7 @@ mod tests {
                         fg: Rgb::default(),
                         bg: Rgb::default(),
                         underline: Rgb::default(),
-                        flags: Flags::empty(),
+                        flags: CellFlags::empty(),
                     });
                 }
                 column += if wide { 2 } else { 1 };
@@ -362,8 +361,8 @@ mod tests {
     fn selections_cover_the_characters_of_their_cells() {
         let mut screen = screen(&["one two", "three"], (1, 5));
         screen.selection = Some(ScreenSelection {
-            start: Point::new(0, Column(4)),
-            end: Point::new(1, Column(2)),
+            start: Place { line: 0, column: 4 },
+            end: Place { line: 1, column: 2 },
             block: false,
         });
         let text = ScreenText::new(&screen);

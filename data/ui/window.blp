@@ -16,6 +16,18 @@ menu primary_menu {
 
   section {
     item {
+      label: _("_Detach Window");
+      action: "win.detach";
+    }
+
+    item {
+      label: _("_Reattach Windows");
+      action: "app.reattach";
+    }
+  }
+
+  section {
+    item {
       label: _("_Full Screen");
       action: "win.fullscreen";
     }
@@ -156,7 +168,7 @@ template $CaretWindow: Adw.ApplicationWindow {
         };
       }
 
-      content: Adw.ToastOverlay {
+      content: Adw.ToastOverlay toast_overlay {
         child: Adw.TabView tab_view {
           vexpand: true;
           menu-model: tab_menu;

@@ -33,10 +33,16 @@ prefix, `/usr/local/share/locale` by default; give the same prefix to `build` an
     DESTDIR=/tmp/stage just install
 
 `install` copies what `just build` produced; it never builds. The default prefix is
-`/usr/local`. It puts the binary in `bin`, and the desktop entry, metainfo, icons,
-GSettings schema and translations under `share`, then compiles the schema and refreshes
-the desktop and icon caches. With `DESTDIR` set, those caches are left to the package
-manager.
+`/usr/local`. It puts `caret` and `caret-server` in `bin`, the server's systemd user
+units in `lib/systemd/user`, and the desktop entry, metainfo, icons, GSettings schema and
+translations under `share`, then compiles the schema and refreshes the desktop and icon
+caches. With `DESTDIR` set, those caches are left to the package manager.
+
+The first window starts `caret-server` when nothing listens on its socket, and the server
+ends once it keeps no terminal and no window is attached. To have systemd start it
+instead, which keeps its terminals out of the window's process tree and resource limits:
+
+    systemctl --user enable --now caret-server.socket
 
 ## Remove
 
