@@ -13,6 +13,7 @@ mod session;
 mod settings;
 mod shell;
 mod terminal_view;
+mod timings;
 mod window;
 
 use gio::prelude::*;

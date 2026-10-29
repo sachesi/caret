@@ -72,11 +72,18 @@ by `box_drawing.rs` to the cell's exact size, so lines join across cells.
     just check               # fmt, clippy -D warnings, blueprint, validators, catalogues
     just test                # the unit tests
     just deny                # advisories, licences and sources of the dependencies
+    just bench               # how fast the release build is, in a headless session
 
 Debug builds are a separate application, `io.github.sachesi.caret.Devel`, with stripes in
 the header bar and settings of their own under `/io/github/sachesi/caret/Devel/`, so they
 run beside an installed Caret. A second `just run` opens a window in the first;
 `GSETTINGS_BACKEND=memory` keeps experiments out of the development settings. Warnings go to stderr; `RUST_LOG=debug` shows more.
+
+`just bench` needs sway and wdotool. It runs the release build in a headless session with
+settings of its own and prints, as the median of three runs, how fast output goes
+through, how long frames take, how soon a typed key is echoed on screen, how often an
+idle window wakes up and how much memory it holds. The numbers and the raw timings stay
+in `target/bench`. Any build writes the same timings to the file `CARET_TIMINGS` names.
 
 ## A few things to know before changing them
 

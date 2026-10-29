@@ -137,6 +137,7 @@ impl TerminalView {
         };
 
         let mut screen = imp.screen.borrow_mut();
+        let started = Instant::now();
         let term = session.lock();
         // Rearmed under the lock: output after the capture wakes the widget again.
         session.rearm();
@@ -166,6 +167,7 @@ impl TerminalView {
             ligatures: settings().boolean("ligatures"),
         };
 
+        let building = Instant::now();
         context.make_current();
         if imp.glyphs_stale.replace(false) {
             renderer.clear_glyphs(false);
@@ -216,13 +218,19 @@ impl TerminalView {
         let pixels_wide = ((x + f64::from(width) * scale).ceil() as i32).min(largest);
         let pixels_high = ((y + f64::from(height) * scale).ceil() as i32).min(largest);
         let background = screen.background;
-        match renderer.render(
+        let rendering = Instant::now();
+        let rendered = renderer.render(
             context,
             pixels_wide,
             pixels_high,
             [background.r, background.g, background.b],
             &quads,
-        ) {
+        );
+        if crate::timings::enabled() {
+            let now = Instant::now();
+            crate::timings::frame(building - started, rendering - building, now - rendering);
+        }
+        match rendered {
             Ok(texture) => {
                 // One texel to one screen pixel on the pixel grid, so sampling copies them.
                 let size = graphene::Rect::new(

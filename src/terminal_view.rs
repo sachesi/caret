@@ -582,6 +582,7 @@ impl TerminalView {
             }
             drop(term);
             session.write(bytes);
+            crate::timings::key();
         }
         self.restart_blink();
         self.sync_scroll();
@@ -593,6 +594,7 @@ impl TerminalView {
         match event {
             // The frame takes the terminal's lock once for all the output since the last one.
             Event::Wakeup => {
+                crate::timings::output();
                 if settings().boolean("scroll-on-output")
                     && let Some(session) = imp.session.borrow().as_ref()
                 {

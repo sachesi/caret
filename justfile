@@ -73,6 +73,11 @@ po: pot
 test:
     cargo test --locked
 
+# Throughput, frame times, key echo, idle wakeups and memory of the release build, in a
+# headless session of its own: just bench [--runs N]
+bench *args: build
+    bench/bench.py {{args}}
+
 # Advisories, licences and sources of the dependencies.
 deny:
     cargo deny check
