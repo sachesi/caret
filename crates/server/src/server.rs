@@ -396,6 +396,26 @@ impl Server {
                     });
                 }
             }
+            Request::SwapPanes { terminal, other } => {
+                self.rearrange(terminal, |root| root.swap(terminal, other));
+            }
+            Request::MovePane {
+                terminal,
+                beside,
+                side,
+            } => self.rearrange(terminal, |root| {
+                let Some(mut rest) = root
+                    .clone()
+                    .without(terminal)
+                    .filter(|rest| rest.contains(beside))
+                else {
+                    return false;
+                };
+                rest.beside(beside, terminal, side);
+                *root = rest;
+                true
+            }),
+            Request::PaneToTab { terminal } => self.pane_to_tab(terminal),
             Request::MoveTab {
                 terminal,
                 session,
@@ -942,6 +962,11 @@ impl Server {
         {
             tab.root = rest;
         }
+        self.relaid(place, first);
+    }
+
+    /// Tells the tab's clients its panes changed, `first` having been its first pane.
+    fn relaid(&mut self, place: (SessionId, usize), first: TerminalId) {
         let Some(tab) = self.tab_state(place) else {
             return;
         };
@@ -968,6 +993,7 @@ impl Server {
             })
             .unwrap_or_default();
         for client in older {
+            self.drop_view(first, client);
             self.add_view(after, client, None);
             // Opened before the other closes, so that the window is never without tabs.
             self.send(
@@ -986,6 +1012,102 @@ impl Server {
                 },
             );
             self.tell_state(client, after);
+        }
+    }
+
+    /// Changes the panes of `terminal`'s tab as `change` does, when it says it did.
+    fn rearrange(&mut self, terminal: TerminalId, change: impl FnOnce(&mut Node) -> bool) {
+        let Some(place) = self.find_tab(terminal) else {
+            return;
+        };
+        let Some(tab) = self
+            .sessions
+            .get_mut(&place.0)
+            .and_then(|session| session.tabs.get_mut(place.1))
+        else {
+            return;
+        };
+        let first = tab.root.first();
+        if tab.root.contains(terminal) && change(&mut tab.root) {
+            self.relaid(place, first);
+        }
+    }
+
+    /// Takes the pane out of its tab into a tab of its own, after it. The tab keeps its
+    /// key's pane, so that a tab's key is never another's pane: when that is the one
+    /// taken out, the others go to the new tab before it instead, with its name.
+    fn pane_to_tab(&mut self, terminal: TerminalId) {
+        let Some((session_id, index)) = self.find_tab(terminal) else {
+            return;
+        };
+        let key = self.next_id();
+        let Some(session) = self.sessions.get_mut(&session_id) else {
+            return;
+        };
+        let Some(tab) = session.tabs.get_mut(index) else {
+            return;
+        };
+        if !tab.root.contains(terminal) {
+            return;
+        }
+        let first = tab.root.first();
+        let Some(rest) = tab.root.clone().without(terminal) else {
+            return;
+        };
+        let alone = Node::Pane { terminal };
+        let (kept, index, added) = if tab.key == terminal {
+            let added = TabState {
+                key,
+                root: rest,
+                name: tab.name.take(),
+            };
+            tab.root = alone;
+            (index + 1, index, added)
+        } else {
+            tab.root = rest;
+            let added = TabState {
+                key,
+                root: alone,
+                name: None,
+            };
+            (index, index + 1, added)
+        };
+        session.tabs.insert(index, added);
+        self.relaid((session_id, kept), first);
+        let Some(tab) = self.tab_state((session_id, index)) else {
+            return;
+        };
+        let (newer, older) = (self.tab(tab, PANES), self.tab(tab, 1));
+        let layout = Self::layout(session_id, tab);
+        self.broadcast_versions(session_id, None, |version| {
+            Some(Message::TabOpened {
+                session: session_id,
+                index: index as u32,
+                tab: if version >= PANES {
+                    newer.clone()
+                } else {
+                    older.clone()
+                },
+            })
+        });
+        self.broadcast_versions(session_id, None, |version| {
+            (version >= PANES).then(|| layout.clone())
+        });
+        // Clients start the new tab's panes again, so they see them whole.
+        let clients: Vec<ClientId> = self
+            .sessions
+            .get(&session_id)
+            .map(|session| session.clients.iter().copied().collect())
+            .unwrap_or_default();
+        for client in clients {
+            let shown = self
+                .tab_state((session_id, index))
+                .map(|tab| tab.shown(self.version(client)))
+                .unwrap_or_default();
+            for pane in shown {
+                self.add_view(pane, client, None);
+                self.tell_state(client, pane);
+            }
         }
     }
 
@@ -1260,6 +1382,7 @@ impl Server {
 mod tests {
     use std::time::Duration;
 
+    use caret_protocol::layout::Side;
     use caret_protocol::{Frame, GlyphText};
 
     use super::*;
@@ -1576,6 +1699,60 @@ mod tests {
             other => panic!("{other:?}"),
         }
         harness.next(|message| matches!(message, Message::SessionClosed { .. }));
+    }
+
+    #[test]
+    fn panes_trade_places_move_and_go_to_tabs_of_their_own() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        let first = harness.open(session, &["sh", "-c", "sleep 30"]);
+        let second = harness.split(first, &["sh", "-c", "sleep 30"]);
+        assert_eq!(harness.panes(), [first, second]);
+        let third = harness.split(second, &["sh", "-c", "sleep 30"]);
+        assert_eq!(harness.panes(), [first, second, third]);
+
+        harness.request(Request::SwapPanes {
+            terminal: first,
+            other: third,
+        });
+        assert_eq!(harness.panes(), [third, second, first]);
+        harness.request(Request::MovePane {
+            terminal: third,
+            beside: first,
+            side: Side::Below,
+        });
+        assert_eq!(harness.panes(), [second, first, third]);
+
+        let opened = |harness: &mut Harness| match harness
+            .next(|message| matches!(message, Message::TabOpened { .. }))
+        {
+            Message::TabOpened { index, tab, .. } => (index, tab.terminal),
+            _ => unreachable!(),
+        };
+        harness.request(Request::PaneToTab { terminal: second });
+        assert_eq!(harness.panes(), [first, third]);
+        let (index, key) = opened(&mut harness);
+        assert_eq!(index, 1);
+        match harness.next(|message| matches!(message, Message::Layout { .. })) {
+            Message::Layout { tab, root, .. } => {
+                assert_eq!((tab, root.panes()), (key, vec![second]));
+            }
+            _ => unreachable!(),
+        }
+
+        // The tab keeps the pane it is known by, and the others leave it.
+        harness.request(Request::PaneToTab { terminal: first });
+        assert_eq!(harness.panes(), [first]);
+        let (index, key) = opened(&mut harness);
+        assert_eq!(index, 0);
+        match harness.next(|message| matches!(message, Message::Layout { .. })) {
+            Message::Layout { tab, root, .. } => {
+                assert_eq!((tab, root.panes()), (key, vec![third]));
+            }
+            _ => unreachable!(),
+        }
+        harness.request(Request::CloseSession { session });
     }
 
     #[test]

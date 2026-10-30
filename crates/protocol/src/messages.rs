@@ -4,7 +4,7 @@
 //! show them, and asks for each frame of a terminal it shows when it is ready to draw
 //! one, so a busy program never floods it.
 
-use crate::layout::Node;
+use crate::layout::{Node, Side};
 use crate::screen::{CursorShape, Frame, Point, Rgb};
 use crate::wire::{Bytes, DecodeError, Wire, record, variants};
 
@@ -381,6 +381,22 @@ pub enum Request {
         terminal: TerminalId,
         share: u16,
     },
+    /// Since version 2. Trades the places of two panes of a tab.
+    SwapPanes {
+        terminal: TerminalId,
+        other: TerminalId,
+    },
+    /// Since version 2. Moves `terminal`'s pane to `side` of `beside`'s, in the same tab,
+    /// where the two share `beside`'s room.
+    MovePane {
+        terminal: TerminalId,
+        beside: TerminalId,
+        side: Side,
+    },
+    /// Since version 2. Takes the pane out of its tab into a tab of its own, after it.
+    PaneToTab {
+        terminal: TerminalId,
+    },
 }
 variants!(Request {
     0 => Look { palette, options },
@@ -401,6 +417,9 @@ variants!(Request {
     15 => Annotate { terminal, text },
     16 => ClosePane { terminal },
     17 => Divide { terminal, share },
+    18 => SwapPanes { terminal, other },
+    19 => MovePane { terminal, beside, side },
+    20 => PaneToTab { terminal },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]

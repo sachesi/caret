@@ -62,7 +62,7 @@ const BUBBLE_PADDING: (f32, f32) = (8.0, 4.0);
 
 /// Colours as 0xRRGGBBAA, not premultiplied.
 const OUTLINE: u32 = 0x0000_063b;
-const ACCENT: u32 = 0x3584_e4ff;
+pub const ACCENT: u32 = 0x3584_e4ff;
 const SHADOW: u32 = 0x0000_0680;
 const SHADOW_BACKDROP: u32 = 0x0000_0640;
 
@@ -355,6 +355,8 @@ pub struct Chrome {
     pub menu: Option<Menu>,
     /// A short message over the bottom of the window.
     pub toast: Option<String>,
+    /// The keys of a mode the window is in, under the toast.
+    pub hints: Option<String>,
     pub hovered: Option<Part>,
     pub pressed: Option<Part>,
 }
@@ -560,8 +562,13 @@ impl Chrome {
         if let Some(link) = &self.link {
             painter.link(&mut quads, link, size.1 as f32 * scale, &mut draw);
         }
+        let mut bottom = size.1 as f32 * scale;
+        if let Some(hints) = &self.hints {
+            painter.toast(&mut quads, hints, bottom, &mut draw);
+            bottom -= (TOAST + TOAST_MARGIN) * scale;
+        }
         if let Some(toast) = &self.toast {
-            painter.toast(&mut quads, toast, size.1 as f32 * scale, &mut draw);
+            painter.toast(&mut quads, toast, bottom, &mut draw);
         }
         if let Some(dialog) = &self.dialog {
             painter.dialog(&mut quads, dialog, size.1 as f32 * scale, &mut draw);

@@ -100,6 +100,7 @@ mod activation;
 mod attention;
 mod clipboard;
 mod confirm;
+mod control;
 mod menus;
 mod pointer;
 mod scale;
@@ -169,6 +170,11 @@ struct App {
     opened: Option<TerminalId>,
     /// The pane the window split off, to focus when the server tells of it.
     opened_pane: Option<TerminalId>,
+    /// The pane the window took out to a tab of its own, to show when the server
+    /// tells of it.
+    moved_pane: Option<TerminalId>,
+    /// Keys move, resize and close panes until the mode is left.
+    control: bool,
     /// The tab about to close once its panes say whether programs run in them.
     closing_tab: Option<confirm::TabClosing>,
     /// What the window's first tab runs, from the command line.
@@ -346,6 +352,8 @@ pub fn run(start: Start) -> Result<(), AppError> {
         opening: false,
         opened: None,
         opened_pane: None,
+        moved_pane: None,
+        control: false,
         closing_tab: None,
         first,
         profile,
@@ -968,10 +976,12 @@ impl App {
             self.renew_full_atlas();
             (quads, under) = self.frame_quads((width, height));
         }
-        let dividers = self.dividers(&placed);
+        let mut dividers = self.dividers(&placed);
+        dividers.extend(self.control_ring(&placed));
         let count = dividers.len();
         quads.splice(under..under, dividers);
         under += count;
+        quads.extend(self.landing_quad(&placed));
         // Around the window's frame, the surface is clear; without one, it is the
         // terminal's to its edges.
         let clear = if self.chrome.framed() {
@@ -1164,6 +1174,10 @@ impl App {
             if self.dialog_key(event) || self.menu_key(event) {
                 return;
             }
+            if self.control {
+                self.control_key(event);
+                return;
+            }
             if let Some(action) = self.shortcuts.action(event.keysym, self.modifiers)
                 && self.act(action)
             {
@@ -1244,6 +1258,7 @@ impl App {
             Action::FocusRight => return self.focus_towards(Direction::Right),
             Action::FocusUp => return self.focus_towards(Direction::Up),
             Action::FocusDown => return self.focus_towards(Direction::Down),
+            Action::ControlMode => self.enter_control(),
             Action::NextTab => self.step_tab(1),
             Action::PreviousTab => self.step_tab(-1),
             Action::ShowTab(number) => {

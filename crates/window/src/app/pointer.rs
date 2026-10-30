@@ -53,6 +53,8 @@ pub struct Pointer {
     dragged_tab: Option<TerminalId>,
     /// The divider between panes held by the left button, which follows the pointer.
     dividing: Option<Divider>,
+    /// The pane held by the left button, to move where it is let go of.
+    pub(super) moving: Option<TerminalId>,
     /// The button a program was told is held, to tell it of motion and release.
     reported: Option<MouseButton>,
     last_click: Option<(Instant, Point)>,
@@ -86,7 +88,7 @@ impl App {
     }
 
     /// Where the pointer is, in device pixels from the surface's corner.
-    fn device_point(&self) -> (f64, f64) {
+    pub(super) fn device_point(&self) -> (f64, f64) {
         let (x, y) = self.pointer.position;
         (x * self.factor(), y * self.factor())
     }
@@ -136,7 +138,7 @@ impl App {
     }
 
     /// The part of the window's frame under the pointer; none over the terminal.
-    fn part(&self) -> Option<Part> {
+    pub(super) fn part(&self) -> Option<Part> {
         self.chrome.part_at(self.pointer.position, self.size?)
     }
 
@@ -162,6 +164,7 @@ impl App {
             .dividing
             .or_else(|| self.placed().divider_at(self.device_point()));
         let shape = match self.chrome.hovered {
+            _ if self.pointer.moving.is_some() => Shape::Grabbing,
             Some(part) => cursor(part),
             None if divider.is_some_and(|divider| divider.vertical) => Shape::ColResize,
             None if divider.is_some() => Shape::RowResize,
@@ -382,6 +385,15 @@ impl App {
             self.pointer.dividing = Some(divider);
             return;
         }
+        if button == BUTTON_LEFT
+            && (self.control || self.modifiers.alt)
+            && let Some(pane) = placed.pane_at(at)
+        {
+            self.focus_pane(pane);
+            self.pointer.moving = Some(pane);
+            self.set_cursor();
+            return;
+        }
         // A click in another pane gives it the keys, and goes on there.
         if let Some(pane) = placed
             .pane_at(at)
@@ -553,6 +565,11 @@ impl PointerHandler for App {
                     self.show_link();
                     self.draw();
                 }
+                PointerEventKind::Motion { .. } if self.pointer.moving.is_some() => {
+                    self.pointer.position = event.position;
+                    self.dirty = true;
+                    self.draw();
+                }
                 PointerEventKind::Motion { .. } if self.pointer.dividing.is_some() => {
                     self.pointer.position = event.position;
                     self.divide();
@@ -586,7 +603,10 @@ impl PointerHandler for App {
                 }
                 PointerEventKind::Release { button, .. } => {
                     self.pointer.dragged_tab = None;
-                    if self.pointer.dividing.is_some() {
+                    if self.pointer.moving.is_some() {
+                        self.drop_pane();
+                        self.set_cursor();
+                    } else if self.pointer.dividing.is_some() {
                         self.let_go_of_divider();
                         self.set_cursor();
                     } else if self.chrome.pressed.is_some() {

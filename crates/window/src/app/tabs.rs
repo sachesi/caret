@@ -49,6 +49,8 @@ pub struct Tab {
     name: Option<String>,
     /// Something happened in it while it was out of sight.
     attention: bool,
+    /// The focused pane takes the whole tab, the others hidden.
+    pub zoomed: bool,
 }
 
 impl Tab {
@@ -115,11 +117,22 @@ impl App {
             .unwrap_or_default()
     }
 
+    /// Where the panes of `tab` are shown.
+    fn lay_out_tab(&self, tab: &Tab) -> Placed {
+        if tab.zoomed {
+            self.lay_out(&Node::Pane {
+                terminal: tab.focused,
+            })
+        } else {
+            self.lay_out(&tab.root)
+        }
+    }
+
     /// Where the panes of the tab shown are.
     pub(super) fn placed(&self) -> Placed {
         self.tabs
             .get(self.selected)
-            .map(|tab| self.lay_out(&tab.root))
+            .map(|tab| self.lay_out_tab(tab))
             .unwrap_or_default()
     }
 
@@ -142,7 +155,7 @@ impl App {
         let Some(tab) = self.tabs.get(index) else {
             return;
         };
-        let placed = self.lay_out(&tab.root);
+        let placed = self.lay_out_tab(tab);
         let sizes: Vec<(TerminalId, Size)> = placed
             .panes
             .iter()
@@ -178,6 +191,7 @@ impl App {
                 panes: HashMap::from([(key, Pane::new(tab.title))]),
                 name: tab.name,
                 attention: false,
+                zoomed: false,
             },
         );
         self.resize_panes(index);
@@ -257,10 +271,20 @@ impl App {
                 .or_insert_with(|| Pane::new(String::new()));
         }
         tab.focused = focus;
+        tab.zoomed = false;
         if shown && changes_focus {
             self.swap_focused();
         }
         self.resize_panes(index);
+        // A pane taken out to a tab of its own is shown there.
+        let moved = self.moved_pane.map(|terminal| Node::Pane { terminal });
+        if moved.as_ref() == Some(&self.tabs[index].root) {
+            self.moved_pane = None;
+            if !shown {
+                self.show(index);
+                return;
+            }
+        }
         if shown {
             self.reveal();
         }
@@ -408,6 +432,7 @@ impl App {
         }
         self.leave_focused();
         self.tabs[self.selected].focused = terminal;
+        self.unzoom();
         self.swap_focused();
         self.reveal();
         self.retitle();

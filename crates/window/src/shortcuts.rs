@@ -29,6 +29,8 @@ pub enum Action {
     FocusRight,
     FocusUp,
     FocusDown,
+    /// Moves, resizes and closes panes from the keys until left.
+    ControlMode,
     Find,
     NextTab,
     PreviousTab,
@@ -66,6 +68,7 @@ const ACTIONS: &[(Action, &str, &[&str])] = &[
     (Action::FocusRight, "focus-right", &["Alt+Right"]),
     (Action::FocusUp, "focus-up", &["Alt+Up"]),
     (Action::FocusDown, "focus-down", &["Alt+Down"]),
+    (Action::ControlMode, "control-mode", &["Ctrl+Shift+space"]),
     (Action::Find, "find", &["Ctrl+Shift+F"]),
     (Action::NextTab, "next-tab", &["Ctrl+Page_Down", "Ctrl+Tab"]),
     (
@@ -131,9 +134,11 @@ impl Shortcut {
 
     /// The shortcut a key pressed with `held` makes. Letters count the same in either
     /// case, and Shift does not count for the symbol it typed, so that `"Ctrl+plus"` is
-    /// pressed with Shift where the plus sign is shifted.
+    /// pressed with Shift where the plus sign is shifted; the space bar types the same
+    /// with Shift, which counts.
     pub fn pressed(key: Keysym, held: Modifiers) -> Self {
-        let typed = char::from_u32(xkb::keysym_to_utf32(key)).filter(|c| !c.is_control());
+        let typed = char::from_u32(xkb::keysym_to_utf32(key))
+            .filter(|c| !c.is_control() && !c.is_whitespace());
         let (key, shift) = match typed {
             Some(c) if c.is_alphabetic() => (
                 Keysym::from_char(c.to_lowercase().next().unwrap_or(c)),
@@ -242,6 +247,15 @@ mod tests {
             shortcuts.action(Keysym::F11, Modifiers::default()),
             Some(Action::Fullscreen)
         );
+        assert_eq!(
+            shortcuts.action(Keysym::space, CTRL_SHIFT),
+            Some(Action::ControlMode)
+        );
+        let ctrl = Modifiers {
+            ctrl: true,
+            ..Modifiers::default()
+        };
+        assert_eq!(shortcuts.action(Keysym::space, ctrl), None);
     }
 
     #[test]
