@@ -10,6 +10,7 @@ use std::process::ExitStatus;
 use std::sync::mpsc;
 use std::time::Instant;
 
+use caret_protocol::layout::Node;
 use caret_protocol::{
     Answer, Bytes, Command, CursorShape, Message, Options, Palette, Question, Request, Scroll,
     SessionId, SessionInfo, Size, Tab, TerminalId,
@@ -25,6 +26,8 @@ pub struct ClientId(pub u64);
 pub enum Input {
     Connected {
         client: ClientId,
+        /// The protocol version agreed with it.
+        version: u16,
         writer: mpsc::Sender<Vec<u8>>,
     },
     Request(ClientId, Request),
@@ -32,8 +35,12 @@ pub enum Input {
     Terminal(TerminalId, Event),
 }
 
+/// The first protocol version with split panes.
+const PANES: u16 = 2;
+
 struct Client {
     writer: mpsc::Sender<Vec<u8>>,
+    version: u16,
     palette: Palette,
     options: Options,
     sessions: BTreeSet<SessionId>,
@@ -41,8 +48,56 @@ struct Client {
 
 #[derive(Default)]
 struct Session {
-    tabs: Vec<TerminalId>,
+    tabs: Vec<TabState>,
     clients: BTreeSet<ClientId>,
+}
+
+struct TabState {
+    /// The terminal the tab was opened with, which names it to the clients that know of
+    /// panes, even once its pane is gone: terminals' ids are never used again.
+    key: TerminalId,
+    root: Node,
+    /// The name the user gave the tab.
+    name: Option<String>,
+}
+
+impl TabState {
+    fn new(key: TerminalId) -> Self {
+        Self {
+            key,
+            root: Node::Pane { terminal: key },
+            name: None,
+        }
+    }
+
+    fn has(&self, terminal: TerminalId) -> bool {
+        self.key == terminal || self.root.contains(terminal)
+    }
+
+    /// What names the tab to a client of `version`: one from before panes sees a tab as
+    /// its first pane.
+    fn id(&self, version: u16) -> TerminalId {
+        if version >= PANES {
+            self.key
+        } else {
+            self.root.first()
+        }
+    }
+
+    /// The terminals a client of `version` shows of the tab.
+    fn shown(&self, version: u16) -> Vec<TerminalId> {
+        if version >= PANES {
+            self.root.panes()
+        } else {
+            vec![self.root.first()]
+        }
+    }
+
+    /// Whether the tab is more than the pane it was opened with, which clients have to be
+    /// told.
+    fn divided(&self) -> bool {
+        self.root != Node::Pane { terminal: self.key }
+    }
 }
 
 /// A client's view of a terminal it shows; the rest of it is the terminal's thread's.
@@ -58,7 +113,6 @@ struct Entry {
     failure: Option<String>,
     title: String,
     default_title: String,
-    name: Option<String>,
     hold: bool,
     exit_status: Option<ExitStatus>,
     /// A held program failed; its tab stays.
@@ -128,11 +182,16 @@ impl Server {
 
     fn handle(&mut self, input: Input) {
         match input {
-            Input::Connected { client, writer } => {
+            Input::Connected {
+                client,
+                version,
+                writer,
+            } => {
                 self.clients.insert(
                     client,
                     Client {
                         writer,
+                        version,
                         palette: palette::fallback(),
                         options: default_options(),
                         sessions: BTreeSet::new(),
@@ -169,10 +228,67 @@ impl Server {
         }
     }
 
+    /// Sends `message` about `terminal` to every client that shows it.
     fn broadcast_for(&self, terminal: TerminalId, message: &Message) {
-        if let Some(entry) = self.terminals.get(&terminal) {
-            self.broadcast(entry.session, message);
+        let Some(session) = self
+            .terminals
+            .get(&terminal)
+            .and_then(|entry| self.sessions.get(&entry.session))
+        else {
+            return;
+        };
+        let first = session
+            .tabs
+            .iter()
+            .find(|tab| tab.root.contains(terminal))
+            .map(|tab| tab.root.first());
+        let bytes = encoded(message);
+        for client in &session.clients {
+            if let Some(state) = self.clients.get(client)
+                && (state.version >= PANES || first == Some(terminal))
+            {
+                let _ = state.writer.send(bytes.clone());
+            }
         }
+    }
+
+    /// Sends each client attached to `session` but `except` what `message` makes for its
+    /// version.
+    fn broadcast_versions(
+        &self,
+        session: SessionId,
+        except: Option<ClientId>,
+        message: impl Fn(u16) -> Option<Message>,
+    ) {
+        let Some(session) = self.sessions.get(&session) else {
+            return;
+        };
+        for client in &session.clients {
+            if Some(*client) != except
+                && let Some(state) = self.clients.get(client)
+                && let Some(message) = message(state.version)
+            {
+                let _ = state.writer.send(encoded(&message));
+            }
+        }
+    }
+
+    fn version(&self, client: ClientId) -> u16 {
+        self.clients
+            .get(&client)
+            .map_or(caret_protocol::NEWEST, |state| state.version)
+    }
+
+    /// The session and place of the tab `terminal` is a pane of, or the key of.
+    fn find_tab(&self, terminal: TerminalId) -> Option<(SessionId, usize)> {
+        self.sessions.iter().find_map(|(&id, session)| {
+            let index = session.tabs.iter().position(|tab| tab.has(terminal))?;
+            Some((id, index))
+        })
+    }
+
+    fn tab_state(&self, (session, index): (SessionId, usize)) -> Option<&TabState> {
+        self.sessions.get(&session)?.tabs.get(index)
     }
 
     /// How `client` shows terminals.
@@ -202,11 +318,24 @@ impl Server {
             .and_then(|entry| entry.terminal.as_ref())
     }
 
-    fn tab(entry: &Entry, terminal: TerminalId) -> Tab {
+    /// The tab as a client of `version` knows it, titled as its first pane is.
+    fn tab(&self, tab: &TabState, version: u16) -> Tab {
         Tab {
-            terminal,
-            title: entry.title.clone(),
-            name: entry.name.clone(),
+            terminal: tab.id(version),
+            title: self
+                .terminals
+                .get(&tab.root.first())
+                .map(|entry| entry.title.clone())
+                .unwrap_or_default(),
+            name: tab.name.clone(),
+        }
+    }
+
+    fn layout(session: SessionId, tab: &TabState) -> Message {
+        Message::Layout {
+            session,
+            tab: tab.key,
+            root: tab.root.clone(),
         }
     }
 
@@ -235,27 +364,62 @@ impl Server {
             Request::Attach { session } => self.attach(client, session),
             Request::Detach { session } => self.detach(client, session),
             Request::CloseSession { session } => {
-                let tabs = self
+                let keys: Vec<TerminalId> = self
                     .sessions
                     .get(&session)
-                    .map(|session| session.tabs.clone())
+                    .map(|session| session.tabs.iter().map(|tab| tab.key).collect())
                     .unwrap_or_default();
-                for terminal in tabs {
-                    self.close(terminal);
+                for key in keys {
+                    self.close_tab(key);
                 }
                 self.forget_if_empty(session);
             }
-            Request::CloseTab { terminal } => self.close(terminal),
+            Request::CloseTab { terminal } => self.close_tab(terminal),
+            Request::ClosePane { terminal } => self.close(terminal),
+            Request::Divide { terminal, share } => {
+                let Some(place) = self.find_tab(terminal) else {
+                    return;
+                };
+                let Some(tab) = self
+                    .sessions
+                    .get_mut(&place.0)
+                    .and_then(|session| session.tabs.get_mut(place.1))
+                else {
+                    return;
+                };
+                if tab.root.divide(terminal, share)
+                    && let Some(tab) = self.tab_state(place)
+                {
+                    let layout = Self::layout(place.0, tab);
+                    self.broadcast_versions(place.0, None, |version| {
+                        (version >= PANES).then(|| layout.clone())
+                    });
+                }
+            }
             Request::MoveTab {
                 terminal,
                 session,
                 index,
             } => self.move_tab(client, terminal, session, index as usize),
             Request::NameTab { terminal, name } => {
-                if let Some(entry) = self.terminals.get_mut(&terminal) {
-                    entry.name.clone_from(&name);
-                    self.broadcast_for(terminal, &Message::TabNamed { terminal, name });
-                }
+                let Some(place) = self.find_tab(terminal) else {
+                    return;
+                };
+                let Some(tab) = self
+                    .sessions
+                    .get_mut(&place.0)
+                    .and_then(|session| session.tabs.get_mut(place.1))
+                else {
+                    return;
+                };
+                tab.name.clone_from(&name);
+                let (key, first) = (tab.key, tab.root.first());
+                self.broadcast_versions(place.0, None, |version| {
+                    Some(Message::TabNamed {
+                        terminal: if version >= PANES { key } else { first },
+                        name: name.clone(),
+                    })
+                });
             }
             Request::Frame { terminal } => {
                 if let Some(running) = self.running(terminal) {
@@ -319,23 +483,24 @@ impl Server {
 
     fn ask(&mut self, client: ClientId, id: u32, question: Question) {
         let answer = match question {
-            Question::Sessions => Answer::Sessions {
-                sessions: self
-                    .sessions
-                    .iter()
-                    .map(|(&session, state)| SessionInfo {
-                        session,
-                        tabs: state
-                            .tabs
-                            .iter()
-                            .filter_map(|&terminal| {
-                                Some(Self::tab(self.terminals.get(&terminal)?, terminal))
-                            })
-                            .collect(),
-                        clients: state.clients.len() as u32,
-                    })
-                    .collect(),
-            },
+            Question::Sessions => {
+                let version = self.version(client);
+                Answer::Sessions {
+                    sessions: self
+                        .sessions
+                        .iter()
+                        .map(|(&session, state)| SessionInfo {
+                            session,
+                            tabs: state
+                                .tabs
+                                .iter()
+                                .map(|tab| self.tab(tab, version))
+                                .collect(),
+                            clients: state.clients.len() as u32,
+                        })
+                        .collect(),
+                }
+            }
             Question::NewSession => {
                 let session = SessionId(self.next_session);
                 self.next_session += 1;
@@ -395,6 +560,15 @@ impl Server {
                 self.open_tab(client, id, session, index as usize, &command, size);
                 return;
             }
+            Question::Split {
+                terminal,
+                vertical,
+                command,
+                size,
+            } => {
+                self.split(client, id, terminal, vertical, &command, size);
+                return;
+            }
         };
         self.send(client, &Message::Answer { id, answer });
     }
@@ -418,39 +592,83 @@ impl Server {
             return;
         };
         session.clients.insert(client);
-        let tabs = session.tabs.clone();
         if let Some(state) = self.clients.get_mut(&client) {
             state.sessions.insert(session_id);
         }
-        let mut shown = Vec::new();
-        for &terminal in &tabs {
-            if let Some(entry) = self.terminals.get(&terminal) {
-                if let Some(running) = &entry.terminal {
-                    self.show(running, client);
-                }
-                shown.push(Self::tab(entry, terminal));
-            }
-            if let Some(entry) = self.terminals.get_mut(&terminal) {
-                entry.views.insert(client, View::default());
-            }
+        let version = self.version(client);
+        let Some(session) = self.sessions.get(&session_id) else {
+            return;
+        };
+        let shown: Vec<TerminalId> = session
+            .tabs
+            .iter()
+            .flat_map(|tab| tab.shown(version))
+            .collect();
+        let tabs = session
+            .tabs
+            .iter()
+            .map(|tab| self.tab(tab, version))
+            .collect();
+        let layouts: Vec<Message> = session
+            .tabs
+            .iter()
+            .filter(|tab| version >= PANES && tab.divided())
+            .map(|tab| Self::layout(session_id, tab))
+            .collect();
+        for &terminal in &shown {
+            self.add_view(terminal, client, None);
         }
         self.send(
             client,
             &Message::Attached {
                 session: session_id,
-                tabs: shown,
+                tabs,
             },
         );
-        for terminal in tabs {
+        for layout in &layouts {
+            self.send(client, layout);
+        }
+        for terminal in shown {
             self.tell_state(client, terminal);
         }
     }
 
-    /// What a client attaching late missed of a tab that failed or ended.
+    /// Lets `client` see `terminal`, at `size` when it gave one.
+    fn add_view(&mut self, terminal: TerminalId, client: ClientId, size: Option<Size>) {
+        if let Some(running) = self.running(terminal) {
+            self.show(running, client);
+        }
+        if let Some(entry) = self.terminals.get_mut(&terminal) {
+            entry.views.insert(client, View { size });
+        }
+    }
+
+    /// Stops `client` seeing `terminal`.
+    fn drop_view(&mut self, terminal: TerminalId, client: ClientId) {
+        if let Some(entry) = self.terminals.get_mut(&terminal) {
+            entry.views.remove(&client);
+            if entry.active == Some(client) {
+                entry.active = None;
+            }
+            if let Some(running) = &entry.terminal {
+                running.hide(client);
+            }
+        }
+    }
+
+    /// What a client attaching late missed of a terminal: its title, which only a tab's
+    /// first pane comes with, and whether it failed or ended.
     fn tell_state(&self, client: ClientId, terminal: TerminalId) {
         let Some(entry) = self.terminals.get(&terminal) else {
             return;
         };
+        self.send(
+            client,
+            &Message::Title {
+                terminal,
+                title: entry.title.clone(),
+            },
+        );
         if let Some(reason) = &entry.failure {
             self.send(
                 client,
@@ -480,16 +698,13 @@ impl Server {
             return;
         };
         session.clients.remove(&client);
-        for terminal in session.tabs.clone() {
-            if let Some(entry) = self.terminals.get_mut(&terminal) {
-                entry.views.remove(&client);
-                if entry.active == Some(client) {
-                    entry.active = None;
-                }
-                if let Some(running) = &entry.terminal {
-                    running.hide(client);
-                }
-            }
+        let panes: Vec<TerminalId> = session
+            .tabs
+            .iter()
+            .flat_map(|tab| tab.root.panes())
+            .collect();
+        for terminal in panes {
+            self.drop_view(terminal, client);
         }
         self.forget_if_empty(session_id);
     }
@@ -527,24 +742,120 @@ impl Server {
         size: Size,
     ) {
         if !self.sessions.contains_key(&session_id) {
-            self.send(
-                client,
-                &Message::Answer {
-                    id,
-                    answer: Answer::Gone,
-                },
-            );
+            self.answer(client, id, Answer::Gone);
             return;
         }
-        let terminal = TerminalId(self.next_terminal);
-        self.next_terminal += 1;
-        self.send(
-            client,
-            &Message::Answer {
-                id,
-                answer: Answer::Opened { terminal },
+        let terminal = self.next_id();
+        self.answer(client, id, Answer::Opened { terminal });
+        let viewers: Vec<ClientId> = self
+            .sessions
+            .get(&session_id)
+            .map(|session| session.clients.iter().copied().collect())
+            .unwrap_or_default();
+        let failure = self.spawn(terminal, client, session_id, command, size, &viewers);
+        let Some(session) = self.sessions.get_mut(&session_id) else {
+            return;
+        };
+        let index = index.min(session.tabs.len());
+        session.tabs.insert(index, TabState::new(terminal));
+        let Some(tab) = self.tab_state((session_id, index)) else {
+            return;
+        };
+        let tab = self.tab(tab, caret_protocol::NEWEST);
+        self.broadcast(
+            session_id,
+            &Message::TabOpened {
+                session: session_id,
+                index: index as u32,
+                tab,
             },
         );
+        if let Some(reason) = failure {
+            self.broadcast(session_id, &Message::Failed { terminal, reason });
+        }
+    }
+
+    /// Starts `command` in a pane after `at`'s, which the split leaves half of its room.
+    fn split(
+        &mut self,
+        client: ClientId,
+        id: u32,
+        at: TerminalId,
+        vertical: bool,
+        command: &Command,
+        size: Size,
+    ) {
+        let Some(place) = self.find_tab(at).filter(|&place| {
+            self.tab_state(place)
+                .is_some_and(|tab| tab.root.contains(at))
+        }) else {
+            self.answer(client, id, Answer::Gone);
+            return;
+        };
+        let terminal = self.next_id();
+        self.answer(client, id, Answer::Opened { terminal });
+        let viewers: Vec<ClientId> = self
+            .sessions
+            .get(&place.0)
+            .map(|session| {
+                session
+                    .clients
+                    .iter()
+                    .copied()
+                    .filter(|&viewer| self.version(viewer) >= PANES)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let failure = self.spawn(terminal, client, place.0, command, size, &viewers);
+        let Some(tab) = self
+            .sessions
+            .get_mut(&place.0)
+            .and_then(|session| session.tabs.get_mut(place.1))
+        else {
+            return;
+        };
+        tab.root.split(at, terminal, vertical);
+        let Some(tab) = self.tab_state(place) else {
+            return;
+        };
+        let layout = Self::layout(place.0, tab);
+        self.broadcast_versions(place.0, None, |version| {
+            (version >= PANES).then(|| layout.clone())
+        });
+        // A tab's title comes with it; a pane's is told apart.
+        if let Some(title) = self
+            .terminals
+            .get(&terminal)
+            .map(|entry| entry.title.clone())
+        {
+            self.broadcast_for(terminal, &Message::Title { terminal, title });
+        }
+        if let Some(reason) = failure {
+            self.broadcast_for(terminal, &Message::Failed { terminal, reason });
+        }
+    }
+
+    fn answer(&self, client: ClientId, id: u32, answer: Answer) {
+        self.send(client, &Message::Answer { id, answer });
+    }
+
+    fn next_id(&mut self) -> TerminalId {
+        let terminal = TerminalId(self.next_terminal);
+        self.next_terminal += 1;
+        terminal
+    }
+
+    /// Starts `command` as `terminal` of `session_id` at `size`, with `client`'s options
+    /// and colours, shown to `viewers`; why it could not start, if it could not.
+    fn spawn(
+        &mut self,
+        terminal: TerminalId,
+        client: ClientId,
+        session_id: SessionId,
+        command: &Command,
+        size: Size,
+        viewers: &[ClientId],
+    ) -> Option<String> {
         let (options, palette) = self.clients.get(&client).map_or_else(
             || (default_options(), palette::fallback()),
             |state| (state.options.clone(), state.palette.clone()),
@@ -562,89 +873,139 @@ impl Server {
             Ok(running) => (Some(running), None),
             Err(error) => (None, Some(error.to_string())),
         };
-        let session = self
-            .sessions
-            .get_mut(&session_id)
-            .expect("the session was looked up above");
-        let index = index.min(session.tabs.len());
-        session.tabs.insert(index, terminal);
-        let viewers = session.clients.clone();
-        let views = viewers
-            .iter()
-            .map(|&viewer| {
-                let size = (viewer == client).then_some(size);
-                (viewer, View { size })
-            })
-            .collect();
         let entry = Entry {
             session: session_id,
             terminal: running,
             failure: failure.clone(),
             title: title.clone(),
             default_title: title,
-            name: None,
             hold: command.hold,
             exit_status: None,
             ended: None,
             active: Some(client),
-            views,
+            views: HashMap::new(),
             size,
             shell_directory: None,
             containers: Vec::new(),
             command_started: None,
         };
-        if let Some(running) = &entry.terminal {
-            for viewer in viewers {
-                self.show(running, viewer);
-            }
-        }
-        let tab = Self::tab(&entry, terminal);
         self.terminals.insert(terminal, entry);
-        self.broadcast(
-            session_id,
-            &Message::TabOpened {
-                session: session_id,
-                index: index as u32,
-                tab,
-            },
-        );
-        if let Some(reason) = failure {
-            self.broadcast(session_id, &Message::Failed { terminal, reason });
+        for &viewer in viewers {
+            self.add_view(terminal, viewer, (viewer == client).then_some(size));
         }
+        failure
     }
 
-    /// Ends the terminal's program, and its tab; the session goes with its last tab.
-    fn close(&mut self, terminal: TerminalId) {
-        let Some(entry) = self.terminals.remove(&terminal) else {
+    /// Ends every pane of the tab `terminal` names, and the tab.
+    fn close_tab(&mut self, terminal: TerminalId) {
+        let Some(place) = self.find_tab(terminal) else {
             return;
         };
-        let session_id = entry.session;
-        // Hangs up on the program.
-        drop(entry);
-        self.take_out(session_id, terminal, None);
+        let panes = self
+            .tab_state(place)
+            .map(|tab| tab.root.panes())
+            .unwrap_or_default();
+        // Dropping them hangs up on their programs.
+        for pane in panes {
+            self.terminals.remove(&pane);
+        }
+        self.take_out(place, None);
+    }
+
+    /// Ends the terminal's program and its pane; the tab goes with its last pane.
+    fn close(&mut self, terminal: TerminalId) {
+        let Some(place) = self.find_tab(terminal) else {
+            return;
+        };
+        let Some(tab) = self
+            .sessions
+            .get_mut(&place.0)
+            .and_then(|session| session.tabs.get_mut(place.1))
+        else {
+            return;
+        };
+        if !tab.root.contains(terminal) {
+            return;
+        }
+        let first = tab.root.first();
+        let rest = tab.root.clone().without(terminal);
+        // Dropping it hangs up on the program.
+        self.terminals.remove(&terminal);
+        let Some(rest) = rest else {
+            self.take_out(place, None);
+            return;
+        };
+        if let Some(tab) = self
+            .sessions
+            .get_mut(&place.0)
+            .and_then(|session| session.tabs.get_mut(place.1))
+        {
+            tab.root = rest;
+        }
+        let Some(tab) = self.tab_state(place) else {
+            return;
+        };
+        let layout = Self::layout(place.0, tab);
+        let after = tab.root.first();
+        let opened = (first != after).then(|| self.tab(tab, 1));
+        self.broadcast_versions(place.0, None, |version| {
+            (version >= PANES).then(|| layout.clone())
+        });
+        // Clients from before panes see the tab as its first pane, which is another now.
+        let Some(opened) = opened else {
+            return;
+        };
+        let older: Vec<ClientId> = self
+            .sessions
+            .get(&place.0)
+            .map(|session| {
+                session
+                    .clients
+                    .iter()
+                    .copied()
+                    .filter(|&client| self.version(client) < PANES)
+                    .collect()
+            })
+            .unwrap_or_default();
+        for client in older {
+            self.add_view(after, client, None);
+            // Opened before the other closes, so that the window is never without tabs.
+            self.send(
+                client,
+                &Message::TabOpened {
+                    session: place.0,
+                    index: place.1 as u32,
+                    tab: opened.clone(),
+                },
+            );
+            self.send(
+                client,
+                &Message::TabClosed {
+                    session: place.0,
+                    terminal: first,
+                },
+            );
+            self.tell_state(client, after);
+        }
     }
 
     /// Takes the tab out of its session, telling every client of it but `mover`, which
     /// moved it elsewhere itself; the session goes with its last tab.
-    fn take_out(&mut self, session_id: SessionId, terminal: TerminalId, mover: Option<ClientId>) {
-        let Some(session) = self.sessions.get(&session_id) else {
+    fn take_out(&mut self, (session_id, index): (SessionId, usize), mover: Option<ClientId>) {
+        let Some(tab) = self.tab_state((session_id, index)) else {
             return;
         };
-        let closed = encoded(&Message::TabClosed {
-            session: session_id,
-            terminal,
+        let (key, first) = (tab.key, tab.root.first());
+        self.broadcast_versions(session_id, mover, |version| {
+            Some(Message::TabClosed {
+                session: session_id,
+                terminal: if version >= PANES { key } else { first },
+            })
         });
-        for client in &session.clients {
-            if Some(*client) != mover
-                && let Some(state) = self.clients.get(client)
-            {
-                let _ = state.writer.send(closed.clone());
-            }
-        }
         let Some(session) = self.sessions.get_mut(&session_id) else {
             return;
         };
-        session.tabs.retain(|&tab| tab != terminal);
+        session.tabs.remove(index);
         if session.tabs.is_empty() {
             self.broadcast(
                 session_id,
@@ -662,8 +1023,8 @@ impl Server {
         }
     }
 
-    /// Puts a tab at `index` of `session_id`. `client` moved it there itself, as a tab is
-    /// dragged between windows; every other client hears of it.
+    /// Puts the tab `terminal` names at `index` of `session_id`. `client` moved it there
+    /// itself, as a tab is dragged between windows; every other client hears of it.
     fn move_tab(
         &mut self,
         client: ClientId,
@@ -671,73 +1032,98 @@ impl Server {
         session_id: SessionId,
         index: usize,
     ) {
-        let Some(from) = self.terminals.get(&terminal).map(|entry| entry.session) else {
+        let Some(from) = self.find_tab(terminal) else {
             return;
         };
         if !self.sessions.contains_key(&session_id) {
             return;
         }
-        if from == session_id {
+        if from.0 == session_id {
             let Some(session) = self.sessions.get_mut(&session_id) else {
                 return;
             };
-            session.tabs.retain(|&tab| tab != terminal);
+            let tab = session.tabs.remove(from.1);
             let index = index.min(session.tabs.len());
-            session.tabs.insert(index, terminal);
-            self.broadcast(
-                session_id,
-                &Message::TabMoved {
+            let (key, first) = (tab.key, tab.root.first());
+            session.tabs.insert(index, tab);
+            self.broadcast_versions(session_id, None, |version| {
+                Some(Message::TabMoved {
                     session: session_id,
-                    terminal,
+                    terminal: if version >= PANES { key } else { first },
                     index: index as u32,
-                },
-            );
+                })
+            });
             return;
         }
         let old_clients = self
             .sessions
-            .get(&from)
+            .get(&from.0)
             .map(|session| session.clients.clone())
             .unwrap_or_default();
-        self.take_out(from, terminal, Some(client));
+        let panes = self
+            .tab_state(from)
+            .map(|tab| tab.root.panes())
+            .unwrap_or_default();
+        let Some(tab) = self.tab_state(from).map(|tab| TabState {
+            key: tab.key,
+            root: tab.root.clone(),
+            name: tab.name.clone(),
+        }) else {
+            return;
+        };
+        self.take_out(from, Some(client));
+        for &pane in &panes {
+            for &viewer in &old_clients {
+                self.drop_view(pane, viewer);
+            }
+            if let Some(entry) = self.terminals.get_mut(&pane) {
+                entry.session = session_id;
+            }
+        }
         let Some(session) = self.sessions.get_mut(&session_id) else {
             return;
         };
         let index = index.min(session.tabs.len());
-        session.tabs.insert(index, terminal);
-        let new_clients = session.clients.clone();
-        let Some(entry) = self.terminals.get_mut(&terminal) else {
-            return;
-        };
-        entry.session = session_id;
-        entry.views.retain(|viewer, _| new_clients.contains(viewer));
-        for &viewer in new_clients.difference(&old_clients) {
-            entry.views.entry(viewer).or_default();
-        }
-        if let Some(running) = &entry.terminal {
-            for &viewer in old_clients.difference(&new_clients) {
-                running.hide(viewer);
+        session.tabs.insert(index, tab);
+        let new_clients: Vec<ClientId> = session.clients.iter().copied().collect();
+        let place = (session_id, index);
+        for &viewer in &new_clients {
+            let shown = self
+                .tab_state(place)
+                .map(|tab| tab.shown(self.version(viewer)))
+                .unwrap_or_default();
+            for pane in shown {
+                self.add_view(pane, viewer, None);
             }
         }
-        if let Some(running) = self.running(terminal) {
-            for &viewer in new_clients.difference(&old_clients) {
-                self.show(running, viewer);
-            }
-        }
-        let Some(entry) = self.terminals.get(&terminal) else {
+        let Some(tab) = self.tab_state(place) else {
             return;
         };
-        let tab = Self::tab(entry, terminal);
-        let opened = encoded(&Message::TabOpened {
-            session: session_id,
-            index: index as u32,
-            tab,
+        let layout = tab.divided().then(|| Self::layout(session_id, tab));
+        let (newer, older) = (self.tab(tab, PANES), self.tab(tab, 1));
+        self.broadcast_versions(session_id, Some(client), |version| {
+            Some(Message::TabOpened {
+                session: session_id,
+                index: index as u32,
+                tab: if version >= PANES {
+                    newer.clone()
+                } else {
+                    older.clone()
+                },
+            })
         });
+        if let Some(layout) = layout {
+            self.broadcast_versions(session_id, None, |version| {
+                (version >= PANES).then(|| layout.clone())
+            });
+        }
         for viewer in new_clients {
-            if viewer != client
-                && let Some(state) = self.clients.get(&viewer)
-            {
-                let _ = state.writer.send(opened.clone());
+            let shown = self
+                .tab_state(place)
+                .map(|tab| tab.shown(self.version(viewer)))
+                .unwrap_or_default();
+            for pane in shown {
+                self.tell_state(viewer, pane);
             }
         }
     }
@@ -887,12 +1273,20 @@ mod tests {
 
     const CLIENT: ClientId = ClientId(1);
 
+    const SIZE: Size = Size {
+        columns: 40,
+        lines: 5,
+        cell_width: 8,
+        cell_height: 16,
+    };
+
     fn harness() -> Harness {
         let (events, inputs) = mpsc::channel();
         let mut server = Server::new(events);
         let (writer, sent) = mpsc::channel();
         server.handle(Input::Connected {
             client: CLIENT,
+            version: caret_protocol::NEWEST,
             writer,
         });
         Harness {
@@ -941,6 +1335,37 @@ mod tests {
             }
         }
 
+        fn split(&mut self, at: TerminalId, argv: &[&str]) -> TerminalId {
+            self.request(Request::Ask {
+                id: 3,
+                question: Question::Split {
+                    terminal: at,
+                    vertical: true,
+                    command: Command {
+                        argv: argv.iter().map(|&arg| arg.to_owned()).collect(),
+                        ..Command::default()
+                    },
+                    size: SIZE,
+                },
+            });
+            let Message::Answer {
+                answer: Answer::Opened { terminal },
+                ..
+            } = self.next(|message| matches!(message, Message::Answer { id: 3, .. }))
+            else {
+                panic!("no pane opened");
+            };
+            terminal
+        }
+
+        /// The panes of the next layout the client is sent.
+        fn panes(&mut self) -> Vec<TerminalId> {
+            match self.next(|message| matches!(message, Message::Layout { .. })) {
+                Message::Layout { root, .. } => root.panes(),
+                _ => unreachable!(),
+            }
+        }
+
         fn open(&mut self, session: SessionId, argv: &[&str]) -> TerminalId {
             self.request(Request::Ask {
                 id: 2,
@@ -952,12 +1377,7 @@ mod tests {
                         hold: true,
                         ..Command::default()
                     },
-                    size: Size {
-                        columns: 40,
-                        lines: 5,
-                        cell_width: 8,
-                        cell_height: 16,
-                    },
+                    size: SIZE,
                 },
             });
             let Message::Answer {
@@ -1036,6 +1456,7 @@ mod tests {
         let (writer, sent) = mpsc::channel();
         harness.server.handle(Input::Connected {
             client: CLIENT,
+            version: caret_protocol::NEWEST,
             writer,
         });
         harness.sent = sent;
@@ -1096,7 +1517,7 @@ mod tests {
         harness.next(
             |message| matches!(message, Message::SessionClosed { session } if *session == first),
         );
-        assert_eq!(harness.server.sessions[&second].tabs, [terminal]);
+        assert_eq!(harness.server.sessions[&second].tabs[0].key, terminal);
         harness.frame_with(terminal, "moved");
         harness.request(Request::CloseSession { session: second });
     }
@@ -1133,6 +1554,73 @@ mod tests {
             ),
             other => panic!("{other:?}"),
         }
+        harness.request(Request::CloseSession { session });
+    }
+
+    #[test]
+    fn a_tab_of_panes_closes_with_its_last() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        let first = harness.open(session, &["sh", "-c", "echo left; sleep 30"]);
+        let second = harness.split(first, &["sh", "-c", "echo right; sleep 30"]);
+        assert_eq!(harness.panes(), [first, second]);
+        harness.frame_with(second, "right");
+
+        harness.request(Request::ClosePane { terminal: first });
+        assert_eq!(harness.panes(), [second]);
+        // The tab keeps the name it was opened with.
+        harness.request(Request::ClosePane { terminal: second });
+        match harness.next(|message| matches!(message, Message::TabClosed { .. })) {
+            Message::TabClosed { terminal, .. } => assert_eq!(terminal, first),
+            other => panic!("{other:?}"),
+        }
+        harness.next(|message| matches!(message, Message::SessionClosed { .. }));
+    }
+
+    #[test]
+    fn a_client_from_before_panes_sees_a_tab_as_its_first_pane() {
+        const OLDER: ClientId = ClientId(2);
+        let mut harness = harness();
+        let (writer, older) = mpsc::channel();
+        harness.server.handle(Input::Connected {
+            client: OLDER,
+            version: 1,
+            writer,
+        });
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        harness
+            .server
+            .handle(Input::Request(OLDER, Request::Attach { session }));
+        let first = harness.open(session, &["sh", "-c", "sleep 30"]);
+        let second = harness.split(first, &["sh", "-c", "sleep 30"]);
+        assert_eq!(harness.panes(), [first, second]);
+        harness.request(Request::ClosePane { terminal: first });
+        assert_eq!(harness.panes(), [second]);
+
+        let told: Vec<Message> = older
+            .try_iter()
+            .map(|bytes| {
+                caret_protocol::receive::<Message>(&mut bytes.as_slice())
+                    .unwrap()
+                    .unwrap()
+            })
+            .collect();
+        assert!(
+            !told
+                .iter()
+                .any(|message| matches!(message, Message::Layout { .. }))
+        );
+        let tabs: Vec<(bool, TerminalId)> = told
+            .iter()
+            .filter_map(|message| match message {
+                Message::TabOpened { tab, .. } => Some((true, tab.terminal)),
+                Message::TabClosed { terminal, .. } => Some((false, *terminal)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tabs, [(true, first), (true, second), (false, first)]);
         harness.request(Request::CloseSession { session });
     }
 }

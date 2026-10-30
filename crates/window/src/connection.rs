@@ -28,7 +28,7 @@ impl Connection {
     ///
     /// When the server cannot be reached or started, or a thread cannot be.
     pub fn open(app_id: &str) -> Result<(Self, Channel<Received>), ConnectError> {
-        let mut stream = caret_protocol::client::connect(app_id)?;
+        let (mut stream, _) = caret_protocol::client::connect(app_id, caret_protocol::NEWEST)?;
         let mut out = stream.try_clone().map_err(ConnectError::Greet)?;
         let (writer, written) = mpsc::channel::<Vec<u8>>();
         std::thread::Builder::new()

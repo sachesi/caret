@@ -4,6 +4,7 @@
 //! show them, and asks for each frame of a terminal it shows when it is ready to draw
 //! one, so a busy program never floods it.
 
+use crate::layout::Node;
 use crate::screen::{CursorShape, Frame, Point, Rgb};
 use crate::wire::{Bytes, DecodeError, Wire, record, variants};
 
@@ -199,6 +200,14 @@ pub enum Question {
         command: Command,
         size: Size,
     },
+    /// Since version 2. Starts `command` in a pane after `terminal`'s, splitting it in
+    /// two: answered as `OpenTab` is, then the tab's clients hear of its layout.
+    Split {
+        terminal: TerminalId,
+        vertical: bool,
+        command: Command,
+        size: Size,
+    },
 }
 variants!(Question {
     0 => Sessions,
@@ -210,6 +219,7 @@ variants!(Question {
     6 => NextCommand { terminal },
     7 => Find { terminal, text, upwards },
     8 => OpenTab { session, index, command, size },
+    9 => Split { terminal, vertical, command, size },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -308,6 +318,7 @@ pub enum Request {
     CloseSession {
         session: SessionId,
     },
+    /// Ends every pane of the tab `terminal` is in, or whose key it is.
     CloseTab {
         terminal: TerminalId,
     },
@@ -359,6 +370,17 @@ pub enum Request {
         terminal: TerminalId,
         text: String,
     },
+    /// Since version 2. Ends the terminal's program, and its pane; the tab goes with its
+    /// last pane.
+    ClosePane {
+        terminal: TerminalId,
+    },
+    /// Since version 2. Moves the divider just before `terminal`'s pane, giving the side
+    /// before it `share` of the room.
+    Divide {
+        terminal: TerminalId,
+        share: u16,
+    },
 }
 variants!(Request {
     0 => Look { palette, options },
@@ -377,6 +399,8 @@ variants!(Request {
     13 => Hover { terminal, point },
     14 => Focus { terminal, focused },
     15 => Annotate { terminal, text },
+    16 => ClosePane { terminal },
+    17 => Divide { terminal, share },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -453,6 +477,14 @@ pub enum Message {
         code: Option<i32>,
         signal: Option<i32>,
     },
+    /// Since version 2. The panes of the tab whose key is `tab`, sent once a tab is
+    /// more than its first pane and whenever they change. A tab a client hears of in
+    /// `Attached` or `TabOpened` is one pane, of its key, until this says otherwise.
+    Layout {
+        session: SessionId,
+        tab: TerminalId,
+        root: Node,
+    },
 }
 variants!(Message {
     0 => Answer { id, answer },
@@ -471,4 +503,5 @@ variants!(Message {
     13 => CommandFinished { terminal, seconds, status },
     14 => Failed { terminal, reason },
     15 => Ended { terminal, code, signal },
+    16 => Layout { session, tab, root },
 });

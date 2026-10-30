@@ -113,8 +113,8 @@ fn lossy(argument: OsString) -> String {
 ///
 /// When the server cannot be reached, or answers something else.
 pub fn detached() -> Result<Vec<SessionId>, String> {
-    let mut stream =
-        caret_protocol::client::connect(crate::APP_ID).map_err(|error| error.to_string())?;
+    let (mut stream, _) = caret_protocol::client::connect(crate::APP_ID, caret_protocol::NEWEST)
+        .map_err(|error| error.to_string())?;
     let question = Request::Ask {
         id: 1,
         question: Question::Sessions,

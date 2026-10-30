@@ -11,6 +11,7 @@
 
 pub mod client;
 pub mod encode;
+pub mod layout;
 mod messages;
 mod screen;
 pub mod wire;
@@ -24,7 +25,8 @@ pub use wire::{Bytes, DecodeError, Wire};
 
 pub const MAGIC: [u8; 8] = *b"caret\0\0\0";
 pub const OLDEST: u16 = 1;
-pub const NEWEST: u16 = 1;
+/// Version 2 adds split panes.
+pub const NEWEST: u16 = 2;
 
 /// The largest message either side reads; a frame of a huge screen is a few megabytes.
 pub const LONGEST: usize = 64 << 20;
@@ -78,15 +80,16 @@ pub fn receive<T: Wire>(input: &mut impl Read) -> io::Result<Option<T>> {
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
-/// The client's half of the handshake: the version the server chose.
+/// The client's half of the handshake, offering versions up to `newest`: the version
+/// the server chose.
 ///
 /// # Errors
 ///
 /// When the other end is not a Caret server or speaks none of this client's versions.
-pub fn greet(stream: &mut (impl Read + Write)) -> io::Result<u16> {
+pub fn greet(stream: &mut (impl Read + Write), newest: u16) -> io::Result<u16> {
     let mut hello = MAGIC.to_vec();
     hello.extend_from_slice(&OLDEST.to_le_bytes());
-    hello.extend_from_slice(&NEWEST.to_le_bytes());
+    hello.extend_from_slice(&newest.to_le_bytes());
     stream.write_all(&hello)?;
     let mut answer = [0; 10];
     stream.read_exact(&mut answer)?;
@@ -99,7 +102,7 @@ pub fn greet(stream: &mut (impl Read + Write)) -> io::Result<u16> {
     match u16::from_le_bytes([answer[8], answer[9]]) {
         0 => Err(io::Error::new(
             io::ErrorKind::Unsupported,
-            format!("the server speaks none of versions {OLDEST} to {NEWEST}"),
+            format!("the server speaks none of versions {OLDEST} to {newest}"),
         )),
         version => Ok(version),
     }
@@ -140,8 +143,16 @@ mod tests {
     fn a_client_and_server_agree_on_the_newest_version_both_speak() {
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let server = std::thread::spawn(move || welcome(&mut server).unwrap());
-        assert_eq!(greet(&mut client).unwrap(), NEWEST);
+        assert_eq!(greet(&mut client, NEWEST).unwrap(), NEWEST);
         assert_eq!(server.join().unwrap(), Some(NEWEST));
+    }
+
+    #[test]
+    fn a_client_of_an_older_version_is_spoken_to_in_it() {
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let server = std::thread::spawn(move || welcome(&mut server).unwrap());
+        assert_eq!(greet(&mut client, 1).unwrap(), 1);
+        assert_eq!(server.join().unwrap(), Some(1));
     }
 
     #[test]

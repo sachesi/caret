@@ -221,6 +221,16 @@ impl<T: Wire> Wire for Vec<T> {
     }
 }
 
+impl<T: Wire> Wire for Box<T> {
+    fn put(&self, out: &mut Vec<u8>) {
+        (**self).put(out);
+    }
+
+    fn take(input: &mut &[u8]) -> Result<Self, DecodeError> {
+        T::take(input).map(Box::new)
+    }
+}
+
 impl<T: Wire> Wire for Option<T> {
     fn put(&self, out: &mut Vec<u8>) {
         match self {

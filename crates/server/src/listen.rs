@@ -143,14 +143,14 @@ pub fn accept(listener: &UnixListener, events: &mpsc::Sender<Input>) {
 /// Reads one client's requests into the loop, and starts the thread that writes what the
 /// loop sends it.
 fn serve(client: ClientId, mut stream: UnixStream, events: &mpsc::Sender<Input>) {
-    match caret_protocol::welcome(&mut stream) {
-        Ok(Some(_)) => {}
+    let version = match caret_protocol::welcome(&mut stream) {
+        Ok(Some(version)) => version,
         Ok(None) => return,
         Err(error) => {
             tracing::warn!("greeting a client: {error}");
             return;
         }
-    }
+    };
     let (writer, written) = mpsc::channel::<Vec<u8>>();
     let mut out = match stream.try_clone() {
         Ok(out) => out,
@@ -174,7 +174,14 @@ fn serve(client: ClientId, mut stream: UnixStream, events: &mpsc::Sender<Input>)
         tracing::warn!("starting a client's writer: {error}");
         return;
     }
-    if events.send(Input::Connected { client, writer }).is_err() {
+    if events
+        .send(Input::Connected {
+            client,
+            version,
+            writer,
+        })
+        .is_err()
+    {
         return;
     }
     loop {

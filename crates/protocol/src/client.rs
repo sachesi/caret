@@ -27,18 +27,19 @@ pub enum ConnectError {
     Greet(io::Error),
 }
 
-/// A connection to the server of the application `app_id`, greeted. systemd starts the
-/// server for its socket where its units are installed; elsewhere this does.
+/// A connection to the server of the application `app_id`, greeted with versions up to
+/// `newest`, and the version agreed. systemd starts the server for its socket where its
+/// units are installed; elsewhere this does.
 ///
 /// # Errors
 ///
 /// When there is no runtime directory, the server cannot be started or reached, or it
 /// speaks no version this client does.
-pub fn connect(app_id: &str) -> Result<UnixStream, ConnectError> {
+pub fn connect(app_id: &str, newest: u16) -> Result<(UnixStream, u16), ConnectError> {
     let path = crate::socket_path(app_id).ok_or(ConnectError::NoRuntimeDirectory)?;
     let mut stream = connect_or_start(&path)?;
-    crate::greet(&mut stream).map_err(ConnectError::Greet)?;
-    Ok(stream)
+    let version = crate::greet(&mut stream, newest).map_err(ConnectError::Greet)?;
+    Ok((stream, version))
 }
 
 /// The server binary: beside this one, where builds and installs put it, else on the

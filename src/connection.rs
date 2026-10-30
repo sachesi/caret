@@ -46,7 +46,8 @@ pub fn connection() -> Result<Rc<Connection>, String> {
 
 impl Connection {
     fn open() -> Result<Self, String> {
-        let mut stream = caret_protocol::client::connect(config::APPLICATION_ID)
+        // Version 1: this window shows a tab of split panes as its first pane.
+        let (mut stream, _) = caret_protocol::client::connect(config::APPLICATION_ID, 1)
             .map_err(|error| error.to_string())?;
         let mut out = stream.try_clone().map_err(|error| error.to_string())?;
 
@@ -264,6 +265,8 @@ impl Connection {
                     view.ended(code, signal);
                 }
             }
+            // Not sent in version 1, which this window speaks.
+            Message::Layout { .. } => {}
         }
     }
 
