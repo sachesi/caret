@@ -221,20 +221,30 @@ pub fn capture<T: EventListener>(term: &Term<T>, palette: &Palette, link: Option
     Screen { frame }
 }
 
+/// What a client was last sent of a screen.
+#[derive(Debug, Default)]
+pub struct Sent {
+    columns: u16,
+    rows: Vec<Row>,
+}
+
 impl Screen {
     /// The frame for a client that was last sent `sent`, which becomes this screen's rows:
     /// only the rows that differ, or all of them after the size changed.
-    pub fn changes(self, sent: &mut Vec<Row>, hovered: Option<Hovered>) -> Frame {
+    pub fn changes(self, sent: &mut Sent, hovered: Option<Hovered>) -> Frame {
         let Self { mut frame } = self;
         let rows = std::mem::take(&mut frame.rows);
-        let all = sent.len() != rows.len();
+        let all = sent.columns != frame.columns || sent.rows.len() != rows.len();
         frame.rows = rows
             .iter()
             .enumerate()
-            .filter(|&(line, row)| all || sent[line] != *row)
+            .filter(|&(line, row)| all || sent.rows[line] != *row)
             .map(|(_, row)| row.clone())
             .collect();
-        *sent = rows;
+        *sent = Sent {
+            columns: frame.columns,
+            rows,
+        };
         frame.hovered = hovered;
         frame
     }
@@ -273,7 +283,7 @@ mod tests {
     #[test]
     fn only_rows_that_changed_are_sent_again() {
         let palette = palette::fallback();
-        let mut sent = Vec::new();
+        let mut sent = Sent::default();
         let mut term = term("one\r\ntwo");
         let first = capture(&term, &palette, None).changes(&mut sent, None);
         assert_eq!(first.rows.len(), 4);
@@ -292,10 +302,27 @@ mod tests {
     }
 
     #[test]
+    fn every_row_is_sent_again_after_the_width_changes() {
+        let palette = palette::fallback();
+        let mut sent = Sent::default();
+        let mut term = term("one\r\ntwo");
+        capture(&term, &palette, None).changes(&mut sent, None);
+
+        term.resize(GridSize {
+            columns: 30,
+            lines: 4,
+        });
+        let wider = capture(&term, &palette, None).changes(&mut sent, None);
+        assert_eq!(wider.columns, 30);
+        assert_eq!(wider.rows.len(), 4);
+        assert_eq!(text(&wider.rows[0]), "one");
+    }
+
+    #[test]
     fn styles_and_lines_come_with_the_cells() {
         let palette = palette::fallback();
         let screen = capture(&term("\x1b[1;3;4:3;9mx\x1b[0m\x1b[7my"), &palette, None);
-        let frame = screen.changes(&mut Vec::new(), None);
+        let frame = screen.changes(&mut Sent::default(), None);
         let cells = &frame.rows[0].cells;
         let x = &cells[0];
         assert_eq!(

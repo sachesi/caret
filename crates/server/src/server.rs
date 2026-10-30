@@ -20,10 +20,10 @@ use alacritty_terminal::term::{self, ClipboardType, TermMode, viewport_to_point}
 use alacritty_terminal::vte::ansi::{Color, CursorStyle, NamedColor, Processor};
 use caret_protocol::{
     Answer, Bytes, Command, CursorShape, Hovered, Message, Options, Palette, Point, Question,
-    Request, Row, Scroll, Select, SelectionKind, SessionId, SessionInfo, Size, Tab, TerminalId,
+    Request, Scroll, Select, SelectionKind, SessionId, SessionInfo, Size, Tab, TerminalId,
 };
 
-use crate::capture::{self, capture};
+use crate::capture::{self, Sent, capture};
 use crate::links::{self, Span};
 use crate::palette;
 use crate::search;
@@ -72,7 +72,7 @@ struct View {
     wants_frame: bool,
     /// Something changed since its last frame.
     dirty: bool,
-    sent: Vec<Row>,
+    sent: Sent,
     hover: Option<Point>,
     size: Option<Size>,
 }
