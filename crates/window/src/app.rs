@@ -162,6 +162,8 @@ struct App {
     server: connection::Connection,
     asked: HashMap<u32, Asked>,
     session: Option<SessionId>,
+    /// The names the user gave sessions.
+    session_names: HashMap<SessionId, String>,
     tabs: Vec<tabs::Tab>,
     selected: usize,
     /// A tab has been asked for and not yet opened.
@@ -347,6 +349,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         server,
         asked,
         session: None,
+        session_names: HashMap::new(),
         tabs: Vec::new(),
         selected: 0,
         opening: false,
@@ -641,6 +644,13 @@ impl App {
             }
             Message::Layout { session, tab, root } if Some(session) == self.session => {
                 self.tab_layout(tab, root);
+            }
+            Message::SessionNamed { session, name } => {
+                match name {
+                    Some(name) => self.session_names.insert(session, name),
+                    None => self.session_names.remove(&session),
+                };
+                self.retitle();
             }
             _ => {}
         }

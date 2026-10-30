@@ -13,7 +13,7 @@ use std::time::Instant;
 use caret_protocol::layout::Node;
 use caret_protocol::{
     Answer, Bytes, Command, CursorShape, Message, Options, Palette, Question, Request, Scroll,
-    SessionId, SessionInfo, Size, Tab, TerminalId,
+    SessionEntry, SessionId, SessionInfo, Size, Tab, TerminalId,
 };
 use caret_term::Report;
 
@@ -50,6 +50,8 @@ struct Client {
 struct Session {
     tabs: Vec<TabState>,
     clients: BTreeSet<ClientId>,
+    /// The name the user gave it.
+    name: Option<String>,
 }
 
 struct TabState {
@@ -416,6 +418,18 @@ impl Server {
                 true
             }),
             Request::PaneToTab { terminal } => self.pane_to_tab(terminal),
+            Request::NameSession { session, name } => {
+                let Some(state) = self.sessions.get_mut(&session) else {
+                    return;
+                };
+                state.name.clone_from(&name);
+                self.broadcast_versions(session, None, |version| {
+                    (version >= PANES).then(|| Message::SessionNamed {
+                        session,
+                        name: name.clone(),
+                    })
+                });
+            }
             Request::MoveTab {
                 terminal,
                 session,
@@ -501,6 +515,27 @@ impl Server {
         }
     }
 
+    /// Every session, with its name and how many panes and clients it has.
+    fn session_list(&self) -> Answer {
+        Answer::SessionList {
+            sessions: self
+                .sessions
+                .iter()
+                .map(|(&session, state)| SessionEntry {
+                    session,
+                    name: state.name.clone(),
+                    tabs: state.tabs.iter().map(|tab| self.tab(tab, PANES)).collect(),
+                    panes: state
+                        .tabs
+                        .iter()
+                        .map(|tab| tab.root.panes().len() as u32)
+                        .sum(),
+                    clients: state.clients.len() as u32,
+                })
+                .collect(),
+        }
+    }
+
     fn ask(&mut self, client: ClientId, id: u32, question: Question) {
         let answer = match question {
             Question::Sessions => {
@@ -521,6 +556,7 @@ impl Server {
                         .collect(),
                 }
             }
+            Question::SessionList => self.session_list(),
             Question::NewSession => {
                 let session = SessionId(self.next_session);
                 self.next_session += 1;
@@ -647,6 +683,20 @@ impl Server {
         );
         for layout in &layouts {
             self.send(client, layout);
+        }
+        if let Some(name) = self
+            .sessions
+            .get(&session_id)
+            .and_then(|session| session.name.clone())
+            .filter(|_| version >= PANES)
+        {
+            self.send(
+                client,
+                &Message::SessionNamed {
+                    session: session_id,
+                    name: Some(name),
+                },
+            );
         }
         for terminal in shown {
             self.tell_state(client, terminal);
@@ -1750,6 +1800,42 @@ mod tests {
             Message::Layout { tab, root, .. } => {
                 assert_eq!((tab, root.panes()), (key, vec![third]));
             }
+            _ => unreachable!(),
+        }
+        harness.request(Request::CloseSession { session });
+    }
+
+    #[test]
+    fn a_named_session_is_listed_and_attached_by_its_name() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        harness.open(session, &["sh", "-c", "sleep 30"]);
+        harness.request(Request::NameSession {
+            session,
+            name: Some("build".to_owned()),
+        });
+        harness.request(Request::Ask {
+            id: 4,
+            question: Question::SessionList,
+        });
+        match harness.next(|message| matches!(message, Message::Answer { id: 4, .. })) {
+            Message::Answer {
+                answer: Answer::SessionList { sessions },
+                ..
+            } => {
+                assert_eq!(sessions.len(), 1);
+                assert_eq!(sessions[0].name.as_deref(), Some("build"));
+                assert_eq!((sessions[0].tabs.len(), sessions[0].panes), (1, 1));
+            }
+            other => panic!("{other:?}"),
+        }
+        // Attaching again, the name comes after the tabs.
+        harness.request(Request::Detach { session });
+        harness.request(Request::Attach { session });
+        harness.next(|message| matches!(message, Message::Attached { .. }));
+        match harness.next(|message| matches!(message, Message::SessionNamed { .. })) {
+            Message::SessionNamed { name, .. } => assert_eq!(name.as_deref(), Some("build")),
             _ => unreachable!(),
         }
         harness.request(Request::CloseSession { session });

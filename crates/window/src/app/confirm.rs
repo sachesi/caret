@@ -2,7 +2,7 @@
 //! programs run in it and pasting lines a program will run one by one, asking for a
 //! tab's name, and saying what Caret is.
 
-use caret_protocol::{Answer, Bytes, Question, Request, TerminalId, encode};
+use caret_protocol::{Answer, Bytes, Question, Request, SessionId, TerminalId, encode};
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
 use super::{App, Asked, pointer};
@@ -18,6 +18,7 @@ pub enum Confirm {
     CloseWindow,
     Paste { terminal: TerminalId, text: Vec<u8> },
     Rename(TerminalId),
+    RenameSession(SessionId),
     About,
 }
 
@@ -71,6 +72,12 @@ impl App {
                     .filter(|name| !name.is_empty());
                 self.server.send(&Request::NameTab { terminal, name });
             }
+            Some(Confirm::RenameSession(session)) if accepted => {
+                let name = field
+                    .map(|field| field.text.trim().to_owned())
+                    .filter(|name| !name.is_empty());
+                self.server.send(&Request::NameSession { session, name });
+            }
             _ => {}
         }
     }
@@ -84,6 +91,25 @@ impl App {
             &self.tab_title(terminal),
         );
         self.confirm(dialog, Confirm::Rename(terminal));
+    }
+
+    pub(super) fn rename_session(&mut self, session: SessionId) {
+        if self.server.version < 2 {
+            self.toast("Naming sessions needs a newer terminal server".to_owned());
+            return;
+        }
+        let name = self
+            .session_names
+            .get(&session)
+            .cloned()
+            .unwrap_or_default();
+        let dialog = Dialog::asking(
+            "Rename Session",
+            "Without a name, the session is known by its number.",
+            ["Cancel", "Rename"],
+            &name,
+        );
+        self.confirm(dialog, Confirm::RenameSession(session));
     }
 
     /// Says what Caret is, which version, and under which licence, offering its website.

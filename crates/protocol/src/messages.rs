@@ -208,6 +208,8 @@ pub enum Question {
         command: Command,
         size: Size,
     },
+    /// Since version 2. The sessions, with their names: answered with `SessionList`.
+    SessionList,
 }
 variants!(Question {
     0 => Sessions,
@@ -220,6 +222,7 @@ variants!(Question {
     7 => Find { terminal, text, upwards },
     8 => OpenTab { session, index, command, size },
     9 => Split { terminal, vertical, command, size },
+    10 => SessionList,
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -253,6 +256,9 @@ pub enum Answer {
     },
     /// The terminal or session asked about is gone.
     Gone,
+    SessionList {
+        sessions: Vec<SessionEntry>,
+    },
 }
 variants!(Answer {
     0 => Sessions { sessions },
@@ -265,6 +271,7 @@ variants!(Answer {
     7 => Found { found },
     8 => Gone,
     9 => Opened { terminal },
+    10 => SessionList { sessions },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -291,6 +298,26 @@ pub struct SessionInfo {
 record!(SessionInfo {
     session,
     tabs,
+    clients
+});
+
+/// A session as `SessionList` tells of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionEntry {
+    pub session: SessionId,
+    /// The name the user gave it.
+    pub name: Option<String>,
+    pub tabs: Vec<Tab>,
+    /// Its panes, in all its tabs.
+    pub panes: u32,
+    /// Clients attached to it now.
+    pub clients: u32,
+}
+record!(SessionEntry {
+    session,
+    name,
+    tabs,
+    panes,
     clients
 });
 
@@ -397,6 +424,11 @@ pub enum Request {
     PaneToTab {
         terminal: TerminalId,
     },
+    /// Since version 2. Names the session, or takes its name away.
+    NameSession {
+        session: SessionId,
+        name: Option<String>,
+    },
 }
 variants!(Request {
     0 => Look { palette, options },
@@ -420,6 +452,7 @@ variants!(Request {
     18 => SwapPanes { terminal, other },
     19 => MovePane { terminal, beside, side },
     20 => PaneToTab { terminal },
+    21 => NameSession { session, name },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -504,6 +537,12 @@ pub enum Message {
         tab: TerminalId,
         root: Node,
     },
+    /// Since version 2. The session's name, after `Attached` when it has one and
+    /// whenever it changes.
+    SessionNamed {
+        session: SessionId,
+        name: Option<String>,
+    },
 }
 variants!(Message {
     0 => Answer { id, answer },
@@ -523,4 +562,5 @@ variants!(Message {
     14 => Failed { terminal, reason },
     15 => Ended { terminal, code, signal },
     16 => Layout { session, tab, root },
+    17 => SessionNamed { session, name },
 });

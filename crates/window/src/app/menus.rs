@@ -19,6 +19,7 @@ pub enum Choice {
     Profile(String),
     Detach,
     Reattach,
+    RenameSession,
     Preferences,
     About,
     /// The main menu, for a window without its header bar.
@@ -75,6 +76,7 @@ impl App {
         }
         sections.extend([
             vec![
+                self.item("Rename Session…", Choice::RenameSession, true),
                 self.item("Detach Window", Choice::Detach, true),
                 self.item("Reattach Windows", Choice::Reattach, true),
             ],
@@ -197,6 +199,11 @@ impl App {
             }
             Some(Choice::Profile(profile)) => self.new_window(Some(&profile)),
             Some(Choice::Detach) => self.end(true),
+            Some(Choice::RenameSession) => {
+                if let Some(session) = self.session {
+                    self.rename_session(session);
+                }
+            }
             Some(Choice::Reattach) => {
                 let id = self.server.ask(Question::Sessions);
                 self.asked.insert(id, Asked::Reattach);
