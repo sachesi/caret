@@ -396,6 +396,9 @@ impl Fonts {
             .builder(font)
             .size(size)
             .hint(true)
+            // The context keeps the last face's coordinates, which a face drawn at its
+            // default weight would otherwise take.
+            .normalized_coords(std::iter::empty::<swash::NormalizedCoord>())
             .variations(face.weight.map(|weight| ("wght", weight)))
             .build();
         let mut render = Render::new(&[
