@@ -2,7 +2,7 @@
 
 use crate::style::{Cell, Flags, Style};
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Row {
     pub cells: Vec<Cell>,
     /// The line goes on in the next row, which the terminal wrapped it into.
@@ -11,6 +11,9 @@ pub struct Row {
     pub prompt: bool,
     /// For each cell with marks after its character, by column, the whole text.
     clusters: Vec<(u16, Box<str>)>,
+    /// No cell from here on shows anything, so that the end of the text is found without
+    /// looking at every blank after it.
+    used: usize,
 }
 
 impl Row {
@@ -18,8 +21,18 @@ impl Row {
     pub fn new(columns: usize, style: Style) -> Self {
         Self {
             cells: vec![Cell::blank(style); columns],
+            used: if style == Style::default() {
+                0
+            } else {
+                columns
+            },
             ..Self::default()
         }
+    }
+
+    /// Cells up to `end` may show something now.
+    fn touch(&mut self, end: usize) {
+        self.used = self.used.max(end).min(self.cells.len());
     }
 
     #[must_use]
@@ -49,6 +62,7 @@ impl Row {
 
     /// Adds `mark` to the text of the cell at `column`.
     pub fn add_mark(&mut self, column: usize, mark: char) {
+        self.touch(column + 1);
         let cell = &mut self.cells[column];
         if cell.style.flags.contains(Flags::CLUSTER) {
             if let Some((_, text)) = self
@@ -72,6 +86,7 @@ impl Row {
     pub fn set(&mut self, column: usize, cell: Cell) {
         self.forget_cluster(column);
         self.cells[column] = cell;
+        self.touch(column + 1);
     }
 
     /// Puts `cell` at `column`, its text `text` rather than its character alone.
@@ -80,12 +95,26 @@ impl Row {
         cell.style.flags.insert(Flags::CLUSTER);
         self.cells[column] = cell;
         self.clusters.push((column as u16, text.into()));
+        self.touch(column + 1);
     }
 
     fn forget_cluster(&mut self, column: usize) {
         if self.cells[column].style.flags.contains(Flags::CLUSTER) {
             self.clusters.retain(|(at, _)| usize::from(*at) != column);
         }
+    }
+
+    /// Makes it a blank row of `style`, keeping its memory.
+    pub fn reset(&mut self, style: Style) {
+        self.cells.fill(Cell::blank(style));
+        self.clusters.clear();
+        self.wrapped = false;
+        self.prompt = false;
+        self.used = if style == Style::default() {
+            0
+        } else {
+            self.cells.len()
+        };
     }
 
     /// Blanks the cells from `start` to `end`, and the other half of any wide character
@@ -99,6 +128,9 @@ impl Row {
         for column in start..end {
             self.forget_cluster(column);
             self.cells[column] = Cell::blank(style);
+        }
+        if style != Style::default() {
+            self.touch(end);
         }
     }
 
@@ -121,6 +153,7 @@ impl Row {
         }
         if end < self.cells.len() && self.cells[end - 1].style.flags.contains(Flags::WIDE) {
             self.cells[end] = blank(self.cells[end]);
+            self.touch(end + 1);
         }
     }
 
@@ -148,6 +181,11 @@ impl Row {
         for cell in &mut self.cells[column..column + count] {
             *cell = Cell::blank(style);
         }
+        let used = self.used + count;
+        self.touch(used);
+        if style != Style::default() {
+            self.touch(column + count);
+        }
     }
 
     /// Removes `count` cells at `column`, moving those after it left and blanking the
@@ -166,6 +204,9 @@ impl Row {
         self.move_clusters(column + count, -(count as isize));
         for cell in &mut self.cells[len - count..] {
             *cell = Cell::blank(style);
+        }
+        if style != Style::default() {
+            self.touch(len);
         }
     }
 
@@ -187,12 +228,15 @@ impl Row {
             }
             self.cells.truncate(columns);
             self.clusters.retain(|(at, _)| usize::from(*at) < columns);
+            self.used = self.used.min(columns);
         } else {
             self.cells.resize(columns, Cell::blank(style));
         }
+        if style != Style::default() {
+            self.touch(columns);
+        }
     }
 
-    /// The number of cells up to the last that shows anything.
     /// The cells it adds to its line where the line goes on past it: all but a blank left
     /// at the end for a wide character that did not fit.
     #[must_use]
@@ -209,9 +253,10 @@ impl Row {
         self.cells.len() - usize::from(padded)
     }
 
+    /// The number of cells up to the last that shows anything.
     #[must_use]
     pub fn occupied(&self) -> usize {
-        self.cells
+        self.cells[..self.used]
             .iter()
             .rposition(|cell| !cell.is_blank())
             .map_or(0, |last| last + 1)
@@ -300,14 +345,21 @@ impl Grid {
     }
 
     /// Moves the rows from `top` to `bottom` up by `count`, blanking those it opens at the
-    /// bottom with `style`. The rows moved off the top are returned, top first.
-    pub fn scroll_up(&mut self, top: usize, bottom: usize, count: usize, style: Style) -> Vec<Row> {
+    /// bottom with `style`. `gone` sees each row moved off the top, top first, before its
+    /// cells are blanked for reuse.
+    pub fn scroll_up(
+        &mut self,
+        top: usize,
+        bottom: usize,
+        count: usize,
+        style: Style,
+        mut gone: impl FnMut(&Row),
+    ) {
         let count = count.min(bottom + 1 - top);
-        let blank = Row::new(self.columns, style);
-        let gone: Vec<Row> = self.rows[top..top + count]
-            .iter_mut()
-            .map(|row| std::mem::replace(row, blank.clone()))
-            .collect();
+        for row in &mut self.rows[top..top + count] {
+            gone(row);
+            row.reset(style);
+        }
         self.rows[top..=bottom].rotate_left(count);
         self.dirty[top..=bottom].fill(true);
         // Rows moved off the top keep their text, in the history or nowhere; rows moved
@@ -317,7 +369,6 @@ impl Grid {
         } else {
             self.wrote(top);
         }
-        gone
     }
 
     /// Moves the rows from `top` to `bottom` down by `count`, blanking those it opens at the
@@ -432,9 +483,9 @@ mod tests {
                 },
             );
         }
-        let gone = grid.scroll_up(0, 2, 1, Style::default());
-        assert_eq!(gone.len(), 1);
-        assert_eq!(gone[0].cells[0].c, 'a');
+        let mut gone = Vec::new();
+        grid.scroll_up(0, 2, 1, Style::default(), |row| gone.push(row.cells[0].c));
+        assert_eq!(gone, ['a']);
         assert_eq!(grid.row(0).cells[0].c, 'b');
         assert_eq!(grid.row(2).cells[0].c, ' ');
     }

@@ -93,10 +93,26 @@ impl Line {
             row.occupied()
         };
         self.prompt |= row.prompt;
+        self.text.reserve(end);
         let mut column = 0;
         while column < end {
             let cell = row.cells[column];
             let flags = cell.style.flags;
+            // Most cells are one narrow character each, in runs of one style.
+            if !flags.intersects(Flags::WIDE | Flags::SPACER | Flags::CLUSTER) {
+                let mut run = 0;
+                for other in &row.cells[column..end] {
+                    if other.style != cell.style {
+                        break;
+                    }
+                    self.text.push(other.c);
+                    run += 1;
+                }
+                self.push_styles(cell.style, run as u32);
+                self.cells += run as u32;
+                column += run;
+                continue;
+            }
             // A blank left at the end of a row for a wide character that did not fit.
             if flags.contains(Flags::SPACER)
                 && !(column > 0 && row.cells[column - 1].style.flags.contains(Flags::WIDE))
@@ -105,7 +121,7 @@ impl Line {
                 continue;
             }
             if flags.contains(Flags::SPACER) {
-                self.push_style(cell.style);
+                self.push_styles(cell.style, 1);
                 self.cells += 1;
                 column += 1;
                 continue;
@@ -120,20 +136,20 @@ impl Line {
             if flags.contains(Flags::WIDE) {
                 self.wide.push(self.cells);
             }
-            self.push_style(cell.style);
+            self.push_styles(cell.style, 1);
             self.cells += 1;
             column += 1;
         }
     }
 
-    fn push_style(&mut self, mut style: Style) {
+    fn push_styles(&mut self, mut style: Style, cells: u32) {
         // Which cells are wide or carry marks is kept apart from the style.
         style
             .flags
             .remove(Flags::WIDE | Flags::SPACER | Flags::CLUSTER);
         match self.runs.last_mut() {
-            Some((count, last)) if *last == style => *count += 1,
-            _ => self.runs.push((1, style)),
+            Some((count, last)) if *last == style => *count += cells,
+            _ => self.runs.push((cells, style)),
         }
     }
 

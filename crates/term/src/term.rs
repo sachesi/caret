@@ -754,13 +754,15 @@ impl Term {
     fn scroll_up(&mut self, count: usize) {
         let (top, bottom) = (self.top, self.bottom);
         let blank = self.blank();
-        let gone = self.grid().scroll_up(top, bottom, count, blank);
-        if top == 0 && !self.alt_active {
-            for row in &gone {
-                self.history.push(row);
-            }
-        } else if self.alt_active {
+        if self.alt_active {
+            self.alt.scroll_up(top, bottom, count, blank, |_| {});
             self.alt.wrote(top);
+        } else if top == 0 {
+            let history = &mut self.history;
+            self.main
+                .scroll_up(top, bottom, count, blank, |row| history.push(row));
+        } else {
+            self.main.scroll_up(top, bottom, count, blank, |_| {});
         }
         self.forget_last_cell();
     }

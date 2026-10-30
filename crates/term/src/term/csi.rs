@@ -210,7 +210,7 @@ impl Term {
             return;
         }
         let (line, bottom, blank) = (self.cursor.line, self.bottom, self.blank());
-        self.grid().scroll_up(line, bottom, count, blank);
+        self.grid().scroll_up(line, bottom, count, blank, |_| {});
         self.cursor.column = 0;
         self.cursor.pending = false;
     }
