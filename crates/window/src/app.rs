@@ -882,8 +882,20 @@ impl App {
             under,
             background: clear,
         };
+        // Only a viewport can show part of a larger image as the whole window.
+        let roomy = self.chrome.resizing && self.fractional.is_some();
+        let crop = |width: u32, height: u32| {
+            if let Some(fractional) = &self.fractional {
+                fractional
+                    .viewport
+                    .set_source(0.0, 0.0, f64::from(width), f64::from(height));
+            }
+        };
         let rendering = Instant::now();
-        if let Err(error) = self.gpu.draw(surface_width, surface_height, &mut scene) {
+        if let Err(error) = self
+            .gpu
+            .draw(surface_width, surface_height, roomy, &mut scene, crop)
+        {
             tracing::error!("drawing the window: {error}");
             self.exit = true;
             return;
@@ -1145,6 +1157,7 @@ impl WindowHandler for App {
             !(configure.is_maximized() || configure.is_fullscreen() || configure.is_tiled());
         self.chrome.maximized = configure.is_maximized();
         self.chrome.active = configure.is_activated();
+        self.chrome.resizing = configure.is_resizing();
         if self.chrome.active {
             self.attended();
         }

@@ -334,6 +334,8 @@ pub struct Chrome {
     pub fullscreen: bool,
     pub maximized: bool,
     pub active: bool,
+    /// Being resized interactively.
+    pub resizing: bool,
     /// The header bar is shown; hidden, the window keeps its other parts.
     pub header_bar: bool,
     pub dark: bool,

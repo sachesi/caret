@@ -36,6 +36,9 @@ impl<T> During<T> for Result<T, vk::Result> {
 /// Frames recorded while earlier ones are still drawn.
 pub const FRAMES_IN_FLIGHT: usize = 2;
 
+/// Device pixels a swapchain made during a resize is rounded up to, each way.
+const ROOM: u32 = 256;
+
 struct Frame {
     commands: vk::CommandBuffer,
     acquired: vk::Semaphore,
@@ -179,23 +182,45 @@ impl Gpu {
         })
     }
 
-    /// Draws `scene` in a frame `width` by `height` pixels.
+    /// Draws `scene` in a frame `width` by `height` pixels. A `roomy` frame may go to the
+    /// top left of larger images, which `crop` is told the size of just before they are
+    /// shown.
     ///
     /// # Errors
     ///
     /// When the device is lost or out of memory.
-    pub fn draw(&mut self, width: u32, height: u32, scene: &mut Scene) -> Result<(), GpuError> {
+    pub fn draw(
+        &mut self,
+        width: u32,
+        height: u32,
+        roomy: bool,
+        scene: &mut Scene,
+        crop: impl FnOnce(u32, u32),
+    ) -> Result<(), GpuError> {
         let wanted = vk::Extent2D { width, height };
-        if self.stale
-            || self
-                .swapchain
-                .as_ref()
-                .is_none_or(|chain| chain.extent != wanted)
-        {
-            self.make_swapchain(wanted)?;
+        let fits = |chain: &Swapchain| {
+            chain.extent == wanted
+                || (roomy && chain.extent.width >= width && chain.extent.height >= height)
+        };
+        if self.stale || self.swapchain.as_ref().is_none_or(|chain| !fits(chain)) {
+            // Drivers fill a swapchain's images on first use, which at each step of a
+            // resize costs more than the frame: room to grow saves most of them.
+            let room = if roomy {
+                vk::Extent2D {
+                    width: width.next_multiple_of(ROOM),
+                    height: height.next_multiple_of(ROOM),
+                }
+            } else {
+                wanted
+            };
+            self.make_swapchain(room)?;
         }
         let Some(swapchain) = self.swapchain.as_ref() else {
             return Ok(());
+        };
+        let drawn_extent = vk::Extent2D {
+            width: width.min(swapchain.extent.width),
+            height: height.min(swapchain.extent.height),
         };
         let frame = &self.frames[self.frame];
         let device = &self.device;
@@ -235,10 +260,9 @@ impl Gpu {
 
         // SAFETY: the fence was waited on, so the GPU is done with the frame.
         unsafe { device.reset_fences(&[frame.done]) }.during("vkResetFences")?;
-        let extent = swapchain.extent;
         begin(device, commands, image)?;
         self.renderer
-            .record(device, commands, self.frame, view, extent, scene)?;
+            .record(device, commands, self.frame, view, drawn_extent, scene)?;
         end(device, commands, image)?;
 
         let waits = [vk::SemaphoreSubmitInfo::default()
@@ -263,6 +287,8 @@ impl Gpu {
             .wait_semaphores(&wait)
             .swapchains(&chains)
             .image_indices(&indices);
+        // Presenting commits the surface, which takes the crop with it.
+        crop(drawn_extent.width, drawn_extent.height);
         // SAFETY: the image was acquired from this swapchain and is drawn when `drawn`
         // is signalled.
         match unsafe { self.swapchains.queue_present(self.queue, &present) } {
