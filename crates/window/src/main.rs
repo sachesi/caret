@@ -14,6 +14,7 @@ mod grid;
 mod keys;
 mod notifications;
 mod palette;
+mod panes;
 mod renderer;
 mod shortcuts;
 mod state;

@@ -126,6 +126,18 @@ impl App {
         window.push(self.act_item("New Tab", Action::NewTab));
         window.push(self.act_item("Find…", Action::Find));
         sections.push(window);
+        let mut panes = vec![
+            self.act_item("Split Right", Action::SplitRight),
+            self.act_item("Split Down", Action::SplitDown),
+        ];
+        if self
+            .tabs
+            .get(self.selected)
+            .is_some_and(|tab| tab.panes.len() > 1)
+        {
+            panes.push(self.act_item("Close Pane", Action::ClosePane));
+        }
+        sections.push(panes);
         if !bar {
             sections.push(vec![
                 self.act_item("Title Bar", Action::TitleBar),
@@ -141,7 +153,7 @@ impl App {
 
     /// The menu of the tab at `index`, where the pointer is.
     pub(super) fn tab_menu(&mut self, index: usize) {
-        let Some(terminal) = self.tabs.get(index).map(|tab| tab.terminal) else {
+        let Some(terminal) = self.tabs.get(index).map(|tab| tab.key) else {
             return;
         };
         let sections = vec![
@@ -172,7 +184,9 @@ impl App {
         let at = self.chrome.menu.as_ref().map(|menu| menu.at);
         self.close_menu();
         match choice.filter(|_| enabled) {
-            Some(Choice::Act(action)) => self.act(action),
+            Some(Choice::Act(action)) => {
+                self.act(action);
+            }
             Some(Choice::OpenLink(link)) => pointer::open(&link, &self.toaster),
             Some(Choice::CopyLink(link)) => self.copy(link, false),
             Some(Choice::RenameTab(terminal)) => self.rename_tab(terminal),

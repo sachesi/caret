@@ -20,6 +20,7 @@ use smithay_client_toolkit::reexports::calloop::channel::Sender;
 
 use super::{App, Asked};
 use crate::chrome::{Chrome, Part};
+use crate::panes::Divider;
 
 /// Linux's button codes.
 const BUTTON_LEFT: u32 = 0x110;
@@ -50,6 +51,8 @@ pub struct Pointer {
     selecting: bool,
     /// The tab held by the left button, which moves along the strip with the pointer.
     dragged_tab: Option<TerminalId>,
+    /// The divider between panes held by the left button, which follows the pointer.
+    dividing: Option<Divider>,
     /// The button a program was told is held, to tell it of motion and release.
     reported: Option<MouseButton>,
     last_click: Option<(Instant, Point)>,
@@ -80,6 +83,45 @@ impl App {
             column: u16::try_from(column).ok()?,
         };
         Some((point, x - x.floor() >= 0.5))
+    }
+
+    /// Where the pointer is, in device pixels from the surface's corner.
+    fn device_point(&self) -> (f64, f64) {
+        let (x, y) = self.pointer.position;
+        (x * self.factor(), y * self.factor())
+    }
+
+    /// Moves the divider held to where the pointer is, resizing the panes on each side.
+    fn divide(&mut self) {
+        let Some(divider) = self.pointer.dividing else {
+            return;
+        };
+        let (x, y) = self.device_point();
+        let share = divider.share_at(if divider.vertical { x } else { y }, self.gap());
+        if let Some(tab) = self.tabs.get_mut(self.selected)
+            && tab.root.divide(divider.before, share)
+        {
+            self.resize_panes(self.selected);
+            self.dirty = true;
+            self.draw();
+        }
+    }
+
+    /// Lets go of the divider held, telling the server where it is now.
+    fn let_go_of_divider(&mut self) {
+        let Some(divider) = self.pointer.dividing.take() else {
+            return;
+        };
+        let share = self
+            .tabs
+            .get(self.selected)
+            .and_then(|tab| tab.root.share(divider.before));
+        if let Some(share) = share {
+            self.server.send(&Request::Divide {
+                terminal: divider.before,
+                share,
+            });
+        }
     }
 
     /// Where the pointer is, in logical pixels from the window's corner.
@@ -115,8 +157,14 @@ impl App {
 
     /// The cursor's shape where the pointer is.
     fn set_cursor(&mut self) {
+        let divider = self
+            .pointer
+            .dividing
+            .or_else(|| self.placed().divider_at(self.device_point()));
         let shape = match self.chrome.hovered {
             Some(part) => cursor(part),
+            None if divider.is_some_and(|divider| divider.vertical) => Shape::ColResize,
+            None if divider.is_some() => Shape::RowResize,
             None if self.modifiers.ctrl && self.chrome.link.is_some() => Shape::Pointer,
             None if self.grid.mode.intersects(Mode::MOUSE_MODE) => Shape::Default,
             None => Shape::Text,
@@ -132,7 +180,8 @@ impl App {
     /// Tells the terminal which cell the pointer is over, for it to mark the address
     /// there.
     fn hover_cell(&mut self) {
-        let cell = if self.chrome.hovered.is_none() {
+        let over_focused = self.placed().pane_at(self.device_point()) == self.terminal();
+        let cell = if self.chrome.hovered.is_none() && over_focused {
             self.cell_at(self.pointer.position).map(|(point, _)| point)
         } else {
             None
@@ -208,7 +257,7 @@ impl App {
             }
             (Part::Tab(index), BUTTON_LEFT) => {
                 self.show(index);
-                self.pointer.dragged_tab = self.terminal();
+                self.pointer.dragged_tab = self.tabs.get(index).map(|tab| tab.key);
                 return;
             }
             (Part::SearchField, BUTTON_LEFT) => {
@@ -324,6 +373,21 @@ impl App {
             search.focused = false;
             self.dirty = true;
             self.draw();
+        }
+        let placed = self.placed();
+        let at = self.device_point();
+        if button == BUTTON_LEFT
+            && let Some(divider) = placed.divider_at(at)
+        {
+            self.pointer.dividing = Some(divider);
+            return;
+        }
+        // A click in another pane gives it the keys, and goes on there.
+        if let Some(pane) = placed
+            .pane_at(at)
+            .filter(|&pane| Some(pane) != self.terminal())
+        {
+            self.focus_pane(pane);
         }
         let button = match button {
             BUTTON_LEFT => MouseButton::Left,
@@ -468,7 +532,9 @@ impl PointerHandler for App {
     ) {
         for event in events {
             // The terminal keeps a drag that began in it, wherever the pointer goes.
-            let dragging = self.pointer.selecting || self.pointer.reported.is_some();
+            let dragging = self.pointer.selecting
+                || self.pointer.reported.is_some()
+                || self.pointer.dividing.is_some();
             match event.kind {
                 PointerEventKind::Enter { serial } => {
                     self.pointer.position = event.position;
@@ -486,6 +552,10 @@ impl PointerHandler for App {
                     }
                     self.show_link();
                     self.draw();
+                }
+                PointerEventKind::Motion { .. } if self.pointer.dividing.is_some() => {
+                    self.pointer.position = event.position;
+                    self.divide();
                 }
                 PointerEventKind::Motion { .. } if dragging => self.moved(event.position),
                 PointerEventKind::Motion { .. } if self.pointer.dragged_tab.is_some() => {
@@ -516,7 +586,10 @@ impl PointerHandler for App {
                 }
                 PointerEventKind::Release { button, .. } => {
                     self.pointer.dragged_tab = None;
-                    if self.chrome.pressed.is_some() {
+                    if self.pointer.dividing.is_some() {
+                        self.let_go_of_divider();
+                        self.set_cursor();
+                    } else if self.chrome.pressed.is_some() {
                         self.released_frame();
                     } else {
                         self.released(button);

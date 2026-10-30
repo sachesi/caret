@@ -58,6 +58,8 @@ layout(push_constant) uniform Constants {
     int underline_thickness;
     int strikeout_top;
     int strikeout_thickness;
+    // The pane's first cell in the cells, which its draw's instances start at.
+    uint first;
 } k;
 
 const uint HAS_BACKGROUND = 1u << 16;

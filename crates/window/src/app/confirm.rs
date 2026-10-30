@@ -14,16 +14,25 @@ const WEBSITE: &str = "https://github.com/sachesi/caret";
 /// What the dialog open asks to confirm, or asks for.
 pub enum Confirm {
     CloseTab(TerminalId),
+    ClosePane(TerminalId),
     CloseWindow,
     Paste { terminal: TerminalId, text: Vec<u8> },
     Rename(TerminalId),
     About,
 }
 
-/// The tabs asked whether a program runs in them before the window closes.
+/// The panes asked whether a program runs in them before the window closes.
 pub struct Closing {
     left: usize,
     busy: u32,
+}
+
+/// The panes of a tab asked whether a program runs in them before it closes.
+pub struct TabClosing {
+    key: TerminalId,
+    left: usize,
+    /// The first program found running.
+    program: Option<String>,
 }
 
 impl App {
@@ -46,6 +55,7 @@ impl App {
             Some(Confirm::CloseTab(terminal)) if accepted => {
                 self.server.send(&Request::CloseTab { terminal });
             }
+            Some(Confirm::ClosePane(terminal)) if accepted => self.end_pane(terminal),
             Some(Confirm::CloseWindow) if accepted => self.end(false),
             Some(Confirm::Paste { terminal, text }) if accepted => {
                 self.server.send(&Request::Input {
@@ -94,6 +104,7 @@ impl App {
     pub(super) fn forget_confirming(&mut self, terminal: TerminalId) {
         if let Some(
             Confirm::CloseTab(asked)
+            | Confirm::ClosePane(asked)
             | Confirm::Rename(asked)
             | Confirm::Paste {
                 terminal: asked, ..
@@ -147,13 +158,59 @@ impl App {
         true
     }
 
-    /// Closes the tab at `index`, asking first if a program runs in it.
+    /// Closes the tab at `index`, asking first if a program runs in one of its panes.
     pub(super) fn close_tab(&mut self, index: usize) {
-        if let Some(tab) = self.tabs.get(index) {
-            let terminal = tab.terminal;
+        let Some(tab) = self.tabs.get(index) else {
+            return;
+        };
+        let (key, panes) = (tab.key, tab.root.panes());
+        self.closing_tab = Some(TabClosing {
+            key,
+            left: panes.len(),
+            program: None,
+        });
+        for terminal in panes {
             let id = self.server.ask(Question::Busy { terminal });
-            self.asked.insert(id, Asked::Busy(terminal));
+            self.asked.insert(id, Asked::TabBusy(key));
         }
+    }
+
+    /// Counts a pane's answer to whether a program runs in it, and once every pane of
+    /// the tab has answered, closes it or asks.
+    pub(super) fn tab_busy(&mut self, key: TerminalId, answer: Answer) {
+        let Some(closing) = self
+            .closing_tab
+            .as_mut()
+            .filter(|closing| closing.key == key)
+        else {
+            return;
+        };
+        closing.left -= 1;
+        if let Answer::Busy {
+            program: Some(program),
+        } = answer
+        {
+            closing.program.get_or_insert(program);
+        }
+        if closing.left > 0 {
+            return;
+        }
+        let program = closing.program.take();
+        self.closing_tab = None;
+        match program {
+            Some(program) if self.tab_of(key).is_some() => {
+                let dialog =
+                    Dialog::new("Close Tab?", &stopped(&program, "tab"), ["Cancel", "Close"]);
+                self.confirm(dialog, Confirm::CloseTab(key));
+            }
+            _ => self.server.send(&Request::CloseTab { terminal: key }),
+        }
+    }
+
+    /// Closes `terminal`'s pane, asking first if a program runs in it.
+    pub(super) fn close_pane(&mut self, terminal: TerminalId) {
+        let id = self.server.ask(Question::Busy { terminal });
+        self.asked.insert(id, Asked::Busy(terminal));
     }
 
     pub(super) fn busy(&mut self, terminal: TerminalId, answer: Answer) {
@@ -161,15 +218,28 @@ impl App {
             Answer::Busy {
                 program: Some(program),
             } if self.tab_of(terminal).is_some() => {
-                let body = if program.is_empty() {
-                    "A program is still running in this tab and will be stopped.".to_owned()
+                let alone = self
+                    .tab_of(terminal)
+                    .is_some_and(|index| self.tabs[index].panes.len() == 1);
+                let (title, place) = if alone {
+                    ("Close Tab?", "tab")
                 } else {
-                    format!("“{program}” is still running in this tab and will be stopped.")
+                    ("Close Pane?", "pane")
                 };
-                let dialog = Dialog::new("Close Tab?", &body, ["Cancel", "Close"]);
-                self.confirm(dialog, Confirm::CloseTab(terminal));
+                let dialog = Dialog::new(title, &stopped(&program, place), ["Cancel", "Close"]);
+                self.confirm(dialog, Confirm::ClosePane(terminal));
             }
-            _ => self.server.send(&Request::CloseTab { terminal }),
+            _ => self.end_pane(terminal),
+        }
+    }
+
+    /// Ends `terminal`'s program and its pane, and the tab with its last pane.
+    fn end_pane(&mut self, terminal: TerminalId) {
+        // A server from before panes knows only tabs, of one terminal each.
+        if self.server.version < 2 {
+            self.server.send(&Request::CloseTab { terminal });
+        } else {
+            self.server.send(&Request::ClosePane { terminal });
         }
     }
 
@@ -183,17 +253,18 @@ impl App {
             self.end(self.config.close_detaches);
             return;
         }
+        let panes: Vec<TerminalId> = self.tabs.iter().flat_map(|tab| tab.root.panes()).collect();
         self.closing = Some(Closing {
-            left: self.tabs.len(),
+            left: panes.len(),
             busy: 0,
         });
-        for terminal in self.tabs.iter().map(|tab| tab.terminal).collect::<Vec<_>>() {
+        for terminal in panes {
             let id = self.server.ask(Question::Busy { terminal });
             self.asked.insert(id, Asked::Closing);
         }
     }
 
-    /// Counts a tab's answer to whether a program runs in it, and once every tab has
+    /// Counts a pane's answer to whether a program runs in it, and once every pane has
     /// answered, closes the window or asks.
     pub(super) fn closing_busy(&mut self, answer: &Answer) {
         let Some(closing) = &mut self.closing else {
@@ -213,9 +284,9 @@ impl App {
             return;
         }
         let body = if busy == 1 {
-            "A program is still running in 1 tab and will be stopped.".to_owned()
+            "A program is still running in this window and will be stopped.".to_owned()
         } else {
-            format!("Programs are still running in {busy} tabs and will be stopped.")
+            format!("{busy} programs are still running in this window and will be stopped.")
         };
         let dialog = Dialog::new("Close Window?", &body, ["Cancel", "Close"]);
         self.confirm(dialog, Confirm::CloseWindow);
@@ -239,5 +310,14 @@ impl App {
             bytes: Bytes(encode::paste(text, bracketed)),
             bottom: true,
         });
+    }
+}
+
+/// Says `program` runs in the `place` and will be stopped.
+fn stopped(program: &str, place: &str) -> String {
+    if program.is_empty() {
+        format!("A program is still running in this {place} and will be stopped.")
+    } else {
+        format!("“{program}” is still running in this {place} and will be stopped.")
     }
 }

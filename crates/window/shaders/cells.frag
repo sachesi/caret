@@ -76,7 +76,7 @@ float cursor_mark(vec2 p) {
 }
 
 void main() {
-    Cell cell = cells[cell_index];
+    Cell cell = cells[k.first + cell_index];
     if (k.pass == 0u) {
         // The terminal's own background is drawn under the cells, with its opacity.
         vec4 background = (cell.flags & HAS_BACKGROUND) != 0u ? vec4(rgb(cell.bg), 1.0) : vec4(0.0);

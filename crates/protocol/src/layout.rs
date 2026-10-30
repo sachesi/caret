@@ -108,6 +108,25 @@ impl Node {
         }
     }
 
+    /// The share of the side before the divider just before `terminal`'s pane.
+    #[must_use]
+    pub fn share(&self, terminal: TerminalId) -> Option<u16> {
+        match self {
+            Self::Pane { .. } => None,
+            Self::Split {
+                share,
+                first,
+                second,
+                ..
+            } => {
+                if second.first() == terminal {
+                    return Some(*share);
+                }
+                first.share(terminal).or_else(|| second.share(terminal))
+            }
+        }
+    }
+
     /// Moves the divider just before `terminal`'s pane, giving the side before it
     /// `share`; false when no divider comes just before it.
     pub fn divide(&mut self, terminal: TerminalId, share: u16) -> bool {
@@ -154,6 +173,7 @@ mod tests {
             panic!("{root:?}");
         };
         assert_eq!(*share, 7000);
+        assert_eq!(root.share(TerminalId(2)), Some(7000));
         assert!(matches!(**first, Node::Split { share: 1, .. }));
 
         let root = root.without(TerminalId(1)).unwrap();

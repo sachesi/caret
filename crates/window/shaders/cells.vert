@@ -12,7 +12,7 @@ const vec2 corners[6] = vec2[](
 );
 
 void main() {
-    uint index = gl_InstanceIndex;
+    uint index = gl_InstanceIndex - k.first;
     vec2 corner = corners[gl_VertexIndex];
     ivec2 cell_origin = ivec2(k.origin_x, k.origin_y)
         + ivec2(int(index % k.columns) * k.cell_width, int(index / k.columns) * k.cell_height);
@@ -22,7 +22,7 @@ void main() {
         position = vec2(cell_origin) + local;
         texel = vec2(0);
     } else {
-        Cell cell = cells[index];
+        Cell cell = cells[gl_InstanceIndex];
         if (cell.glyph == 0u) {
             gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
             cell_index = index;

@@ -57,7 +57,8 @@ use crate::gpu::{FRAMES_IN_FLIGHT, Gpu, GpuError};
 use crate::grid::{Grid, packed};
 use crate::notifications::Notifier;
 use crate::palette::Palette;
-use crate::renderer::{CURSOR_FOCUSED, CURSOR_WIDE, Constants, Scene};
+use crate::panes::{Direction, Placed};
+use crate::renderer::{CURSOR_FOCUSED, CURSOR_WIDE, Constants, PaneScene, Scene};
 use crate::shortcuts::{Action, Shortcuts};
 use crate::state::WindowState;
 
@@ -109,8 +110,10 @@ enum Asked {
     Session,
     /// A tab, opened at this size.
     Tab(Size),
-    /// What a new tab runs.
-    NextCommand,
+    /// What a new tab runs, or a new pane, beside the focused one or under it.
+    NextCommand(Option<bool>),
+    /// A pane split from the focused one.
+    Pane,
     /// Whether the text of the search this counts was found.
     Find(u32),
     /// The selected text, to offer as the clipboard or the primary selection.
@@ -119,8 +122,11 @@ enum Asked {
     },
     /// The address under the pointer, to open.
     Link,
-    /// Whether a program runs in the terminal, to close its tab or ask first.
+    /// Whether a program runs in the terminal, to close its pane or ask first.
     Busy(TerminalId),
+    /// Whether a program runs in a pane of the tab with this key, to close it or ask
+    /// first.
+    TabBusy(TerminalId),
     /// Whether a program runs in one of the tabs, to close the window or ask first.
     Closing,
     /// The link where the terminal's menu opens, at this point of the window.
@@ -157,6 +163,10 @@ struct App {
     opening: bool,
     /// The tab the window opened, to show when the server tells of it.
     opened: Option<TerminalId>,
+    /// The pane the window split off, to focus when the server tells of it.
+    opened_pane: Option<TerminalId>,
+    /// The tab about to close once its panes say whether programs run in them.
+    closing_tab: Option<confirm::TabClosing>,
     /// What the window's first tab runs, from the command line.
     first: Command,
     /// The profile whose settings the window has over the others.
@@ -261,6 +271,10 @@ fn toplevel(
     unsafe_code,
     reason = "Vulkan draws to the surface through its raw pointers"
 )]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the window's state is set up field by field"
+)]
 pub fn run(start: Start) -> Result<(), AppError> {
     let connection = Connection::connect_to_env()?;
     let (globals, queue) = registry_queue_init::<App>(&connection)?;
@@ -318,6 +332,8 @@ pub fn run(start: Start) -> Result<(), AppError> {
         selected: 0,
         opening: false,
         opened: None,
+        opened_pane: None,
+        closing_tab: None,
         first,
         profile,
         searches: 0,
@@ -391,6 +407,37 @@ fn begin(server: &mut connection::Connection, start: Start) -> (HashMap<u32, Ask
         env: Vec::new(),
     };
     (asked, first)
+}
+
+/// The cells of each pane `shown`, drawn with its constants: `window`'s for the focused
+/// pane of `tab`, the pane's own for the others.
+fn pane_scenes<'a>(
+    window: &'a mut Grid,
+    tab: Option<&'a mut tabs::Tab>,
+    shown: Vec<(TerminalId, Constants)>,
+) -> Vec<PaneScene<'a>> {
+    let mut window = Some(window);
+    let mut others: HashMap<TerminalId, &mut Grid> = tab
+        .map(|tab| {
+            let focused = tab.focused;
+            tab.panes
+                .iter_mut()
+                .filter(|(terminal, _)| **terminal != focused)
+                .map(|(terminal, pane)| (*terminal, &mut pane.grid))
+                .collect()
+        })
+        .unwrap_or_default();
+    shown
+        .into_iter()
+        .filter_map(|(terminal, constants)| {
+            let grid = others.remove(&terminal).or_else(|| window.take())?;
+            Some(PaneScene {
+                terminal: terminal.0,
+                grid,
+                constants,
+            })
+        })
+        .collect()
 }
 
 /// Opens another window, a program of its own, which takes the focus with `token`.
@@ -503,47 +550,7 @@ impl App {
             }
         };
         match message {
-            Message::Answer { id, answer } => match (self.asked.remove(&id), answer) {
-                (Some(Asked::Session), Answer::Session { session }) => {
-                    self.session = Some(session);
-                    self.server.send(&Request::Attach { session });
-                    self.open_first_tab();
-                }
-                (Some(Asked::NextCommand), Answer::Command { command }) => self.open_tab(command),
-                (Some(Asked::NextCommand), _) => self.open_tab(Command::default()),
-                (Some(Asked::Find(search)), Answer::Found { found }) => self.found(search, found),
-                (Some(Asked::Copy { primary }), Answer::Text { text }) => {
-                    if let Some(text) = text.filter(|text| !text.is_empty()) {
-                        self.copy(text, primary);
-                    }
-                }
-                (Some(Asked::Tab(size)), Answer::Opened { terminal }) => {
-                    self.opening = false;
-                    self.opened = Some(terminal);
-                    // The window may have changed size while the tab was opening.
-                    if let Some(now) = self.grid_size.filter(|&now| now != size) {
-                        self.server.send(&Request::Resize {
-                            terminal,
-                            size: now,
-                        });
-                    }
-                }
-                (Some(Asked::Link), Answer::Link { uri }) => {
-                    if let Some(uri) = uri {
-                        pointer::open(&uri, &self.toaster);
-                    }
-                }
-                (Some(Asked::Busy(terminal)), answer) => self.busy(terminal, answer),
-                (Some(Asked::Closing), answer) => self.closing_busy(&answer),
-                (Some(Asked::Menu(at)), Answer::Link { uri }) => self.terminal_menu(at, uri),
-                (Some(Asked::Menu(at)), _) => self.terminal_menu(at, None),
-                (Some(Asked::Reattach), Answer::Sessions { sessions }) => self.reattach(&sessions),
-                (Some(Asked::Copy { .. } | Asked::Find(_) | Asked::Link) | None, _) => {}
-                (Some(_), answer) => {
-                    tracing::error!("the server answered {answer:?}");
-                    self.exit = true;
-                }
-            },
+            Message::Answer { id, answer } => self.answered(id, answer),
             Message::Frame { terminal, frame } => self.tab_frame(terminal, frame),
             Message::Clipboard {
                 terminal,
@@ -589,7 +596,67 @@ impl App {
             Message::SessionClosed { session } if Some(session) == self.session => {
                 self.exit = true;
             }
+            Message::Layout { session, tab, root } if Some(session) == self.session => {
+                self.tab_layout(tab, root);
+            }
             _ => {}
+        }
+    }
+
+    /// Does what the window asked the question `id` for with its answer.
+    fn answered(&mut self, id: u32, answer: Answer) {
+        match (self.asked.remove(&id), answer) {
+            (Some(Asked::Session), Answer::Session { session }) => {
+                self.session = Some(session);
+                self.server.send(&Request::Attach { session });
+                self.open_first_tab();
+            }
+            (Some(Asked::NextCommand(None)), Answer::Command { command }) => {
+                self.open_tab(command);
+            }
+            (Some(Asked::NextCommand(None)), _) => self.open_tab(Command::default()),
+            (Some(Asked::NextCommand(Some(vertical))), Answer::Command { command }) => {
+                self.open_pane(vertical, command);
+            }
+            (Some(Asked::NextCommand(Some(vertical))), _) => {
+                self.open_pane(vertical, Command::default());
+            }
+            (Some(Asked::Pane), Answer::Opened { terminal }) => {
+                self.opened_pane = Some(terminal);
+            }
+            (Some(Asked::Find(search)), Answer::Found { found }) => self.found(search, found),
+            (Some(Asked::Copy { primary }), Answer::Text { text }) => {
+                if let Some(text) = text.filter(|text| !text.is_empty()) {
+                    self.copy(text, primary);
+                }
+            }
+            (Some(Asked::Tab(size)), Answer::Opened { terminal }) => {
+                self.opening = false;
+                self.opened = Some(terminal);
+                // The window may have changed size while the tab was opening.
+                if let Some(now) = self.grid_size.filter(|&now| now != size) {
+                    self.server.send(&Request::Resize {
+                        terminal,
+                        size: now,
+                    });
+                }
+            }
+            (Some(Asked::Link), Answer::Link { uri }) => {
+                if let Some(uri) = uri {
+                    pointer::open(&uri, &self.toaster);
+                }
+            }
+            (Some(Asked::Busy(terminal)), answer) => self.busy(terminal, answer),
+            (Some(Asked::TabBusy(key)), answer) => self.tab_busy(key, answer),
+            (Some(Asked::Closing), answer) => self.closing_busy(&answer),
+            (Some(Asked::Menu(at)), Answer::Link { uri }) => self.terminal_menu(at, uri),
+            (Some(Asked::Menu(at)), _) => self.terminal_menu(at, None),
+            (Some(Asked::Reattach), Answer::Sessions { sessions }) => self.reattach(&sessions),
+            (Some(Asked::Copy { .. } | Asked::Find(_) | Asked::Link | Asked::Pane) | None, _) => {}
+            (Some(_), answer) => {
+                tracing::error!("the server answered {answer:?}");
+                self.exit = true;
+            }
         }
     }
 
@@ -600,7 +667,7 @@ impl App {
         }
         tracing::debug!("starting the glyph atlas again");
         self.atlas = self.atlas.next();
-        self.grid.refill(self.atlas.lookup(&mut self.fonts));
+        self.refill_shown();
         if self.atlas.full {
             tracing::warn!("the glyphs on screen do not fit the atlas");
             // Left set, every frame would start the atlas again to no avail.
@@ -660,7 +727,7 @@ impl App {
             Ok(fonts) => {
                 self.fonts = fonts;
                 self.atlas = self.atlas.next();
-                self.grid.refill(self.atlas.lookup(&mut self.fonts));
+                self.refill_shown();
             }
             Err(error) => tracing::error!("loading fonts at scale {}: {error}", self.factor()),
         }
@@ -697,19 +764,7 @@ impl App {
         self.opening = true;
     }
 
-    /// Asks for the next frame of the tab shown.
-    fn ask_frame(&mut self) {
-        if let Some(tab) = self.tabs.get_mut(self.selected)
-            && !tab.frame_asked
-        {
-            self.server.send(&Request::Frame {
-                terminal: tab.terminal,
-            });
-            tab.frame_asked = true;
-        }
-    }
-
-    /// Fits the grid to the window, telling the server when its size changes.
+    /// Fits the panes to the window, telling the server of those whose size changes.
     fn fit(&mut self) {
         let Some((width, height)) = self.size else {
             return;
@@ -727,17 +782,13 @@ impl App {
             cell_width: u16::try_from(cell.width).unwrap_or(u16::MAX),
             cell_height: u16::try_from(cell.height).unwrap_or(u16::MAX),
         };
-        if self.grid_size == Some(size) {
-            return;
+        for index in 0..self.tabs.len() {
+            self.resize_panes(index);
         }
-        self.grid_size = Some(size);
-        for tab in &self.tabs {
-            self.server.send(&Request::Resize {
-                terminal: tab.terminal,
-                size,
-            });
+        if self.grid_size != Some(size) {
+            self.grid_size = Some(size);
+            self.open_first_tab();
         }
-        self.open_first_tab();
     }
 
     /// The size in logical pixels that fits `columns` by `lines` cells.
@@ -760,12 +811,14 @@ impl App {
         (f64::from(logical) * self.factor()).round() as u32
     }
 
-    /// Where the first cell's top left is, in device pixels from the surface's.
+    /// Where the focused pane's first cell's top left is, in device pixels from the
+    /// surface's.
     fn origin(&self) -> (i32, i32) {
-        let margin = self.chrome.margin();
-        let x = self.device(margin + PADDING);
-        let y = self.device(margin + self.chrome.top() + PADDING);
-        (x as i32, y as i32)
+        let placed = self.placed();
+        self.terminal()
+            .and_then(|terminal| placed.rect(terminal))
+            .or_else(|| self.area())
+            .map_or((0, 0), |rect| (rect.x, rect.y))
     }
 
     /// Takes the scale the compositor prefers, in 120ths, and draws at it.
@@ -781,10 +834,17 @@ impl App {
         self.draw();
     }
 
-    fn constants(&self, width: u32, height: u32) -> Constants {
+    /// What `grid`'s pane at `origin` is drawn with in a surface `width` by `height`, its
+    /// cursor filled if it is `focused`.
+    fn constants(
+        &self,
+        grid: &Grid,
+        (origin_x, origin_y): (i32, i32),
+        focused: bool,
+        (width, height): (u32, u32),
+    ) -> Constants {
         let cell = self.fonts.cell();
-        let (origin_x, origin_y) = self.origin();
-        let (cursor_column, cursor_line, cursor_shape) = match self.grid.cursor {
+        let (cursor_column, cursor_line, cursor_shape) = match grid.cursor {
             Some(cursor) => {
                 let mut shape = cursor.shape as u32;
                 if cursor.wide {
@@ -795,7 +855,7 @@ impl App {
                     .search
                     .as_ref()
                     .is_some_and(|search| search.focused);
-                if self.focused && !typing_in_bar {
+                if focused && self.focused && !typing_in_bar {
                     shape |= CURSOR_FOCUSED;
                 }
                 (
@@ -813,19 +873,20 @@ impl App {
             cell_height: cell.height,
             origin_x,
             origin_y,
-            columns: self.grid.columns as u32,
+            columns: grid.columns as u32,
             pass: 0,
             cursor_column,
             cursor_line,
             cursor_shape,
-            cursor_color: packed(self.grid.cursor_color),
-            background: packed(self.grid.background),
+            cursor_color: packed(grid.cursor_color),
+            background: packed(grid.background),
             selection: packed(self.palette.selection),
             baseline: cell.baseline,
             underline_top: cell.underline,
             underline_thickness: cell.underline_thickness,
             strikeout_top: cell.strikeout,
             strikeout_thickness: cell.strikeout_thickness,
+            first: 0,
         }
     }
 
@@ -852,7 +913,13 @@ impl App {
         let started = Instant::now();
         let (surface_width, surface_height) =
             (self.device(width + margin), self.device(height + margin));
-        let constants = self.constants(surface_width, surface_height);
+        let placed = self.placed();
+        let focused = self.terminal();
+        let shown = self.shown_panes(&placed, (surface_width, surface_height));
+        let constants = shown
+            .iter()
+            .find(|(terminal, _)| Some(*terminal) == focused)
+            .map_or(shown[0].1, |&(_, constants)| constants);
         let background = self.grid.background;
         self.place_text_input();
         self.place_preedit();
@@ -861,6 +928,10 @@ impl App {
             self.renew_full_atlas();
             (quads, under) = self.frame_quads((width, height));
         }
+        let dividers = self.dividers(&placed);
+        let count = dividers.len();
+        quads.splice(under..under, dividers);
+        under += count;
         // Around the window's frame, the surface is clear; without one, it is the
         // terminal's to its edges.
         let clear = if self.chrome.framed() {
@@ -874,8 +945,9 @@ impl App {
                 opacity,
             ]
         };
+        let panes = pane_scenes(&mut self.grid, self.tabs.get_mut(self.selected), shown);
         let mut scene = Scene {
-            grid: &mut self.grid,
+            panes,
             atlas: &mut self.atlas,
             constants,
             quads: &quads,
@@ -952,6 +1024,66 @@ impl App {
         )
     }
 
+    /// Each pane shown and what it is drawn with, in a surface `size` big.
+    fn shown_panes(&self, placed: &Placed, size: (u32, u32)) -> Vec<(TerminalId, Constants)> {
+        let focused = self.terminal();
+        let mut shown = Vec::new();
+        for &(terminal, rect) in &placed.panes {
+            let grid = match self.tabs.get(self.selected) {
+                Some(tab) if tab.focused != terminal => match tab.panes.get(&terminal) {
+                    Some(pane) => &pane.grid,
+                    None => continue,
+                },
+                _ => &self.grid,
+            };
+            let is_focused = focused == Some(terminal);
+            shown.push((
+                terminal,
+                self.constants(grid, (rect.x, rect.y), is_focused, size),
+            ));
+        }
+        // Before the first tab, the window's empty cells.
+        if shown.is_empty() {
+            shown.push((
+                TerminalId(0),
+                self.constants(&self.grid, self.origin(), true, size),
+            ));
+        }
+        shown
+    }
+
+    /// A line along the middle of each divider between the panes shown.
+    fn dividers(&self, placed: &Placed) -> Vec<chrome::Quad> {
+        let thickness = self.device(1).max(1) as f32;
+        let color = if self.chrome.dark {
+            0xffff_ff26
+        } else {
+            0x0000_0026
+        };
+        placed
+            .dividers
+            .iter()
+            .map(|divider| {
+                let gap = divider.gap;
+                let (x, y, width, height) = if divider.vertical {
+                    let middle = gap.x as f32 + (gap.width as f32 - thickness) / 2.0;
+                    (middle, gap.y as f32, thickness, gap.height as f32)
+                } else {
+                    let middle = gap.y as f32 + (gap.height as f32 - thickness) / 2.0;
+                    (gap.x as f32, middle, gap.width as f32, thickness)
+                };
+                chrome::Quad {
+                    x,
+                    y,
+                    width,
+                    height,
+                    color,
+                    ..chrome::Quad::default()
+                }
+            })
+            .collect()
+    }
+
     /// Tells the compositor where the window is in its surface and where the surface
     /// takes input: the window and the edges around it that resize it.
     fn place(&self) {
@@ -987,8 +1119,9 @@ impl App {
             if self.dialog_key(event) || self.menu_key(event) {
                 return;
             }
-            if let Some(action) = self.shortcuts.action(event.keysym, self.modifiers) {
-                self.act(action);
+            if let Some(action) = self.shortcuts.action(event.keysym, self.modifiers)
+                && self.act(action)
+            {
                 return;
             }
             if self.search_key(event) {
@@ -1025,7 +1158,9 @@ impl App {
         }
     }
 
-    fn act(&mut self, action: Action) {
+    /// Does what `action` says; false when it does nothing here and its keys go to the
+    /// program.
+    fn act(&mut self, action: Action) -> bool {
         match action {
             Action::NewWindow => self.new_window(self.profile.as_deref()),
             Action::CloseWindow => self.close(),
@@ -1053,6 +1188,17 @@ impl App {
             Action::NewTab => self.new_tab(),
             Action::Find => self.open_search(),
             Action::CloseTab => self.close_tab(self.selected),
+            Action::SplitRight => self.split(true),
+            Action::SplitDown => self.split(false),
+            Action::ClosePane => {
+                if let Some(terminal) = self.terminal() {
+                    self.close_pane(terminal);
+                }
+            }
+            Action::FocusLeft => return self.focus_towards(Direction::Left),
+            Action::FocusRight => return self.focus_towards(Direction::Right),
+            Action::FocusUp => return self.focus_towards(Direction::Up),
+            Action::FocusDown => return self.focus_towards(Direction::Down),
             Action::NextTab => self.step_tab(1),
             Action::PreviousTab => self.step_tab(-1),
             Action::ShowTab(number) => {
@@ -1061,6 +1207,7 @@ impl App {
                 }
             }
         }
+        true
     }
 
     /// Makes the font `steps` larger or smaller, or its size again.

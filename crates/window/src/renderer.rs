@@ -37,6 +37,7 @@ pub struct Constants {
     pub underline_thickness: i32,
     pub strikeout_top: i32,
     pub strikeout_thickness: i32,
+    pub first: u32,
 }
 
 /// The cursor covers two cells.
@@ -44,10 +45,18 @@ pub const CURSOR_WIDE: u32 = 16;
 /// The window has the focus, so a block cursor is filled.
 pub const CURSOR_FOCUSED: u32 = 32;
 
+/// A pane's cells and how they are drawn; the renderer sets where they start.
+pub struct PaneScene<'a> {
+    pub terminal: u32,
+    pub grid: &'a mut Grid,
+    pub constants: Constants,
+}
+
 /// What a frame shows.
 pub struct Scene<'a> {
-    pub grid: &'a mut Grid,
+    pub panes: Vec<PaneScene<'a>>,
     pub atlas: &'a mut Atlas,
+    /// What the frame's quads are drawn with.
     pub constants: Constants,
     /// The window's frame: the first `under` quads drawn under the cells, the rest over
     /// them.
@@ -89,6 +98,9 @@ pub struct Renderer {
     /// The atlas the texture and the table hold glyphs of.
     generation: u64,
     cells: Vec<Option<Buffer>>,
+    /// For each frame's cells, the panes they hold: terminal, first cell, columns and
+    /// lines.
+    placed: Vec<Vec<(u32, usize, usize, usize)>>,
     quads: Vec<Buffer>,
     staging: Vec<Option<Buffer>>,
 }
@@ -179,6 +191,7 @@ impl Renderer {
             glyphs_written: 0,
             generation: 0,
             cells: (0..frames).map(|_| None).collect(),
+            placed: vec![Vec::new(); frames],
             quads,
             staging: (0..frames).map(|_| None).collect(),
         };
@@ -208,7 +221,7 @@ impl Renderer {
             self.generation = scene.atlas.generation;
             self.glyphs_written = 0;
         }
-        self.copy_cells(device, frame, scene.grid)?;
+        self.copy_cells(device, frame, &mut scene.panes)?;
         self.copy_glyphs(device, &scene.atlas.entries)?;
         self.copy_quads(device, frame, scene.quads)?;
         self.upload(device, commands, frame, scene.atlas)?;
@@ -235,7 +248,6 @@ impl Renderer {
             .width(extent.width as f32)
             .height(extent.height as f32)
             .max_depth(1.0);
-        let cells = (scene.grid.columns * scene.grid.lines) as u32;
         let stages = vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT;
         // SAFETY: the command buffer is recording, and every handle is this device's.
         unsafe {
@@ -270,12 +282,16 @@ impl Renderer {
             };
             let under = scene.under.min(scene.quads.len());
             draw_quads(0..under);
-            if cells > 0 {
-                device.cmd_bind_pipeline(commands, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+            device.cmd_bind_pipeline(commands, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+            for pane in &scene.panes {
+                let cells = (pane.grid.columns * pane.grid.lines) as u32;
+                if cells == 0 {
+                    continue;
+                }
                 for pass in 0..2 {
                     let constants = Constants {
                         pass,
-                        ..scene.constants
+                        ..pane.constants
                     };
                     device.cmd_push_constants(
                         commands,
@@ -284,7 +300,7 @@ impl Renderer {
                         0,
                         bytes_of(&constants),
                     );
-                    device.cmd_draw(commands, 6, cells, 0, 0);
+                    device.cmd_draw(commands, 6, cells, 0, pane.constants.first);
                 }
             }
             draw_quads(under..scene.quads.len());
@@ -293,15 +309,22 @@ impl Renderer {
         Ok(())
     }
 
-    /// Copies the rows frame `frame`'s cells lack, all of them into a buffer just made.
+    /// Copies the rows frame `frame`'s cells lack, one pane after another; all of them
+    /// into a buffer just made or once the panes moved in it.
     fn copy_cells(
         &mut self,
         device: &ash::Device,
         frame: usize,
-        grid: &mut Grid,
+        panes: &mut [PaneScene],
     ) -> Result<(), GpuError> {
-        let needed = (grid.cells.len().max(1) * size_of::<GpuCell>()) as u64;
-        let stale = grid.take_stale(frame);
+        let mut placed = Vec::with_capacity(panes.len());
+        let mut total = 0;
+        for pane in panes.iter_mut() {
+            pane.constants.first = total as u32;
+            placed.push((pane.terminal, total, pane.grid.columns, pane.grid.lines));
+            total += pane.grid.cells.len();
+        }
+        let needed = (total.max(1) * size_of::<GpuCell>()) as u64;
         let fresh = self.cells[frame]
             .as_ref()
             .is_none_or(|buffer| buffer.size < needed);
@@ -319,27 +342,29 @@ impl Renderer {
             self.cells[frame] = Some(buffer);
             self.write_cells(device, frame);
         }
+        let moved = fresh || self.placed[frame] != placed;
         let Some(buffer) = self.cells[frame].as_ref() else {
             return Ok(());
         };
-        let columns = grid.columns;
-        let rows: Vec<usize> = if fresh {
-            (0..grid.lines).collect()
-        } else {
-            stale
-        };
-        for line in rows {
-            let row = &grid.cells[line * columns..(line + 1) * columns];
-            // SAFETY: the buffer is mapped and holds the whole grid; the GPU is done with
-            // this frame's copy.
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    row.as_ptr().cast::<u8>(),
-                    buffer.mapped.add(line * columns * size_of::<GpuCell>()),
-                    size_of_val(row),
-                );
+        for (pane, &(_, first, columns, lines)) in panes.iter_mut().zip(&placed) {
+            let stale = pane.grid.take_stale(frame);
+            let rows: Vec<usize> = if moved { (0..lines).collect() } else { stale };
+            for line in rows {
+                let row = &pane.grid.cells[line * columns..(line + 1) * columns];
+                // SAFETY: the buffer is mapped and holds every pane's cells; the GPU is
+                // done with this frame's copy.
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        row.as_ptr().cast::<u8>(),
+                        buffer
+                            .mapped
+                            .add((first + line * columns) * size_of::<GpuCell>()),
+                        size_of_val(row),
+                    );
+                }
             }
         }
+        self.placed[frame] = placed;
         Ok(())
     }
 
