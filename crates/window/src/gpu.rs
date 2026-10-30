@@ -6,7 +6,7 @@ use std::ffi::c_void;
 
 use ash::{khr, vk};
 
-use crate::renderer::{Renderer, Scene};
+use crate::renderer::{Job, Renderer};
 
 #[derive(Debug, thiserror::Error)]
 pub enum GpuError {
@@ -34,7 +34,7 @@ impl<T> During<T> for Result<T, vk::Result> {
 }
 
 /// Frames recorded while earlier ones are still drawn.
-pub const FRAMES_IN_FLIGHT: usize = 2;
+const FRAMES_IN_FLIGHT: usize = 2;
 
 /// Device pixels a swapchain made during a resize is rounded up to, each way.
 const ROOM: u32 = 256;
@@ -75,6 +75,10 @@ pub struct Gpu {
     /// frame.
     stale: bool,
 }
+
+// SAFETY: the device's handles may be used from any thread, one at a time, which owning
+// the value ensures; the renderer's mapped pointers are reached only through it.
+unsafe impl Send for Gpu {}
 
 impl Gpu {
     /// A device that draws to the Wayland surface `surface` of `display`.
@@ -182,9 +186,9 @@ impl Gpu {
         })
     }
 
-    /// Draws `scene` in a frame `width` by `height` pixels. A `roomy` frame may go to the
-    /// top left of larger images, which `crop` is told the size of just before they are
-    /// shown.
+    /// Draws `job` in a frame `width` by `height` pixels; whether it went to the surface.
+    /// A `roomy` frame may go to the top left of larger images. `presenting` is told the
+    /// size drawn just before the frame commits the surface.
     ///
     /// # Errors
     ///
@@ -194,9 +198,10 @@ impl Gpu {
         width: u32,
         height: u32,
         roomy: bool,
-        scene: &mut Scene,
-        crop: impl FnOnce(u32, u32),
-    ) -> Result<(), GpuError> {
+        job: &mut Job,
+        presenting: impl FnOnce(u32, u32),
+    ) -> Result<bool, GpuError> {
+        self.renderer.take(&self.device, job)?;
         let wanted = vk::Extent2D { width, height };
         let fits = |chain: &Swapchain| {
             chain.extent == wanted
@@ -216,7 +221,7 @@ impl Gpu {
             self.make_swapchain(room)?;
         }
         let Some(swapchain) = self.swapchain.as_ref() else {
-            return Ok(());
+            return Ok(false);
         };
         let drawn_extent = vk::Extent2D {
             width: width.min(swapchain.extent.width),
@@ -244,7 +249,7 @@ impl Gpu {
             }
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
                 self.stale = true;
-                return Ok(());
+                return Ok(false);
             }
             Err(result) => {
                 return Err(GpuError::Call {
@@ -262,7 +267,7 @@ impl Gpu {
         unsafe { device.reset_fences(&[frame.done]) }.during("vkResetFences")?;
         begin(device, commands, image)?;
         self.renderer
-            .record(device, commands, self.frame, view, drawn_extent, scene)?;
+            .record(device, commands, self.frame, view, drawn_extent, job)?;
         end(device, commands, image)?;
 
         let waits = [vk::SemaphoreSubmitInfo::default()
@@ -287,22 +292,26 @@ impl Gpu {
             .wait_semaphores(&wait)
             .swapchains(&chains)
             .image_indices(&indices);
-        // Presenting commits the surface, which takes the crop with it.
-        crop(drawn_extent.width, drawn_extent.height);
+        presenting(drawn_extent.width, drawn_extent.height);
         // SAFETY: the image was acquired from this swapchain and is drawn when `drawn`
         // is signalled.
-        match unsafe { self.swapchains.queue_present(self.queue, &present) } {
-            Ok(suboptimal) => self.stale |= suboptimal,
-            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.stale = true,
-            Err(result) => {
-                return Err(GpuError::Call {
-                    call: "vkQueuePresentKHR",
-                    result,
-                });
-            }
-        }
+        let presented = unsafe { self.swapchains.queue_present(self.queue, &present) };
         self.frame = (self.frame + 1) % FRAMES_IN_FLIGHT;
-        Ok(())
+        match presented {
+            Ok(suboptimal) => {
+                self.stale |= suboptimal;
+                Ok(true)
+            }
+            // The surface may not have been committed, so no frame callback may come.
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                self.stale = true;
+                Ok(false)
+            }
+            Err(result) => Err(GpuError::Call {
+                call: "vkQueuePresentKHR",
+                result,
+            }),
+        }
     }
 
     fn make_swapchain(&mut self, wanted: vk::Extent2D) -> Result<(), GpuError> {

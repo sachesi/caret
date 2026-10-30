@@ -64,6 +64,7 @@ pub fn packed(color: Rgb) -> u32 {
     (u32::from(color.r) << 16) | (u32::from(color.g) << 8) | u32::from(color.b)
 }
 
+#[derive(Default)]
 pub struct Grid {
     pub columns: usize,
     pub lines: usize,
@@ -77,30 +78,13 @@ pub struct Grid {
     selection: Option<Selection>,
     /// Each line's cells as the server sent them, to resolve again when the atlas is.
     rows: Vec<Vec<Cell>>,
-    /// For each copy of the cells on the GPU, the rows it lacks.
-    stale: Vec<Vec<bool>>,
+    /// The rows changed since they were last taken to be drawn.
+    stale: Vec<bool>,
 }
 
 impl Grid {
     pub fn has_selection(&self) -> bool {
         self.selection.is_some()
-    }
-
-    /// An empty grid, kept on the GPU in `copies` copies.
-    pub fn new(copies: usize) -> Self {
-        Self {
-            columns: 0,
-            lines: 0,
-            cells: Vec::new(),
-            cursor: None,
-            background: Rgb::default(),
-            cursor_color: Rgb::default(),
-            mode: Mode::empty(),
-            hovered: None,
-            selection: None,
-            rows: Vec::new(),
-            stale: vec![Vec::new(); copies],
-        }
     }
 
     /// Takes in what changed, as the server sent it, with `glyphs` giving each glyph's
@@ -112,9 +96,7 @@ impl Grid {
             self.lines = lines;
             self.cells = vec![GpuCell::default(); columns * lines];
             self.rows = vec![Vec::new(); lines];
-            for stale in &mut self.stale {
-                *stale = vec![true; lines];
-            }
+            self.stale = vec![true; lines];
         }
         let old_selection = std::mem::replace(&mut self.selection, frame.selection);
         let old_cursor = std::mem::replace(&mut self.cursor, frame.cursor);
@@ -263,19 +245,18 @@ impl Grid {
         }
     }
 
-    /// The rows copy `copy` lacks, now counted as copied.
-    pub fn take_stale(&mut self, copy: usize) -> Vec<usize> {
-        let stale = &mut self.stale[copy];
-        let rows = (0..stale.len()).filter(|&line| stale[line]).collect();
-        stale.fill(false);
+    /// The rows changed since they were last taken, now counted as drawn.
+    pub fn take_stale(&mut self) -> Vec<usize> {
+        let rows = (0..self.stale.len())
+            .filter(|&line| self.stale[line])
+            .collect();
+        self.stale.fill(false);
         rows
     }
 
     fn mark(&mut self, line: usize) {
-        for stale in &mut self.stale {
-            if let Some(row) = stale.get_mut(line) {
-                *row = true;
-            }
+        if let Some(row) = self.stale.get_mut(line) {
+            *row = true;
         }
     }
 
@@ -390,22 +371,21 @@ mod tests {
     }
 
     #[test]
-    fn rows_sent_replace_theirs_and_are_stale_for_every_copy() {
-        let mut grid = Grid::new(2);
+    fn rows_sent_replace_theirs_and_are_stale_until_taken() {
+        let mut grid = Grid::default();
         grid.apply(frame(vec![row(0, "ab"), row(1, "c")], None), Fixed(7));
-        assert_eq!(grid.take_stale(0), [0, 1, 2]);
-        assert_eq!(grid.take_stale(0), Vec::<usize>::new());
+        assert_eq!(grid.take_stale(), [0, 1, 2]);
+        assert_eq!(grid.take_stale(), Vec::<usize>::new());
         grid.apply(frame(vec![row(1, "")], None), Fixed(7));
         assert_eq!(grid.cells[4], GpuCell::default());
         assert_eq!(grid.cells[0].glyph, 7);
         assert_eq!(grid.cells[0].flags & HAS_BACKGROUND, 0);
-        assert_eq!(grid.take_stale(0), [1]);
-        assert_eq!(grid.take_stale(1), [0, 1, 2]);
+        assert_eq!(grid.take_stale(), [1]);
     }
 
     #[test]
     fn a_selection_marks_its_cells_and_leaves_them_when_it_goes() {
-        let mut grid = Grid::new(1);
+        let mut grid = Grid::default();
         let selection = Selection {
             start: Point { line: 0, column: 2 },
             end: Point { line: 1, column: 0 },
@@ -426,17 +406,17 @@ mod tests {
                 false, false, true, true, true, false, false, false, false, false, false, false
             ]
         );
-        grid.take_stale(0);
+        grid.take_stale();
         grid.apply(frame(Vec::new(), None), Fixed(1));
         assert!(grid.cells.iter().all(|cell| cell.flags & SELECTED == 0));
-        assert_eq!(grid.take_stale(0), [0, 1]);
+        assert_eq!(grid.take_stale(), [0, 1]);
     }
 
     #[test]
     fn symbols_the_font_joins_are_drawn_from_their_first_cell_but_under_a_block_cursor() {
         let glyphs =
             |grid: &Grid| -> Vec<u32> { grid.cells.iter().map(|cell| cell.glyph).collect() };
-        let mut grid = Grid::new(1);
+        let mut grid = Grid::default();
         grid.apply(frame(vec![row(0, "a->"), row(1, "->!-")], None), Arrows);
         assert_eq!(glyphs(&grid)[..8], [1, 9, 0, 0, 9, 0, 1, 1]);
         let mut on_arrow = frame(Vec::new(), None);

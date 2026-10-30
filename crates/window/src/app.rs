@@ -14,7 +14,7 @@ use caret_protocol::{
     TerminalId,
 };
 use smithay_client_toolkit::compositor::{
-    CompositorHandler, CompositorState, FrameCallbackData, Region,
+    CompositorHandler, CompositorState, Region,
 };
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::calloop::generic::Generic;
@@ -53,12 +53,13 @@ use crate::config::{self, Config, FontChoice};
 use crate::connection::{self, Received};
 use crate::desktop::{self, Desktop};
 use crate::fonts::{FontError, Fonts};
-use crate::gpu::{FRAMES_IN_FLIGHT, Gpu, GpuError};
+use crate::gpu::{Gpu, GpuError};
 use crate::grid::{Grid, packed};
 use crate::notifications::Notifier;
 use crate::palette::Palette;
 use crate::panes::{Direction, Placed};
-use crate::renderer::{CURSOR_FOCUSED, CURSOR_WIDE, Constants, PaneScene, Scene};
+use crate::render::{RenderThread, Rendered, Scaling, Target};
+use crate::renderer::{CURSOR_FOCUSED, CURSOR_WIDE, Constants, Job, PaneJob};
 use crate::shortcuts::{Action, Shortcuts};
 use crate::state::WindowState;
 
@@ -78,6 +79,8 @@ pub enum AppError {
     Font(#[from] FontError),
     #[error("the terminal server: {0}")]
     Server(#[from] caret_protocol::client::ConnectError),
+    #[error("starting the render thread: {0}")]
+    Render(std::io::Error),
 }
 
 /// The cells a window fits when it opens without a size of its own to open at.
@@ -142,7 +145,8 @@ enum Asked {
     reason = "each flag is a separate part of the window's state"
 )]
 struct App {
-    gpu: Gpu,
+    /// Ends first, letting go of the device before the surface goes.
+    render: RenderThread,
     window: Window,
     #[expect(dead_code, reason = "held so that the display outlives the device")]
     connection: Connection,
@@ -218,9 +222,10 @@ struct App {
     focused: bool,
     /// Something changed since the last frame was drawn.
     dirty: bool,
-    /// A frame callback is pending: the compositor shows the last frame and says when
-    /// the next one is worth drawing.
+    /// A frame is with the render thread, which says when the compositor wants the next.
     waiting: bool,
+    /// The atlas whose entries the render thread has, and how many of them.
+    sent_glyphs: (u64, usize),
     exit: bool,
 }
 
@@ -297,6 +302,14 @@ pub fn run(start: Start) -> Result<(), AppError> {
     // SAFETY: `App` holds the device, the window and the connection, and drops them in
     // that order.
     let gpu = unsafe { Gpu::new(display, surface)? };
+    let (rendered_sender, rendered) = calloop::channel::channel();
+    let render = RenderThread::spawn(
+        gpu,
+        connection.clone(),
+        window.wl_surface().clone(),
+        rendered_sender,
+    )
+    .map_err(AppError::Render)?;
 
     let desktop = first_desktop.recv_timeout(DESKTOP_WAIT).unwrap_or_default();
     let fonts = Fonts::new(&config.font_for(desktop.monospace.as_deref()), 1.0)?;
@@ -318,7 +331,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         seats: SeatState::new(&globals, &qh),
         seat: None,
         outputs: OutputState::new(&globals, &qh),
-        gpu,
+        render,
         window,
         connection: connection.clone(),
         offered: Offered::bind(&globals, &qh),
@@ -346,7 +359,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         zoom: 0,
         shortcuts: Shortcuts::new(&config.keys),
         atlas: Atlas::default(),
-        grid: Grid::new(FRAMES_IN_FLIGHT),
+        grid: Grid::default(),
         palette,
         chrome: Chrome {
             title: "Caret".to_owned(),
@@ -370,6 +383,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         focused: false,
         dirty: true,
         waiting: false,
+        sent_glyphs: (0, 0),
         exit: false,
     };
     app.activate_at_start();
@@ -378,6 +392,14 @@ pub fn run(start: Start) -> Result<(), AppError> {
         .insert(events.handle())
         .map_err(|error| AppError::Loop(error.error))?;
     listen(&events.handle(), received, pasted, desktop_changed, toasts)?;
+    events
+        .handle()
+        .insert_source(rendered, |event, (), app| {
+            if let calloop::channel::Event::Msg(rendered) = event {
+                app.rendered(rendered);
+            }
+        })
+        .map_err(|error| AppError::Loop(error.error))?;
     let signal = events.get_signal();
     events.run(None, &mut app, |app| {
         if app.exit {
@@ -409,13 +431,13 @@ fn begin(server: &mut connection::Connection, start: Start) -> (HashMap<u32, Ask
     (asked, first)
 }
 
-/// The cells of each pane `shown`, drawn with its constants: `window`'s for the focused
-/// pane of `tab`, the pane's own for the others.
-fn pane_scenes<'a>(
-    window: &'a mut Grid,
-    tab: Option<&'a mut tabs::Tab>,
+/// The rows that changed in each pane `shown`, drawn with its constants: `window`'s
+/// cells for the focused pane of `tab`, the pane's own for the others.
+fn pane_jobs(
+    window: &mut Grid,
+    tab: Option<&mut tabs::Tab>,
     shown: Vec<(TerminalId, Constants)>,
-) -> Vec<PaneScene<'a>> {
+) -> Vec<PaneJob> {
     let mut window = Some(window);
     let mut others: HashMap<TerminalId, &mut Grid> = tab
         .map(|tab| {
@@ -431,9 +453,22 @@ fn pane_scenes<'a>(
         .into_iter()
         .filter_map(|(terminal, constants)| {
             let grid = others.remove(&terminal).or_else(|| window.take())?;
-            Some(PaneScene {
+            let columns = grid.columns;
+            let rows = grid
+                .take_stale()
+                .into_iter()
+                .map(|line| {
+                    (
+                        line,
+                        grid.cells[line * columns..(line + 1) * columns].to_vec(),
+                    )
+                })
+                .collect();
+            Some(PaneJob {
                 terminal: terminal.0,
-                grid,
+                columns,
+                lines: grid.lines,
+                rows,
                 constants,
             })
         })
@@ -890,7 +925,21 @@ impl App {
         }
     }
 
-    /// Draws a frame if one is due, asking the compositor when to draw the next.
+    /// What the render thread says of the frame it was handed.
+    fn rendered(&mut self, rendered: Rendered) {
+        match rendered {
+            Rendered::Ready => {
+                self.waiting = false;
+                self.draw();
+            }
+            Rendered::Failed(error) => {
+                tracing::error!("drawing the window: {error}");
+                self.exit = true;
+            }
+        }
+    }
+
+    /// Hands the render thread a frame if one is due.
     fn draw(&mut self) {
         let Some((width, height)) = self.size else {
             return;
@@ -898,19 +947,10 @@ impl App {
         if !self.dirty || self.waiting {
             return;
         }
-        let margin = 2 * self.chrome.margin();
-        let surface = self.window.wl_surface();
-        surface.frame(&self.qh, FrameCallbackData(surface.clone()));
-        match &self.fractional {
-            Some(fractional) => {
-                let (width, height) = ((width + margin) as i32, (height + margin) as i32);
-                fractional.viewport.set_destination(width, height);
-            }
-            None => surface.set_buffer_scale((self.scale / scale::WHOLE).max(1) as i32),
-        }
         self.waiting = true;
         self.dirty = false;
         let started = Instant::now();
+        let margin = 2 * self.chrome.margin();
         let (surface_width, surface_height) =
             (self.device(width + margin), self.device(height + margin));
         let placed = self.placed();
@@ -945,36 +985,41 @@ impl App {
                 opacity,
             ]
         };
-        let panes = pane_scenes(&mut self.grid, self.tabs.get_mut(self.selected), shown);
-        let mut scene = Scene {
+        let panes = pane_jobs(&mut self.grid, self.tabs.get_mut(self.selected), shown);
+        let (generation, sent) = self.sent_glyphs;
+        let from = if generation == self.atlas.generation {
+            sent
+        } else {
+            0
+        };
+        let job = Job {
             panes,
-            atlas: &mut self.atlas,
+            generation: self.atlas.generation,
+            entries: self.atlas.entries[from.min(self.atlas.entries.len())..].to_vec(),
+            uploads: std::mem::take(&mut self.atlas.uploads),
             constants,
-            quads: &quads,
+            quads,
             under,
             background: clear,
         };
-        // Only a viewport can show part of a larger image as the whole window.
-        let roomy = self.chrome.resizing && self.fractional.is_some();
-        let crop = |width: u32, height: u32| {
-            if let Some(fractional) = &self.fractional {
-                fractional
-                    .viewport
-                    .set_source(0.0, 0.0, f64::from(width), f64::from(height));
-            }
+        self.sent_glyphs = (self.atlas.generation, self.atlas.entries.len());
+        let scaling = match &self.fractional {
+            Some(fractional) => Scaling::Viewport {
+                viewport: fractional.viewport.clone(),
+                width: (width + margin) as i32,
+                height: (height + margin) as i32,
+            },
+            None => Scaling::Buffer((self.scale / scale::WHOLE).max(1) as i32),
         };
-        let rendering = Instant::now();
-        if let Err(error) = self
-            .gpu
-            .draw(surface_width, surface_height, roomy, &mut scene, crop)
-        {
-            tracing::error!("drawing the window: {error}");
-            self.exit = true;
-            return;
-        }
-        if crate::timings::enabled() {
-            crate::timings::frame(rendering - started, rendering.elapsed());
-        }
+        let target = Target {
+            width: surface_width,
+            height: surface_height,
+            // Only a viewport can show part of a larger image as the whole window.
+            roomy: self.chrome.resizing && self.fractional.is_some(),
+            scaling,
+            built: started.elapsed(),
+        };
+        self.render.draw(job, target);
         // Drawn, so ready for the next.
         self.ask_frame();
     }
@@ -1257,10 +1302,8 @@ impl CompositorHandler for App {
     ) {
     }
 
-    fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {
-        self.waiting = false;
-        self.draw();
-    }
+    /// Frame callbacks go to the render thread's queue.
+    fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {}
 
     fn surface_enter(
         &mut self,

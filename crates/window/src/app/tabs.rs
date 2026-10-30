@@ -9,7 +9,6 @@ use caret_protocol::{Bytes, Command, Frame, Question, Request, Size, TerminalId}
 
 use super::{App, Asked};
 use crate::chrome::TabLabel;
-use crate::gpu::FRAMES_IN_FLIGHT;
 use crate::grid::{Grid, Unresolved};
 use crate::panes::{self, Direction, Placed, Rect};
 
@@ -32,7 +31,7 @@ impl Pane {
     fn new(title: String) -> Self {
         Self {
             title,
-            grid: Grid::new(FRAMES_IN_FLIGHT),
+            grid: Grid::default(),
             frame_asked: false,
             size: None,
         }

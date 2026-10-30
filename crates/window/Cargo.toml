@@ -11,7 +11,7 @@ publish = false
 ash = "0.38"
 caret-protocol.workspace = true
 fontdb = { version = "0.24", default-features = false, features = ["std", "fs", "memmap"] }
-rustix = { version = "1", features = ["fs"] }
+rustix = { version = "1", features = ["event", "fs"] }
 rustybuzz = "0.20"
 shlex = "1"
 smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop", "system", "xkbcommon"] }

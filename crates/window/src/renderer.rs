@@ -4,15 +4,16 @@
 
 #![expect(unsafe_code, reason = "Vulkan is only reached through ash's raw calls")]
 
+use std::collections::HashMap;
 use std::io::Cursor;
 use std::ops::Range;
 
 use ash::vk;
 
-use crate::atlas::{self, Atlas, GpuGlyph};
+use crate::atlas::{self, GpuGlyph, Upload};
 use crate::chrome::Quad;
 use crate::gpu::{During, GpuError};
-use crate::grid::{GpuCell, Grid};
+use crate::grid::GpuCell;
 
 /// What the shaders are given with each draw, laid out as `common.glsl` declares it.
 #[repr(C)]
@@ -45,25 +46,41 @@ pub const CURSOR_WIDE: u32 = 16;
 /// The window has the focus, so a block cursor is filled.
 pub const CURSOR_FOCUSED: u32 = 32;
 
-/// A pane's cells and how they are drawn; the renderer sets where they start.
-pub struct PaneScene<'a> {
+/// A pane's rows that changed since its last job, and how it is drawn; the renderer sets
+/// where its cells start.
+pub struct PaneJob {
     pub terminal: u32,
-    pub grid: &'a mut Grid,
+    pub columns: usize,
+    pub lines: usize,
+    /// Each changed row's line and cells.
+    pub rows: Vec<(usize, Vec<GpuCell>)>,
     pub constants: Constants,
 }
 
-/// What a frame shows.
-pub struct Scene<'a> {
-    pub panes: Vec<PaneScene<'a>>,
-    pub atlas: &'a mut Atlas,
+/// What a frame shows, as the window hands it to be drawn.
+pub struct Job {
+    pub panes: Vec<PaneJob>,
+    /// The atlas the glyphs are of.
+    pub generation: u64,
+    /// The atlas entries made since the last job, or all of them in a new atlas.
+    pub entries: Vec<GpuGlyph>,
+    pub uploads: Vec<Upload>,
     /// What the frame's quads are drawn with.
     pub constants: Constants,
     /// The window's frame: the first `under` quads drawn under the cells, the rest over
     /// them.
-    pub quads: &'a [Quad],
+    pub quads: Vec<Quad>,
     pub under: usize,
     /// What the frame is cleared to, premultiplied.
     pub background: [f32; 4],
+}
+
+/// A pane's cells as the renderer keeps them, with the rows each frame's copy lacks.
+struct Mirror {
+    columns: usize,
+    lines: usize,
+    cells: Vec<GpuCell>,
+    stale: Vec<Vec<bool>>,
 }
 
 struct Buffer {
@@ -97,6 +114,12 @@ pub struct Renderer {
     glyphs_written: usize,
     /// The atlas the texture and the table hold glyphs of.
     generation: u64,
+    /// Every entry of that atlas, to write into a larger table.
+    entries: Vec<GpuGlyph>,
+    /// The cells of each pane drawn last, by terminal.
+    mirrors: HashMap<u32, Mirror>,
+    /// Glyphs to copy into the atlas texture with the next frame.
+    uploads: Vec<Upload>,
     cells: Vec<Option<Buffer>>,
     /// For each frame's cells, the panes they hold: terminal, first cell, columns and
     /// lines.
@@ -190,6 +213,9 @@ impl Renderer {
             glyphs,
             glyphs_written: 0,
             generation: 0,
+            entries: Vec::new(),
+            mirrors: HashMap::new(),
+            uploads: Vec::new(),
             cells: (0..frames).map(|_| None).collect(),
             placed: vec![Vec::new(); frames],
             quads,
@@ -212,19 +238,13 @@ impl Renderer {
         frame: usize,
         view: vk::ImageView,
         extent: vk::Extent2D,
-        scene: &mut Scene,
+        job: &mut Job,
     ) -> Result<(), GpuError> {
-        if scene.atlas.generation != self.generation {
-            // Frames in flight sample the old glyphs, which the new ones overwrite.
-            // SAFETY: the device is live.
-            unsafe { device.device_wait_idle() }.during("vkDeviceWaitIdle")?;
-            self.generation = scene.atlas.generation;
-            self.glyphs_written = 0;
-        }
-        self.copy_cells(device, frame, &mut scene.panes)?;
-        self.copy_glyphs(device, &scene.atlas.entries)?;
-        self.copy_quads(device, frame, scene.quads)?;
-        self.upload(device, commands, frame, scene.atlas)?;
+        self.copy_cells(device, frame, &mut job.panes)?;
+        self.copy_glyphs(device)?;
+        self.copy_quads(device, frame, &job.quads)?;
+        let mut uploads = std::mem::take(&mut self.uploads);
+        self.upload(device, commands, frame, &mut uploads)?;
 
         let attachments = [vk::RenderingAttachmentInfo::default()
             .image_view(view)
@@ -233,7 +253,7 @@ impl Renderer {
             .store_op(vk::AttachmentStoreOp::STORE)
             .clear_value(vk::ClearValue {
                 color: vk::ClearColorValue {
-                    float32: scene.background,
+                    float32: job.background,
                 },
             })];
         let area = vk::Rect2D {
@@ -276,15 +296,15 @@ impl Renderer {
                     self.layout,
                     stages,
                     0,
-                    bytes_of(&scene.constants),
+                    bytes_of(&job.constants),
                 );
                 device.cmd_draw(commands, 6, quads.len() as u32, 0, quads.start as u32);
             };
-            let under = scene.under.min(scene.quads.len());
+            let under = job.under.min(job.quads.len());
             draw_quads(0..under);
             device.cmd_bind_pipeline(commands, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
-            for pane in &scene.panes {
-                let cells = (pane.grid.columns * pane.grid.lines) as u32;
+            for pane in &job.panes {
+                let cells = (pane.columns * pane.lines) as u32;
                 if cells == 0 {
                     continue;
                 }
@@ -303,10 +323,67 @@ impl Renderer {
                     device.cmd_draw(commands, 6, cells, 0, pane.constants.first);
                 }
             }
-            draw_quads(under..scene.quads.len());
+            draw_quads(under..job.quads.len());
             device.cmd_end_rendering(commands);
         }
         Ok(())
+    }
+
+    /// Takes in what `job` brings, whether or not it is drawn: the glyphs and the panes'
+    /// rows, which later frames build on.
+    ///
+    /// # Errors
+    ///
+    /// When the device is lost.
+    pub fn take(&mut self, device: &ash::Device, job: &mut Job) -> Result<(), GpuError> {
+        if job.generation != self.generation {
+            // Frames in flight sample the old glyphs, which the new ones overwrite.
+            // SAFETY: the device is live.
+            unsafe { device.device_wait_idle() }.during("vkDeviceWaitIdle")?;
+            self.generation = job.generation;
+            self.glyphs_written = 0;
+            self.entries.clear();
+            self.uploads.clear();
+        }
+        self.entries.append(&mut job.entries);
+        self.uploads.append(&mut job.uploads);
+        self.take_in(&mut job.panes);
+        Ok(())
+    }
+
+    /// Takes the rows the panes sent into their mirrors, forgetting the panes not drawn
+    /// now.
+    fn take_in(&mut self, panes: &mut [PaneJob]) {
+        let copies = self.cells.len();
+        self.mirrors
+            .retain(|terminal, _| panes.iter().any(|pane| pane.terminal == *terminal));
+        for pane in panes {
+            let mirror = self.mirrors.entry(pane.terminal).or_insert_with(|| Mirror {
+                columns: 0,
+                lines: 0,
+                cells: Vec::new(),
+                stale: vec![Vec::new(); copies],
+            });
+            if (mirror.columns, mirror.lines) != (pane.columns, pane.lines) {
+                mirror.columns = pane.columns;
+                mirror.lines = pane.lines;
+                mirror.cells = vec![GpuCell::default(); pane.columns * pane.lines];
+                mirror.stale = vec![vec![true; pane.lines]; copies];
+            }
+            for (line, row) in std::mem::take(&mut pane.rows) {
+                let start = line * mirror.columns;
+                let Some(cells) = mirror.cells.get_mut(start..start + mirror.columns) else {
+                    continue;
+                };
+                if row.len() != cells.len() {
+                    continue;
+                }
+                cells.copy_from_slice(&row);
+                for stale in &mut mirror.stale {
+                    stale[line] = true;
+                }
+            }
+        }
     }
 
     /// Copies the rows frame `frame`'s cells lack, one pane after another; all of them
@@ -315,14 +392,14 @@ impl Renderer {
         &mut self,
         device: &ash::Device,
         frame: usize,
-        panes: &mut [PaneScene],
+        panes: &mut [PaneJob],
     ) -> Result<(), GpuError> {
         let mut placed = Vec::with_capacity(panes.len());
         let mut total = 0;
         for pane in panes.iter_mut() {
             pane.constants.first = total as u32;
-            placed.push((pane.terminal, total, pane.grid.columns, pane.grid.lines));
-            total += pane.grid.cells.len();
+            placed.push((pane.terminal, total, pane.columns, pane.lines));
+            total += pane.columns * pane.lines;
         }
         let needed = (total.max(1) * size_of::<GpuCell>()) as u64;
         let fresh = self.cells[frame]
@@ -346,11 +423,13 @@ impl Renderer {
         let Some(buffer) = self.cells[frame].as_ref() else {
             return Ok(());
         };
-        for (pane, &(_, first, columns, lines)) in panes.iter_mut().zip(&placed) {
-            let stale = pane.grid.take_stale(frame);
-            let rows: Vec<usize> = if moved { (0..lines).collect() } else { stale };
-            for line in rows {
-                let row = &pane.grid.cells[line * columns..(line + 1) * columns];
+        for &(terminal, first, columns, lines) in &placed {
+            let Some(mirror) = self.mirrors.get_mut(&terminal) else {
+                continue;
+            };
+            let stale = &mut mirror.stale[frame];
+            for line in (0..lines).filter(|&line| moved || stale[line]) {
+                let row = &mirror.cells[line * columns..(line + 1) * columns];
                 // SAFETY: the buffer is mapped and holds every pane's cells; the GPU is
                 // done with this frame's copy.
                 unsafe {
@@ -363,6 +442,7 @@ impl Renderer {
                     );
                 }
             }
+            stale.fill(false);
         }
         self.placed[frame] = placed;
         Ok(())
@@ -401,7 +481,8 @@ impl Renderer {
 
     /// Appends the atlas entries made since the last frame to the table, which every
     /// frame shares: an entry is written before any cell refers to it.
-    fn copy_glyphs(&mut self, device: &ash::Device, entries: &[GpuGlyph]) -> Result<(), GpuError> {
+    fn copy_glyphs(&mut self, device: &ash::Device) -> Result<(), GpuError> {
+        let entries = &self.entries;
         let needed = size_of_val(entries) as u64;
         if needed > self.glyphs.size {
             // Frames in flight read the table, so it is replaced only once they are done.
@@ -441,7 +522,7 @@ impl Renderer {
         device: &ash::Device,
         commands: vk::CommandBuffer,
         frame: usize,
-        atlas: &mut Atlas,
+        uploads: &mut Vec<Upload>,
     ) -> Result<(), GpuError> {
         let range = vk::ImageSubresourceRange::default()
             .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -464,11 +545,10 @@ impl Renderer {
             }
             self.atlas_ready = true;
         }
-        if atlas.uploads.is_empty() {
+        if uploads.is_empty() {
             return Ok(());
         }
-        let needed: u64 = atlas
-            .uploads
+        let needed: u64 = uploads
             .iter()
             .map(|upload| upload.pixels.len() as u64)
             .sum();
@@ -489,7 +569,7 @@ impl Renderer {
         let Some(staging) = self.staging[frame].as_ref() else {
             return Ok(());
         };
-        let regions = stage(staging, &mut atlas.uploads);
+        let regions = stage(staging, uploads);
         // Earlier frames may still sample the atlas; the copies only touch texels none of
         // them uses, but the barriers keep the accesses ordered all the same.
         let before = [vk::ImageMemoryBarrier2::default()
