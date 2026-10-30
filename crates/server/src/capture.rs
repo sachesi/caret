@@ -1,215 +1,172 @@
-//! What is on a terminal's screen, copied out while it is locked, as the rows of cells
-//! clients are sent.
+//! What a client is sent of a terminal: the rows its view shows, in its colours, as the
+//! cells the protocol carries.
 
-use alacritty_terminal::event::EventListener;
-use alacritty_terminal::grid::Dimensions;
-use alacritty_terminal::index::Column;
-use alacritty_terminal::term::cell::Flags;
-use alacritty_terminal::term::{Term, TermMode};
-use alacritty_terminal::vte::ansi::{self, Color, NamedColor};
 use caret_protocol::{
     BOLD, Cell, CellFlags, Cursor, CursorShape, Frame, Glyph, GlyphText, Hovered, ITALIC, Mode,
-    Palette, Point, Row, Selection,
+    Point, Row, Selection,
 };
+use caret_term::Term;
+use caret_term::grid::Text;
+use caret_term::palette::{CURSOR, Palette};
+use caret_term::style::{Color, Flags, Underline};
+use caret_term::term::{CursorShape as Shape, MouseEncoding, MouseMode};
+use caret_term::view::{Link, Place, View};
 
-use crate::links::Span;
 use crate::palette;
 
-/// The whole screen: a row for every line.
+/// The whole of what a view shows: a row for every line.
 pub struct Screen {
     frame: Frame,
 }
 
-const MODES: [(TermMode, Mode); 12] = [
-    (TermMode::APP_CURSOR, Mode::APP_CURSOR),
-    (TermMode::APP_KEYPAD, Mode::APP_KEYPAD),
-    (TermMode::LINE_FEED_NEW_LINE, Mode::LINE_FEED_NEW_LINE),
-    (TermMode::MOUSE_REPORT_CLICK, Mode::MOUSE_REPORT_CLICK),
-    (TermMode::MOUSE_DRAG, Mode::MOUSE_DRAG),
-    (TermMode::MOUSE_MOTION, Mode::MOUSE_MOTION),
-    (TermMode::SGR_MOUSE, Mode::SGR_MOUSE),
-    (TermMode::UTF8_MOUSE, Mode::UTF8_MOUSE),
-    (TermMode::BRACKETED_PASTE, Mode::BRACKETED_PASTE),
-    (TermMode::FOCUS_IN_OUT, Mode::FOCUS_IN_OUT),
-    (TermMode::ALT_SCREEN, Mode::ALT_SCREEN),
-    (TermMode::ALTERNATE_SCROLL, Mode::ALTERNATE_SCROLL),
-];
-
-const LINES: [(Flags, CellFlags); 6] = [
-    (Flags::UNDERLINE, CellFlags::UNDERLINE),
-    (Flags::DOUBLE_UNDERLINE, CellFlags::DOUBLE_UNDERLINE),
-    (Flags::UNDERCURL, CellFlags::UNDERCURL),
-    (Flags::DOTTED_UNDERLINE, CellFlags::DOTTED_UNDERLINE),
-    (Flags::DASHED_UNDERLINE, CellFlags::DASHED_UNDERLINE),
-    (Flags::STRIKEOUT, CellFlags::STRIKEOUT),
-];
-
-pub fn mode(mode: TermMode) -> Mode {
-    let mut converted = Mode::empty();
-    for (term, ours) in MODES {
-        if mode.contains(term) {
-            converted.insert(ours);
+/// What the program asked of the terminal that changes what keys, the mouse and pastes
+/// send it.
+pub fn mode(term: &Term) -> Mode {
+    let modes = term.modes();
+    let mut mode = Mode::empty();
+    for (on, flag) in [
+        (modes.app_cursor, Mode::APP_CURSOR),
+        (modes.app_keypad, Mode::APP_KEYPAD),
+        (modes.line_feed_new_line, Mode::LINE_FEED_NEW_LINE),
+        (modes.mouse == MouseMode::Click, Mode::MOUSE_REPORT_CLICK),
+        (modes.mouse == MouseMode::Drag, Mode::MOUSE_DRAG),
+        (modes.mouse == MouseMode::Motion, Mode::MOUSE_MOTION),
+        (modes.mouse_encoding == MouseEncoding::Sgr, Mode::SGR_MOUSE),
+        (
+            modes.mouse_encoding == MouseEncoding::Utf8,
+            Mode::UTF8_MOUSE,
+        ),
+        (modes.bracketed_paste, Mode::BRACKETED_PASTE),
+        (modes.focus, Mode::FOCUS_IN_OUT),
+        (term.alt_screen(), Mode::ALT_SCREEN),
+        (modes.alternate_scroll, Mode::ALTERNATE_SCROLL),
+    ] {
+        if on {
+            mode.insert(flag);
         }
     }
-    converted
+    mode
 }
 
-pub fn cursor_shape(shape: CursorShape) -> ansi::CursorShape {
-    match shape {
-        CursorShape::Block => ansi::CursorShape::Block,
-        CursorShape::Underline => ansi::CursorShape::Underline,
-        CursorShape::Beam => ansi::CursorShape::Beam,
-        CursorShape::HollowBlock => ansi::CursorShape::HollowBlock,
-    }
-}
-
-/// The screen of `term` in `palette`, with `link` underlined as the one a click would
-/// open.
+/// The rows `view` shows of `term` in `palette`, with `link` underlined as the one a click
+/// would open, and the cursor hollow while the client is not `focused`.
 #[expect(clippy::too_many_lines, reason = "one pass over the visible cells")]
-pub fn capture<T: EventListener>(term: &Term<T>, palette: &Palette, link: Option<&Span>) -> Screen {
-    let content = term.renderable_content();
-    let colors = content.colors;
-    let offset = content.display_offset as i32;
-    let lines = term.screen_lines();
-    let columns = term.columns();
+pub fn capture(
+    term: &Term,
+    view: &View,
+    palette: &Palette,
+    focused: bool,
+    link: Option<&Link>,
+) -> Screen {
+    let (columns, lines) = (term.columns(), term.lines());
+    let background = palette::rgb(palette.resolve(Color::Default, true));
+    let foreground = palette::rgb(palette.resolve(Color::Default, false));
+    let offset = view.offset(term);
+    let style = term.cursor_style();
     let mut frame = Frame {
         columns: columns as u16,
         lines: lines as u16,
-        rows: (0..lines)
-            .map(|line| Row {
-                line: line as u16,
-                cells: Vec::new(),
-            })
-            .collect(),
-        cursor_blinks: term.cursor_style().blinking,
-        background: palette::resolve(palette, Color::Named(NamedColor::Background), colors),
-        cursor_color: palette::resolve(palette, Color::Named(NamedColor::Cursor), colors),
-        mode: mode(content.mode),
-        history: term.history_size() as u32,
-        offset: content.display_offset as u32,
+        cursor_blinks: style.blinking,
+        background,
+        cursor_color: palette.slot(CURSOR).map_or(foreground, palette::rgb),
+        mode: mode(term),
+        history: term.history().rows() as u32,
+        offset: offset as u32,
         ..Frame::default()
     };
-
-    let cursor_line = content.cursor.point.line.0 + offset;
-    let shape = match content.cursor.shape {
-        ansi::CursorShape::Block => Some(CursorShape::Block),
-        ansi::CursorShape::Underline => Some(CursorShape::Underline),
-        ansi::CursorShape::Beam => Some(CursorShape::Beam),
-        ansi::CursorShape::HollowBlock => Some(CursorShape::HollowBlock),
-        ansi::CursorShape::Hidden => None,
-    };
-    frame.cursor = shape
-        .filter(|_| (0..lines as i32).contains(&cursor_line))
-        .map(|shape| Cursor {
+    frame.cursor = term.cursor().and_then(|(line, column)| {
+        let line = line + offset;
+        let shape = match style.shape {
+            _ if !focused => CursorShape::HollowBlock,
+            Shape::Block => CursorShape::Block,
+            Shape::Underline => CursorShape::Underline,
+            Shape::Beam => CursorShape::Beam,
+        };
+        (line < lines).then(|| Cursor {
             point: Point {
-                line: cursor_line as u16,
-                column: content.cursor.point.column.0 as u16,
+                line: line as u16,
+                column: column as u16,
             },
             shape,
-            wide: false,
-        });
-
-    let last_column = columns.saturating_sub(1);
-    frame.selection = content.selection.and_then(|range| {
-        let start_line = range.start.line.0 + offset;
-        let end_line = range.end.line.0 + offset;
-        if end_line < 0 || start_line >= lines as i32 {
-            return None;
-        }
-        let point = |line: usize, column: Column| Point {
-            line: line as u16,
-            column: column.0 as u16,
-        };
-        let start = if start_line < 0 {
-            let column = if range.is_block {
-                range.start.column
-            } else {
-                Column(0)
-            };
-            point(0, column)
-        } else {
-            point(start_line as usize, range.start.column)
-        };
-        let end = if end_line >= lines as i32 {
-            let column = if range.is_block {
-                range.end.column
-            } else {
-                Column(last_column)
-            };
-            point(lines - 1, column)
-        } else {
-            point(end_line as usize, range.end.column)
-        };
-        Some(Selection {
-            start,
-            end,
-            block: range.is_block,
+            wide: term.screen().row(line - offset).cells[column]
+                .style
+                .flags
+                .contains(Flags::WIDE),
         })
     });
-
-    for indexed in content.display_iter {
-        let cell = indexed.cell;
-        let line = (indexed.point.line.0 + offset) as usize;
-        let column = indexed.point.column.0;
-        let mut flags = cell.flags;
-        if !flags.intersects(Flags::ALL_UNDERLINES)
-            && link.is_some_and(|link| link.covers(indexed.point, cell))
-        {
-            flags |= Flags::UNDERLINE;
-        }
-
-        let mut fg = palette::resolve(palette, cell.fg, colors);
-        let mut bg = palette::resolve(palette, cell.bg, colors);
-        if flags.contains(Flags::DIM) {
-            fg = palette::dim(palette, fg);
-        }
-        if flags.contains(Flags::INVERSE) {
-            std::mem::swap(&mut fg, &mut bg);
-        }
-        let underline = cell
-            .underline_color()
-            .map_or(fg, |color| palette::resolve(palette, color, colors));
-
-        let spacer = flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER);
-        let text = match cell.zerowidth() {
-            _ if spacer || flags.contains(Flags::HIDDEN) => None,
-            Some(marks) if !marks.is_empty() => Some(GlyphText::Cluster(
-                std::iter::once(cell.c)
-                    .chain(marks.iter().copied())
-                    .collect(),
-            )),
-            _ if cell.c == ' ' || cell.c == '\t' || cell.c == '\0' => None,
-            _ => Some(GlyphText::Char(cell.c)),
+    frame.selection = view.selected_cells(term).map(|(start, end)| {
+        let point = |(line, column): (usize, usize)| Point {
+            line: line as u16,
+            column: column as u16,
         };
-        let mut lines_drawn = CellFlags::empty();
-        for (term, ours) in LINES {
-            if flags.contains(term) {
-                lines_drawn.insert(ours);
+        Selection {
+            start: point(start),
+            end: point(end),
+            block: false,
+        }
+    });
+
+    for (line, shown) in view.shown(term).iter().enumerate() {
+        let row = &shown.row;
+        let mut cells = Vec::new();
+        for (column, cell) in row.cells.iter().enumerate() {
+            let style = cell.style;
+            let flags = style.flags;
+            let text = match row.text(column) {
+                _ if flags.intersects(Flags::SPACER | Flags::HIDDEN) => None,
+                Text::Char(' ' | '\0') => None,
+                Text::Char(c) => Some(GlyphText::Char(c)),
+                Text::Cluster(text) => Some(GlyphText::Cluster(text.into())),
+            };
+            let mut lines_drawn = match flags.underline() {
+                Underline::None => CellFlags::empty(),
+                Underline::Single => CellFlags::UNDERLINE,
+                Underline::Double => CellFlags::DOUBLE_UNDERLINE,
+                Underline::Curly => CellFlags::UNDERCURL,
+                Underline::Dotted => CellFlags::DOTTED_UNDERLINE,
+                Underline::Dashed => CellFlags::DASHED_UNDERLINE,
+            };
+            let place = Place {
+                line: shown.place.line,
+                cell: shown.place.cell + column,
+            };
+            if lines_drawn == CellFlags::empty()
+                && link.is_some_and(|link| link.span.covers(place, style.link))
+            {
+                lines_drawn = CellFlags::UNDERLINE;
             }
-        }
-        if let Some(cursor) = &mut frame.cursor
-            && usize::from(cursor.point.line) == line
-            && usize::from(cursor.point.column) == column
-        {
-            cursor.wide = flags.contains(Flags::WIDE_CHAR);
-        }
-        if text.is_none() && bg == frame.background && lines_drawn == CellFlags::empty() {
-            continue;
-        }
-        let mut style = 0;
-        if flags.contains(Flags::BOLD) {
-            style |= BOLD;
-        }
-        if flags.contains(Flags::ITALIC) {
-            style |= ITALIC;
-        }
-        if let Some(row) = frame.rows.get_mut(line) {
-            row.cells.push(Cell {
+            if flags.contains(Flags::STRIKEOUT) {
+                lines_drawn.insert(CellFlags::STRIKEOUT);
+            }
+
+            let mut fg = palette::rgb(palette.resolve(style.fg, false));
+            let mut bg = palette::rgb(palette.resolve(style.bg, true));
+            if flags.contains(Flags::DIM) {
+                fg = palette::dim(fg, background);
+            }
+            if flags.contains(Flags::INVERSE) {
+                std::mem::swap(&mut fg, &mut bg);
+            }
+            let underline = match style.underline {
+                Color::Default => fg,
+                color => palette::rgb(palette.resolve(color, false)),
+            };
+            if text.is_none() && bg == background && lines_drawn == CellFlags::empty() {
+                continue;
+            }
+            let mut weight = 0;
+            if flags.contains(Flags::BOLD) {
+                weight |= BOLD;
+            }
+            if flags.contains(Flags::ITALIC) {
+                weight |= ITALIC;
+            }
+            cells.push(Cell {
                 column: column as u16,
                 glyph: text.map(|text| Glyph {
                     text,
-                    style,
-                    wide: flags.contains(Flags::WIDE_CHAR),
+                    style: weight,
+                    wide: flags.contains(Flags::WIDE),
                 }),
                 fg,
                 bg,
@@ -217,6 +174,10 @@ pub fn capture<T: EventListener>(term: &Term<T>, palette: &Palette, link: Option
                 flags: lines_drawn,
             });
         }
+        frame.rows.push(Row {
+            line: line as u16,
+            cells,
+        });
     }
     Screen { frame }
 }
@@ -252,22 +213,20 @@ impl Screen {
 
 #[cfg(test)]
 mod tests {
-    use alacritty_terminal::event::VoidListener;
-    use alacritty_terminal::term;
-    use alacritty_terminal::vte::ansi::Processor;
+    use caret_term::Options;
 
     use super::*;
-    use crate::terminal::GridSize;
 
-    fn term(text: &str) -> Term<VoidListener> {
-        let size = GridSize {
-            columns: 20,
-            lines: 4,
-        };
-        let mut term = Term::new(term::Config::default(), &size, VoidListener);
-        let mut parser: Processor = Processor::new();
-        parser.advance(&mut term, text.as_bytes());
+    fn term(text: &str) -> Term {
+        let mut term = Term::new(20, 4, Options::default());
+        term.advance(text.as_bytes());
         term
+    }
+
+    fn palette() -> Palette {
+        let mut palette = Palette::default();
+        palette.set_base(palette::base(&palette::fallback()));
+        palette
     }
 
     fn text(row: &Row) -> String {
@@ -280,18 +239,21 @@ mod tests {
             .collect()
     }
 
+    fn frame(term: &Term, view: &View, sent: &mut Sent) -> Frame {
+        capture(term, view, &palette(), true, None).changes(sent, None)
+    }
+
     #[test]
     fn only_rows_that_changed_are_sent_again() {
-        let palette = palette::fallback();
+        let view = View::default();
         let mut sent = Sent::default();
         let mut term = term("one\r\ntwo");
-        let first = capture(&term, &palette, None).changes(&mut sent, None);
+        let first = frame(&term, &view, &mut sent);
         assert_eq!(first.rows.len(), 4);
         assert_eq!(text(&first.rows[1]), "two");
 
-        let mut parser: Processor = Processor::new();
-        parser.advance(&mut term, b"\r\nthree");
-        let second = capture(&term, &palette, None).changes(&mut sent, None);
+        term.advance(b"\r\nthree");
+        let second = frame(&term, &view, &mut sent);
         assert_eq!(second.rows.len(), 1);
         assert_eq!(second.rows[0].line, 2);
         assert_eq!(text(&second.rows[0]), "three");
@@ -303,16 +265,13 @@ mod tests {
 
     #[test]
     fn every_row_is_sent_again_after_the_width_changes() {
-        let palette = palette::fallback();
+        let view = View::default();
         let mut sent = Sent::default();
         let mut term = term("one\r\ntwo");
-        capture(&term, &palette, None).changes(&mut sent, None);
+        frame(&term, &view, &mut sent);
 
-        term.resize(GridSize {
-            columns: 30,
-            lines: 4,
-        });
-        let wider = capture(&term, &palette, None).changes(&mut sent, None);
+        term.resize(30, 4);
+        let wider = frame(&term, &view, &mut sent);
         assert_eq!(wider.columns, 30);
         assert_eq!(wider.rows.len(), 4);
         assert_eq!(text(&wider.rows[0]), "one");
@@ -321,8 +280,8 @@ mod tests {
     #[test]
     fn styles_and_lines_come_with_the_cells() {
         let palette = palette::fallback();
-        let screen = capture(&term("\x1b[1;3;4:3;9mx\x1b[0m\x1b[7my"), &palette, None);
-        let frame = screen.changes(&mut Sent::default(), None);
+        let term = term("\x1b[1;3;4:3;9mx\x1b[0m\x1b[7my");
+        let frame = frame(&term, &View::default(), &mut Sent::default());
         let cells = &frame.rows[0].cells;
         let x = &cells[0];
         assert_eq!(
@@ -335,5 +294,23 @@ mod tests {
         );
         let y = &cells[1];
         assert_eq!((y.fg, y.bg), (palette.background, palette.foreground));
+    }
+
+    #[test]
+    fn a_scrolled_view_shows_the_history_and_moves_the_cursor_down() {
+        let term = term("1\r\n2\r\n3\r\n4\r\n5\r\n6");
+        let mut view = View::default();
+        view.scroll(&term, 1);
+        let frame = frame(&term, &view, &mut Sent::default());
+        assert_eq!(text(&frame.rows[0]), "2");
+        assert_eq!((frame.history, frame.offset), (2, 1));
+        assert_eq!(frame.cursor.map(|cursor| cursor.point.line), None);
+        view.scroll(&term, -1);
+        let frame =
+            capture(&term, &view, &palette(), false, None).changes(&mut Sent::default(), None);
+        assert_eq!(
+            frame.cursor.map(|cursor| (cursor.point.line, cursor.shape)),
+            Some((3, CursorShape::HollowBlock))
+        );
     }
 }

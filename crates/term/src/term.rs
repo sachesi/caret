@@ -503,6 +503,12 @@ impl Term {
         self.keyboard[usize::from(self.alt_active)]
     }
 
+    /// Where the cursor is, shown or not.
+    #[must_use]
+    pub fn cursor_at(&self) -> (usize, usize) {
+        (self.cursor.line, self.cursor.column)
+    }
+
     /// Where the cursor is, if it is shown.
     #[must_use]
     pub fn cursor(&self) -> Option<(usize, usize)> {

@@ -1,25 +1,8 @@
-//! The colours cells are shown in: a client's 16 ANSI colours, the 256-colour cube and
-//! ramp, and what programs changed through OSC 4, 10, 11 and 12.
+//! The colours a client shows terminals in, as the emulator takes them, and its colours
+//! as the protocol sends them.
 
-use alacritty_terminal::term::color::Colors;
-use alacritty_terminal::vte::ansi::{self, Color, NamedColor};
 use caret_protocol::{Palette, Rgb};
-
-pub fn rgb(color: ansi::Rgb) -> Rgb {
-    Rgb {
-        r: color.r,
-        g: color.g,
-        b: color.b,
-    }
-}
-
-pub fn ansi_rgb(color: Rgb) -> ansi::Rgb {
-    ansi::Rgb {
-        r: color.r,
-        g: color.g,
-        b: color.b,
-    }
-}
+use caret_term::palette::{self as term_palette, Base};
 
 /// The dark palette, for terminals no client has shown yet.
 pub fn fallback() -> Palette {
@@ -35,68 +18,41 @@ pub fn fallback() -> Palette {
     }
 }
 
-/// `color` as the terminal shows it now, overrides from escape sequences first.
-pub fn resolve(palette: &Palette, color: Color, overrides: &Colors) -> Rgb {
-    match color {
-        Color::Spec(color) => rgb(color),
-        Color::Indexed(index) => indexed(palette, usize::from(index), overrides),
-        Color::Named(name) => named(palette, name, overrides),
+fn term_rgb(color: Rgb) -> term_palette::Rgb {
+    term_palette::Rgb {
+        r: color.r,
+        g: color.g,
+        b: color.b,
     }
 }
 
-fn indexed(palette: &Palette, index: usize, overrides: &Colors) -> Rgb {
-    if let Some(color) = overrides[index] {
-        return rgb(color);
-    }
-    match index {
-        0..16 => palette.ansi.get(index).copied().unwrap_or_default(),
-        16..232 => {
-            const LEVELS: [u8; 6] = [0, 95, 135, 175, 215, 255];
-            let cube = index - 16;
-            Rgb {
-                r: LEVELS[cube / 36],
-                g: LEVELS[cube / 6 % 6],
-                b: LEVELS[cube % 6],
-            }
-        }
-        _ => {
-            let level = 8 + 10 * (index - 232) as u8;
-            Rgb {
-                r: level,
-                g: level,
-                b: level,
-            }
-        }
+pub fn rgb(color: term_palette::Rgb) -> Rgb {
+    Rgb {
+        r: color.r,
+        g: color.g,
+        b: color.b,
     }
 }
 
-fn named(palette: &Palette, name: NamedColor, overrides: &Colors) -> Rgb {
-    let index = name as usize;
-    if index < 16 {
-        return indexed(palette, index, overrides);
+/// A client's palette as the emulator's base colours; the cursor takes the colour of the
+/// text, and colours a client left out the emulator's own.
+pub fn base(palette: &Palette) -> Base {
+    let mut base = Base {
+        foreground: term_rgb(palette.foreground),
+        background: term_rgb(palette.background),
+        cursor: None,
+        ..Base::default()
+    };
+    for (slot, &color) in base.ansi.iter_mut().zip(&palette.ansi) {
+        *slot = term_rgb(color);
     }
-    if let Some(color) = overrides[index] {
-        return rgb(color);
-    }
-    match name {
-        NamedColor::Background => palette.background,
-        NamedColor::Cursor | NamedColor::Foreground | NamedColor::BrightForeground => {
-            overrides[NamedColor::Foreground].map_or(palette.foreground, rgb)
-        }
-        NamedColor::DimForeground => {
-            dim(palette, named(palette, NamedColor::Foreground, overrides))
-        }
-        _ => {
-            let normal = index - NamedColor::DimBlack as usize;
-            dim(palette, indexed(palette, normal, overrides))
-        }
-    }
+    base
 }
 
 /// Faint text: pulled towards the background, so it fades in a light palette as well as
 /// in a dark one.
-pub fn dim(palette: &Palette, color: Rgb) -> Rgb {
-    mix(color, palette.background, 0.4)
+pub fn dim(color: Rgb, background: Rgb) -> Rgb {
+    mix(color, background, 0.4)
 }
 
 /// `from` moved `amount` of the way to `to`.
@@ -115,42 +71,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_cube_and_the_ramp_follow_xterm() {
-        let palette = fallback();
-        let none = Colors::default();
-        let resolved = |index| resolve(&palette, Color::Indexed(index), &none);
-        assert_eq!(resolved(16), Rgb::from_u32(0x000000));
-        assert_eq!(resolved(196), Rgb::from_u32(0xff0000));
-        assert_eq!(resolved(231), Rgb::from_u32(0xffffff));
-        assert_eq!(resolved(232), Rgb::from_u32(0x080808));
-        assert_eq!(resolved(255), Rgb::from_u32(0xeeeeee));
-    }
-
-    #[test]
-    fn a_colour_set_by_a_program_wins() {
-        let palette = fallback();
-        let mut colors = Colors::default();
-        colors[1] = Some(ansi_rgb(Rgb::from_u32(0x123456)));
-        colors[NamedColor::Background] = Some(ansi::Rgb { r: 0, g: 0, b: 0 });
-        let resolved = |color| resolve(&palette, color, &colors);
-        assert_eq!(
-            resolved(Color::Named(NamedColor::Red)),
-            Rgb::from_u32(0x123456)
-        );
-        assert_eq!(resolved(Color::Indexed(1)), Rgb::from_u32(0x123456));
-        assert_eq!(
-            resolved(Color::Named(NamedColor::Background)),
-            Rgb::from_u32(0x000000)
-        );
+    fn a_clients_colours_become_the_base() {
+        let mut palette = fallback();
+        palette.ansi.truncate(8);
+        let base = base(&palette);
+        assert_eq!(rgb(base.background), palette.background);
+        assert_eq!(rgb(base.ansi[1]), palette.ansi[1]);
+        assert_eq!(base.ansi[9], Base::default().ansi[9]);
     }
 
     #[test]
     fn dim_colours_fade_towards_the_background() {
         let palette = fallback();
-        let none = Colors::default();
-        let dim_text = resolve(&palette, Color::Named(NamedColor::DimForeground), &none);
-        assert_eq!(dim_text, mix(palette.foreground, palette.background, 0.4));
-        let dim_red = resolve(&palette, Color::Named(NamedColor::DimRed), &none);
-        assert_eq!(dim_red, mix(palette.ansi[1], palette.background, 0.4));
+        let faded = dim(palette.foreground, palette.background);
+        assert_eq!(faded, mix(palette.foreground, palette.background, 0.4));
+        assert_ne!(faded, palette.foreground);
     }
 }

@@ -2,12 +2,10 @@
 //! the windows that attach to it to show.
 
 mod capture;
-mod links;
 mod listen;
 mod palette;
-mod search;
+mod pty;
 mod server;
-mod shell;
 mod terminal;
 
 use std::path::PathBuf;

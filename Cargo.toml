@@ -10,10 +10,9 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/sachesi/caret"
 
 [workspace.dependencies]
-alacritty_terminal = "0.26"
 caret-protocol = { path = "crates/protocol" }
+caret-term = { path = "crates/term" }
 libc = "0.2"
-polling = "3"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -1,34 +1,23 @@
 //! The server's loop: every session, terminal and client, and what each request and each
-//! event of a terminal does to them. Everything else, the parsers, the clients' sockets
-//! and searches, runs on threads that send it [`Input`].
+//! event of a terminal does to them. Everything else, the terminals and the clients'
+//! sockets, runs on threads that send it [`Input`].
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::ExitStatusExt;
 use std::path::PathBuf;
 use std::process::ExitStatus;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::mpsc;
 use std::time::Instant;
 
-use alacritty_terminal::event::{Event, WindowSize};
-use alacritty_terminal::grid::{Dimensions, Scroll as GridScroll};
-use alacritty_terminal::index::{self, Column, Line, Side};
-use alacritty_terminal::selection::{Selection, SelectionType};
-use alacritty_terminal::term::search::RegexSearch;
-use alacritty_terminal::term::{self, ClipboardType, TermMode, viewport_to_point};
-use alacritty_terminal::vte::ansi::{Color, CursorStyle, NamedColor, Processor};
 use caret_protocol::{
-    Answer, Bytes, Command, CursorShape, Hovered, Message, Options, Palette, Point, Question,
-    Request, Scroll, Select, SelectionKind, SessionId, SessionInfo, Size, Tab, TerminalId,
+    Answer, Bytes, Command, CursorShape, Message, Options, Palette, Question, Request, Scroll,
+    SessionId, SessionInfo, Size, Tab, TerminalId,
 };
+use caret_term::Report;
 
-use crate::capture::{self, Sent, capture};
-use crate::links::{self, Span};
 use crate::palette;
-use crate::search;
-use crate::shell::{self, Report};
-use crate::terminal::{self, Terminal};
+use crate::terminal::{self, Event, Look, Terminal};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ClientId(pub u64);
@@ -41,15 +30,6 @@ pub enum Input {
     Request(ClientId, Request),
     Disconnected(ClientId),
     Terminal(TerminalId, Event),
-    Report(TerminalId, Report),
-    /// A search ended: whether it found something, or none when a later one or a cleared
-    /// selection cancelled it.
-    Found {
-        client: ClientId,
-        id: u32,
-        terminal: TerminalId,
-        found: Option<bool>,
-    },
 }
 
 struct Client {
@@ -65,15 +45,9 @@ struct Session {
     clients: BTreeSet<ClientId>,
 }
 
-/// A client's view of a terminal it shows.
+/// A client's view of a terminal it shows; the rest of it is the terminal's thread's.
 #[derive(Default)]
 struct View {
-    /// It asked for a frame and has not had it yet.
-    wants_frame: bool,
-    /// Something changed since its last frame.
-    dirty: bool,
-    sent: Sent,
-    hover: Option<Point>,
     size: Option<Size>,
 }
 
@@ -100,8 +74,6 @@ struct Entry {
     /// tool.
     containers: Vec<(String, String)>,
     command_started: Option<Instant>,
-    /// Counts searches, so that one a later search replaced stops.
-    searches: Arc<AtomicU64>,
 }
 
 pub struct Server {
@@ -123,40 +95,11 @@ fn default_options() -> Options {
     }
 }
 
-fn config(options: &Options) -> term::Config {
-    term::Config {
-        scrolling_history: options.scrollback as usize,
-        default_cursor_style: CursorStyle {
-            shape: capture::cursor_shape(options.cursor_shape),
-            blinking: options.cursor_blinks,
-        },
-        osc52: if options.copy_from_programs {
-            term::Osc52::OnlyCopy
-        } else {
-            term::Osc52::Disabled
-        },
-        ..term::Config::default()
-    }
-}
-
-fn window_size(size: Size) -> WindowSize {
-    WindowSize {
-        num_lines: size.lines.max(1),
-        num_cols: size.columns.max(2),
-        cell_width: size.cell_width,
-        cell_height: size.cell_height,
-    }
-}
-
-fn encoded(message: &Message) -> Vec<u8> {
+pub fn encoded(message: &Message) -> Vec<u8> {
     let mut bytes = Vec::new();
     // Writing into a vector fails only for a message past 4 GiB, which no frame is.
     let _ = caret_protocol::send(&mut bytes, message);
     bytes
-}
-
-fn grid_point(point: Point) -> index::Point<usize> {
-    index::Point::new(usize::from(point.line), Column(usize::from(point.column)))
 }
 
 impl Server {
@@ -203,22 +146,6 @@ impl Server {
             }
             Input::Disconnected(client) => self.disconnected(client),
             Input::Terminal(terminal, event) => self.event(terminal, event),
-            Input::Report(terminal, report) => self.report(terminal, report),
-            Input::Found {
-                client,
-                id,
-                terminal,
-                found,
-            } => {
-                let answer = match found {
-                    Some(found) => {
-                        self.dirty(terminal);
-                        Answer::Found { found }
-                    }
-                    None => Answer::Gone,
-                };
-                self.send(client, &Message::Answer { id, answer });
-            }
         }
     }
 
@@ -248,20 +175,31 @@ impl Server {
         }
     }
 
-    fn palette_of(&self, entry: &Entry) -> Palette {
-        entry
-            .active
-            .into_iter()
-            .chain(entry.views.keys().copied())
-            .find_map(|client| self.clients.get(&client))
-            .map_or_else(palette::fallback, |client| client.palette.clone())
+    /// How `client` shows terminals.
+    fn look_of(&self, client: ClientId) -> Look {
+        self.clients.get(&client).map_or_else(
+            || Look {
+                palette: palette::fallback(),
+                scroll_on_output: false,
+            },
+            |state| Look {
+                palette: state.palette.clone(),
+                scroll_on_output: state.options.scroll_on_output,
+            },
+        )
     }
 
-    fn options_of(&self, entry: &Entry) -> Options {
-        entry
-            .active
-            .and_then(|client| self.clients.get(&client))
-            .map_or_else(default_options, |client| client.options.clone())
+    /// Lets `client` see `terminal`.
+    fn show(&self, terminal: &Terminal, client: ClientId) {
+        if let Some(state) = self.clients.get(&client) {
+            terminal.show(client, state.writer.clone(), self.look_of(client));
+        }
+    }
+
+    fn running(&self, terminal: TerminalId) -> Option<&Terminal> {
+        self.terminals
+            .get(&terminal)
+            .and_then(|entry| entry.terminal.as_ref())
     }
 
     fn tab(entry: &Entry, terminal: TerminalId) -> Tab {
@@ -272,88 +210,25 @@ impl Server {
         }
     }
 
-    /// Every client showing `terminal` gets a frame when it next asks, or now if it has.
-    fn dirty(&mut self, terminal: TerminalId) {
-        if let Some(entry) = self.terminals.get_mut(&terminal) {
-            for view in entry.views.values_mut() {
-                view.dirty = true;
-            }
-        }
-        self.flush(terminal);
-    }
-
-    fn flush(&mut self, terminal: TerminalId) {
-        let Some(entry) = self.terminals.get(&terminal) else {
-            return;
-        };
-        let due: Vec<ClientId> = entry
-            .views
-            .iter()
-            .filter(|(_, view)| view.wants_frame && view.dirty)
-            .map(|(&client, _)| client)
-            .collect();
-        for client in due {
-            self.send_frame(terminal, client);
-        }
-    }
-
-    fn send_frame(&mut self, terminal: TerminalId, client: ClientId) {
-        let Some(entry) = self.terminals.get(&terminal) else {
-            return;
-        };
-        let palette = self.palette_of(entry);
-        let Some(entry) = self.terminals.get_mut(&terminal) else {
-            return;
-        };
-        let Some(running) = entry.terminal.as_ref() else {
-            return;
-        };
-        let Some(view) = entry.views.get_mut(&client) else {
-            return;
-        };
-        // Rearmed before the copy: output after it wakes the loop again.
-        running.rearm();
-        let term = running.lock();
-        // A program that reports the mouse gets the click, so the address is not marked.
-        let link = view
-            .hover
-            .filter(|_| !term.mode().intersects(TermMode::MOUSE_MODE))
-            .and_then(|point| links::link_in(&term, grid_point(point)));
-        let screen = capture(&term, &palette, link.as_ref().map(|link| &link.span));
-        drop(term);
-        let hovered = link.map(|link| Hovered {
-            marked: matches!(link.span, Span::Program(_)),
-            uri: link.uri,
-        });
-        let frame = screen.changes(&mut view.sent, hovered);
-        view.wants_frame = false;
-        view.dirty = false;
-        self.send(client, &Message::Frame { terminal, frame });
-    }
-
     #[expect(clippy::too_many_lines, reason = "one arm for each request")]
     fn request(&mut self, client: ClientId, request: Request) {
         match request {
             Request::Look { palette, options } => {
-                let config = config(&options);
                 if let Some(state) = self.clients.get_mut(&client) {
-                    state.palette = palette;
-                    state.options = options;
+                    state.palette = palette.clone();
+                    state.options = options.clone();
                 }
-                let shown: Vec<TerminalId> = self
-                    .terminals
-                    .iter()
-                    .filter(|(_, entry)| entry.views.contains_key(&client))
-                    .map(|(&terminal, _)| terminal)
-                    .collect();
-                for terminal in shown {
-                    if let Some(entry) = self.terminals.get(&terminal)
-                        && entry.active == Some(client)
-                        && let Some(running) = &entry.terminal
-                    {
-                        running.lock().set_options(config.clone());
+                let look = self.look_of(client);
+                for entry in self.terminals.values() {
+                    let Some(running) = &entry.terminal else {
+                        continue;
+                    };
+                    if entry.views.contains_key(&client) {
+                        running.look(client, look.clone());
                     }
-                    self.dirty(terminal);
+                    if entry.active == Some(client) {
+                        running.follow(terminal::options(&options), palette.clone());
+                    }
                 }
             }
             Request::Ask { id, question } => self.ask(client, id, question),
@@ -383,14 +258,9 @@ impl Server {
                 }
             }
             Request::Frame { terminal } => {
-                if let Some(view) = self
-                    .terminals
-                    .get_mut(&terminal)
-                    .and_then(|entry| entry.views.get_mut(&client))
-                {
-                    view.wants_frame = true;
+                if let Some(running) = self.running(terminal) {
+                    running.want_frame(client);
                 }
-                self.flush(terminal);
             }
             Request::Input {
                 terminal,
@@ -398,26 +268,10 @@ impl Server {
                 bottom,
             } => {
                 self.activate(terminal, client);
-                let Some(running) = self
-                    .terminals
-                    .get(&terminal)
-                    .and_then(|entry| entry.terminal.as_ref())
-                else {
-                    return;
-                };
-                if bottom {
-                    let mut term = running.lock();
-                    if term.grid().display_offset() != 0 {
-                        term.scroll_display(GridScroll::Bottom);
-                        drop(term);
-                        self.dirty(terminal);
+                if let Some(running) = self.running(terminal) {
+                    if bottom {
+                        running.scroll(client, Scroll::Bottom);
                     }
-                }
-                if let Some(running) = self
-                    .terminals
-                    .get(&terminal)
-                    .and_then(|entry| entry.terminal.as_ref())
-                {
                     running.write(bytes.0);
                 }
             }
@@ -433,74 +287,37 @@ impl Server {
                 }
             }
             Request::Scroll { terminal, scroll } => {
-                self.scroll(terminal, scroll);
-                self.dirty(terminal);
+                if let Some(running) = self.running(terminal) {
+                    running.scroll(client, scroll);
+                }
             }
             Request::Select { terminal, select } => {
-                self.select(terminal, select);
-                self.dirty(terminal);
+                if let Some(running) = self.running(terminal) {
+                    running.select(client, select);
+                }
             }
             Request::Hover { terminal, point } => {
-                if let Some(view) = self
-                    .terminals
-                    .get_mut(&terminal)
-                    .and_then(|entry| entry.views.get_mut(&client))
-                    && view.hover != point
-                {
-                    view.hover = point;
-                    view.dirty = true;
+                if let Some(running) = self.running(terminal) {
+                    running.hover(client, point);
                 }
-                self.flush(terminal);
             }
             Request::Focus { terminal, focused } => {
                 if focused {
                     self.activate(terminal, client);
                 }
-                if let Some(running) = self
-                    .terminals
-                    .get(&terminal)
-                    .and_then(|entry| entry.terminal.as_ref())
-                {
-                    let mut term = running.lock();
-                    term.is_focused = focused;
-                    let report = term.mode().contains(TermMode::FOCUS_IN_OUT);
-                    drop(term);
-                    if report {
-                        running.write(if focused { &b"\x1b[I"[..] } else { b"\x1b[O" });
-                    }
+                if let Some(running) = self.running(terminal) {
+                    running.focus(client, focused);
                 }
-                self.dirty(terminal);
             }
             Request::Annotate { terminal, text } => {
-                if let Some(running) = self
-                    .terminals
-                    .get(&terminal)
-                    .and_then(|entry| entry.terminal.as_ref())
-                {
-                    let mut term = running.lock();
-                    term.scroll_display(GridScroll::Bottom);
-                    let newline = if term.grid().cursor.point.column.0 > 0 {
-                        "\r\n"
-                    } else {
-                        ""
-                    };
-                    let text: String = text.chars().filter(|c| !c.is_control()).collect();
-                    // Bold, then the cursor hidden: nothing is left to type into.
-                    let text = format!("{newline}\x1b[1m{text}\x1b[0m\x1b[?25l");
-                    let mut parser: Processor = Processor::new();
-                    parser.advance(&mut *term, text.as_bytes());
+                if let Some(running) = self.running(terminal) {
+                    running.annotate(text);
                 }
-                self.dirty(terminal);
             }
         }
     }
 
     fn ask(&mut self, client: ClientId, id: u32, question: Question) {
-        let running = |terminal: TerminalId| {
-            self.terminals
-                .get(&terminal)
-                .and_then(|entry| entry.terminal.as_ref())
-        };
         let answer = match question {
             Question::Sessions => Answer::Sessions {
                 sessions: self
@@ -525,22 +342,17 @@ impl Server {
                 self.sessions.insert(session, Session::default());
                 Answer::Session { session }
             }
-            Question::SelectionText { terminal } => match running(terminal) {
-                Some(running) => Answer::Text {
-                    text: running
-                        .lock()
-                        .selection_to_string()
-                        .filter(|text| !text.is_empty()),
-                },
+            // What the client sees is the terminal's thread's to answer.
+            Question::SelectionText { terminal }
+            | Question::LinkAt { terminal, .. }
+            | Question::Find { terminal, .. } => match self.running(terminal) {
+                Some(running) => {
+                    running.ask(client, id, question);
+                    return;
+                }
                 None => Answer::Gone,
             },
-            Question::LinkAt { terminal, point } => match running(terminal) {
-                Some(running) => Answer::Link {
-                    uri: links::link_in(&running.lock(), grid_point(point)).map(|link| link.uri),
-                },
-                None => Answer::Gone,
-            },
-            Question::Busy { terminal } => match running(terminal) {
+            Question::Busy { terminal } => match self.running(terminal) {
                 Some(running) => Answer::Busy {
                     program: running.busy(),
                 },
@@ -574,14 +386,6 @@ impl Server {
                 }
                 None => Answer::Gone,
             },
-            Question::Find {
-                terminal,
-                text,
-                upwards,
-            } => {
-                self.find(client, id, terminal, &text, upwards);
-                return;
-            }
             Question::OpenTab {
                 session,
                 index,
@@ -603,71 +407,6 @@ impl Server {
             .or_else(|| entry.terminal.as_ref()?.directory())
     }
 
-    fn find(&mut self, client: ClientId, id: u32, terminal: TerminalId, text: &str, upwards: bool) {
-        let Some(entry) = self.terminals.get(&terminal) else {
-            self.send(
-                client,
-                &Message::Answer {
-                    id,
-                    answer: Answer::Gone,
-                },
-            );
-            return;
-        };
-        let Some(running) = entry.terminal.as_ref() else {
-            self.send(
-                client,
-                &Message::Answer {
-                    id,
-                    answer: Answer::Gone,
-                },
-            );
-            return;
-        };
-        let searches = entry.searches.clone();
-        let search = searches.fetch_add(1, Ordering::SeqCst) + 1;
-        let regex = match RegexSearch::new(&search::literal(text)) {
-            Ok(regex) if !text.is_empty() => regex,
-            _ => {
-                running.lock().selection = None;
-                self.dirty(terminal);
-                self.send(
-                    client,
-                    &Message::Answer {
-                        id,
-                        answer: Answer::Found { found: false },
-                    },
-                );
-                return;
-            }
-        };
-        let term = running.term.clone();
-        let events = self.events.clone();
-        let spawned = std::thread::Builder::new()
-            .name("search".to_owned())
-            .spawn(move || {
-                let found = search::search_history(&term, regex, upwards, || {
-                    searches.load(Ordering::SeqCst) != search
-                });
-                let _ = events.send(Input::Found {
-                    client,
-                    id,
-                    terminal,
-                    found,
-                });
-            });
-        if let Err(error) = spawned {
-            tracing::warn!("starting a search: {error}");
-            self.send(
-                client,
-                &Message::Answer {
-                    id,
-                    answer: Answer::Gone,
-                },
-            );
-        }
-    }
-
     fn attach(&mut self, client: ClientId, session_id: SessionId) {
         let Some(session) = self.sessions.get_mut(&session_id) else {
             self.send(
@@ -685,15 +424,14 @@ impl Server {
         }
         let mut shown = Vec::new();
         for &terminal in &tabs {
-            if let Some(entry) = self.terminals.get_mut(&terminal) {
-                entry.views.insert(
-                    client,
-                    View {
-                        dirty: true,
-                        ..View::default()
-                    },
-                );
+            if let Some(entry) = self.terminals.get(&terminal) {
+                if let Some(running) = &entry.terminal {
+                    self.show(running, client);
+                }
                 shown.push(Self::tab(entry, terminal));
+            }
+            if let Some(entry) = self.terminals.get_mut(&terminal) {
+                entry.views.insert(client, View::default());
             }
         }
         self.send(
@@ -747,6 +485,9 @@ impl Server {
                 entry.views.remove(&client);
                 if entry.active == Some(client) {
                     entry.active = None;
+                }
+                if let Some(running) = &entry.terminal {
+                    running.hide(client);
                 }
             }
         }
@@ -804,15 +545,16 @@ impl Server {
                 answer: Answer::Opened { terminal },
             },
         );
-        let options = self
-            .clients
-            .get(&client)
-            .map_or_else(default_options, |state| state.options.clone());
+        let (options, palette) = self.clients.get(&client).map_or_else(
+            || (default_options(), palette::fallback()),
+            |state| (state.options.clone(), state.palette.clone()),
+        );
         let spawned = Terminal::spawn(
             terminal,
             command,
-            window_size(size),
-            config(&options),
+            size,
+            terminal::options(&options),
+            &palette,
             &self.events,
         );
         let title = terminal::program_name(command);
@@ -826,19 +568,12 @@ impl Server {
             .expect("the session was looked up above");
         let index = index.min(session.tabs.len());
         session.tabs.insert(index, terminal);
-        let views = session
-            .clients
+        let viewers = session.clients.clone();
+        let views = viewers
             .iter()
             .map(|&viewer| {
                 let size = (viewer == client).then_some(size);
-                (
-                    viewer,
-                    View {
-                        dirty: true,
-                        size,
-                        ..View::default()
-                    },
-                )
+                (viewer, View { size })
             })
             .collect();
         let entry = Entry {
@@ -857,10 +592,11 @@ impl Server {
             shell_directory: None,
             containers: Vec::new(),
             command_started: None,
-            searches: Arc::default(),
         };
         if let Some(running) = &entry.terminal {
-            running.lock().is_focused = true;
+            for viewer in viewers {
+                self.show(running, viewer);
+            }
         }
         let tab = Self::tab(&entry, terminal);
         self.terminals.insert(terminal, entry);
@@ -976,11 +712,21 @@ impl Server {
         entry.session = session_id;
         entry.views.retain(|viewer, _| new_clients.contains(viewer));
         for &viewer in new_clients.difference(&old_clients) {
-            entry.views.entry(viewer).or_insert_with(|| View {
-                dirty: true,
-                ..View::default()
-            });
+            entry.views.entry(viewer).or_default();
         }
+        if let Some(running) = &entry.terminal {
+            for &viewer in old_clients.difference(&new_clients) {
+                running.hide(viewer);
+            }
+        }
+        if let Some(running) = self.running(terminal) {
+            for &viewer in new_clients.difference(&old_clients) {
+                self.show(running, viewer);
+            }
+        }
+        let Some(entry) = self.terminals.get(&terminal) else {
+            return;
+        };
         let tab = Self::tab(entry, terminal);
         let opened = encoded(&Message::TabOpened {
             session: session_id,
@@ -994,7 +740,6 @@ impl Server {
                 let _ = state.writer.send(opened.clone());
             }
         }
-        self.dirty(terminal);
     }
 
     /// The terminal takes `client`'s size, colours and options from now on.
@@ -1008,12 +753,11 @@ impl Server {
         entry.active = Some(client);
         let size = entry.views.get(&client).and_then(|view| view.size);
         if let (Some(running), Some(state)) = (&entry.terminal, self.clients.get(&client)) {
-            running.lock().set_options(config(&state.options));
+            running.follow(terminal::options(&state.options), state.palette.clone());
         }
         if let Some(size) = size.filter(|&size| size != entry.size) {
             self.resize(terminal, size);
         }
-        self.dirty(terminal);
     }
 
     fn resize(&mut self, terminal: TerminalId, size: Size) {
@@ -1022,147 +766,28 @@ impl Server {
         };
         entry.size = size;
         if let Some(running) = &entry.terminal {
-            running.resize(window_size(size));
-        }
-        self.dirty(terminal);
-    }
-
-    fn scroll(&mut self, terminal: TerminalId, scroll: Scroll) {
-        let Some(running) = self
-            .terminals
-            .get(&terminal)
-            .and_then(|entry| entry.terminal.as_ref())
-        else {
-            return;
-        };
-        let mut term = running.lock();
-        let offset = term.grid().display_offset() as i32;
-        let scroll = match scroll {
-            Scroll::Lines { lines } => GridScroll::Delta(lines),
-            Scroll::Page { up: true } => GridScroll::PageUp,
-            Scroll::Page { up: false } => GridScroll::PageDown,
-            Scroll::Bottom => GridScroll::Bottom,
-            Scroll::To { line } => {
-                let wanted = term.history_size().saturating_sub(line as usize) as i32;
-                GridScroll::Delta(wanted - offset)
-            }
-            Scroll::Prompt { up } => {
-                let grid = term.grid();
-                let columns = grid.columns();
-                let marked = |line: i32| {
-                    (0..columns).any(|column| {
-                        grid[Line(line)][Column(column)]
-                            .hyperlink()
-                            .is_some_and(|link| link.uri() == shell::PROMPT)
-                    })
-                };
-                let starts = |line: i32| {
-                    marked(line) && (line == term.topmost_line().0 || !marked(line - 1))
-                };
-                let top = -offset;
-                let found = if up {
-                    (term.topmost_line().0..top)
-                        .rev()
-                        .find(|&line| starts(line))
-                } else {
-                    (top + 1..=term.bottommost_line().0).find(|&line| starts(line))
-                };
-                match found {
-                    Some(line) => GridScroll::Delta(-line - offset),
-                    None if up => return,
-                    None => GridScroll::Bottom,
-                }
-            }
-        };
-        term.scroll_display(scroll);
-    }
-
-    fn select(&mut self, terminal: TerminalId, select: Select) {
-        let Some(entry) = self.terminals.get(&terminal) else {
-            return;
-        };
-        if matches!(select, Select::Clear) {
-            entry.searches.fetch_add(1, Ordering::SeqCst);
-        }
-        let Some(running) = entry.terminal.as_ref() else {
-            return;
-        };
-        let mut term = running.lock();
-        let side = |right: bool| if right { Side::Right } else { Side::Left };
-        match select {
-            Select::Start { kind, point, right } => {
-                let kind = match kind {
-                    SelectionKind::Simple => SelectionType::Simple,
-                    SelectionKind::Word => SelectionType::Semantic,
-                    SelectionKind::Line => SelectionType::Lines,
-                };
-                let point = viewport_to_point(term.grid().display_offset(), grid_point(point));
-                term.selection = Some(Selection::new(kind, point, side(right)));
-            }
-            Select::Extend { point, right } => {
-                let point = viewport_to_point(term.grid().display_offset(), grid_point(point));
-                match term.selection.as_mut() {
-                    Some(selection) => selection.update(point, side(right)),
-                    None => {
-                        term.selection =
-                            Some(Selection::new(SelectionType::Simple, point, side(right)));
-                    }
-                }
-            }
-            Select::All => {
-                let top = term.topmost_line();
-                let blank = |line: Line| {
-                    let row = &term.grid()[line];
-                    (0..term.columns()).all(|column| row[Column(column)].c == ' ')
-                };
-                let mut bottom = term.bottommost_line();
-                while bottom > top && blank(bottom) {
-                    bottom -= 1;
-                }
-                let mut selection = Selection::new(
-                    SelectionType::Simple,
-                    index::Point::new(top, Column(0)),
-                    Side::Left,
-                );
-                selection.update(index::Point::new(bottom, term.last_column()), Side::Right);
-                term.selection = Some(selection);
-            }
-            Select::Clear => term.selection = None,
+            running.resize(size);
         }
     }
 
     fn event(&mut self, terminal: TerminalId, event: Event) {
-        let Some(entry) = self.terminals.get(&terminal) else {
-            return;
-        };
-        let scroll = self.options_of(entry).scroll_on_output;
-        let palette = matches!(event, Event::ColorRequest(..)).then(|| self.palette_of(entry));
         let Some(entry) = self.terminals.get_mut(&terminal) else {
             return;
         };
         match event {
-            Event::Wakeup => {
-                if scroll && let Some(running) = &entry.terminal {
-                    let mut term = running.lock();
-                    if term.grid().display_offset() != 0 {
-                        term.scroll_display(GridScroll::Bottom);
-                    }
-                }
-                self.dirty(terminal);
-            }
             Event::Title(title) => {
-                entry.title.clone_from(&title);
-                self.broadcast_for(terminal, &Message::Title { terminal, title });
-            }
-            Event::ResetTitle => {
-                entry.title.clone_from(&entry.default_title);
+                entry.title = if title.is_empty() {
+                    entry.default_title.clone()
+                } else {
+                    title
+                };
                 let title = entry.title.clone();
                 self.broadcast_for(terminal, &Message::Title { terminal, title });
             }
-            Event::ClipboardStore(kind, text) => {
+            Event::Clipboard { primary, text } => {
                 let message = Message::Clipboard {
                     terminal,
-                    primary: kind == ClipboardType::Selection,
+                    primary,
                     text,
                 };
                 match entry.active {
@@ -1170,36 +795,12 @@ impl Server {
                     None => self.broadcast_for(terminal, &message),
                 }
             }
-            Event::ColorRequest(index, format) => {
-                let color = match index {
-                    0..=255 => Color::Indexed(index as u8),
-                    256 => Color::Named(NamedColor::Foreground),
-                    257 => Color::Named(NamedColor::Background),
-                    _ => Color::Named(NamedColor::Cursor),
-                };
-                if let (Some(running), Some(palette)) = (&entry.terminal, palette) {
-                    let term = running.lock();
-                    let resolved = palette::resolve(&palette, color, term.colors());
-                    drop(term);
-                    running.write(format(palette::ansi_rgb(resolved)).into_bytes());
-                }
-            }
-            Event::PtyWrite(text) => {
-                if let Some(running) = &entry.terminal {
-                    running.write(text.into_bytes());
-                }
-            }
-            Event::TextAreaSizeRequest(format) => {
-                if let Some(running) = &entry.terminal {
-                    running.write(format(window_size(entry.size)).into_bytes());
-                }
-            }
             Event::Bell => self.broadcast_for(terminal, &Message::Bell { terminal }),
-            Event::ChildExit(status) => entry.exit_status = Some(status),
-            // After the program's last output has been read.
-            Event::Exit => self.program_ended(terminal),
-            // OSC 52 reads are refused by the terminal's configuration.
-            _ => {}
+            Event::Report(report) => self.report(terminal, report),
+            Event::Exited(status) => {
+                entry.exit_status = Some(status);
+                self.program_ended(terminal);
+            }
         }
     }
 

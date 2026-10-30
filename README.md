@@ -1,9 +1,8 @@
 # Caret
 
 Caret is a terminal written in Rust with GTK 4 and libadwaita. Programs' output is
-parsed by [alacritty_terminal](https://crates.io/crates/alacritty_terminal), and Caret
-draws the text itself with OpenGL, one texel to each pixel of the screen, so it stays
-sharp at fractional scales.
+parsed by a terminal emulator of Caret's own, and Caret draws the text itself with
+OpenGL, one texel to each pixel of the screen, so it stays sharp at fractional scales.
 
 It runs on Wayland and X11 and does not depend on any desktop session. You need OpenGL
 3.3 or OpenGL ES 3.0 through EGL, GTK 4.22 and libadwaita 1.9.

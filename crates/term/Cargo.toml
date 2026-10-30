@@ -13,7 +13,6 @@ unicode-segmentation = "1"
 unicode-width = "0.2"
 
 [dev-dependencies]
-alacritty_terminal.workspace = true
 vte = "0.15"
 
 [lints]

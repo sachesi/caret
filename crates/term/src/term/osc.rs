@@ -337,6 +337,14 @@ mod tests {
     }
 
     #[test]
+    fn containers_with_names_that_read_as_options_are_ignored() {
+        assert!(container_name("fedora-toolbox-44"));
+        assert!(!container_name("--rm"));
+        assert!(!container_name(""));
+        assert!(!container_name("a b"));
+    }
+
+    #[test]
     fn directories_are_read_from_local_addresses() {
         assert_eq!(
             directory("file:///home/me/My%20Files"),

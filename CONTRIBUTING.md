@@ -47,17 +47,21 @@ context menu.
 Terminals live in `caret-server`, so that a window can detach and attach again later,
 or crash, without its programs ending. The server keeps sessions, each a list of tabs a
 window shows; one window attaches to one session. It parses what each program writes
-with alacritty_terminal and sends a client the rows that changed when the client asks for
-a frame, already resolved to colours and glyphs, so a client never sees the terminal
-state itself. A client sends input, sizes, scrolling and selection as requests, and asks
+with Caret's own emulator, the `caret-term` crate, and sends a client the rows that
+changed when the client asks for a frame, already resolved to colours and glyphs, so a
+client never sees the terminal state itself. A client sends input, sizes, scrolling and selection as requests, and asks
 questions (the selected text, the link under a point, a search) whose answers come back
 in order with everything else on the connection.
 
-The server runs one loop that owns every session and terminal; each client has a reader
-and a writer thread, and each terminal alacritty's thread that reads its pty. A search
-runs on a thread of its own, holding the terminal lock's lease so no output moves the
-lines under it, and the lock itself a few thousand lines at a time. The server ends once
-it keeps nothing and no client is connected. systemd starts it for its socket where its
+The server runs one loop that owns every session and tab; each client has a reader and a
+writer thread. Each terminal has a thread of its own that reads and writes its pty, keeps
+the emulator, and keeps every client's view of it: where the client scrolled to, what it
+selected, the link under its pointer, a search going on. That thread sends clients their
+frames and answers their questions about what they see, so one client can read back
+through the history while another follows the output; the loop hears from it only of
+the title, bells, the clipboard, what the shell reports, and the program's end. A search
+goes a few thousand lines at a time between reads of the program's output. The server
+ends once it keeps nothing and no client is connected. systemd starts it for its socket where its
 units are installed; otherwise the first window starts it.
 
 The protocol's version is exchanged first on each connection, and the server speaks
