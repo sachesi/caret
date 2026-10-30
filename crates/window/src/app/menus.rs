@@ -1,7 +1,7 @@
 //! The window's menus: the main one from the header bar, and the terminal's from a
 //! right click, with what it can do where it was clicked.
 
-use caret_protocol::{Question, SessionId, SessionInfo, TerminalId};
+use caret_protocol::{Question, SessionEntry, SessionId, SessionInfo, TerminalId};
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
 use super::{App, Asked, pointer};
@@ -22,6 +22,10 @@ pub enum Choice {
     RenameSession(SessionId),
     DetachSession(SessionId),
     CloseSession(SessionId),
+    /// What can be done with a session, in a menu of its own.
+    SessionActions(SessionId),
+    ShowSession(SessionId),
+    SessionWindow(SessionId),
     Preferences,
     About,
     /// The main menu, for a window without its header bar.
@@ -79,6 +83,7 @@ impl App {
         let session = self.shown_session();
         sections.extend([
             vec![
+                self.act_item("Sessions…", Action::Sessions),
                 self.item(
                     "Rename Session…",
                     Choice::RenameSession(session.unwrap_or(SessionId(0))),
@@ -232,6 +237,11 @@ impl App {
             Some(Choice::RenameSession(session)) => self.rename_session(session),
             Some(Choice::DetachSession(session)) => self.detach_session(session),
             Some(Choice::CloseSession(session)) => self.close_session(session),
+            Some(Choice::SessionActions(session)) => self.session_menu(session),
+            Some(Choice::ShowSession(session)) => self.show_session(session),
+            Some(Choice::SessionWindow(session)) => {
+                self.open_window(vec!["--session".into(), session.0.to_string()]);
+            }
             Some(Choice::Reattach) => {
                 let id = self.server.ask(Question::Sessions);
                 self.asked.insert(id, Asked::Reattach);
@@ -250,6 +260,80 @@ impl App {
     pub(super) fn new_window(&self, profile: Option<&str>) {
         let arguments = profile.map(|profile| vec!["--profile".into(), profile.to_owned()]);
         self.open_window(arguments.unwrap_or_default());
+    }
+
+    /// Asks for the sessions, to list them in a menu.
+    pub(super) fn ask_sessions(&mut self) {
+        if self.server.version < 2 {
+            self.toast("Listing sessions needs a newer terminal server".to_owned());
+            return;
+        }
+        let id = self.server.ask(Question::SessionList);
+        self.asked.insert(id, Asked::SessionList);
+    }
+
+    /// Where a menu the keys opened goes: near the top, across the middle.
+    fn keyed_menu_at(&self) -> (f32, f32) {
+        let width = self.size.map_or(0, |(width, _)| width);
+        let x = (width as f32 / 2.0 - 160.0).max(8.0);
+        (x, self.chrome.top() as f32 + 8.0)
+    }
+
+    /// A menu of the sessions, each opening a menu of what can be done with it.
+    pub(super) fn sessions_menu(&mut self, sessions: &[SessionEntry]) {
+        for entry in sessions {
+            match &entry.name {
+                Some(name) => self.session_names.insert(entry.session, name.clone()),
+                None => self.session_names.remove(&entry.session),
+            };
+        }
+        let count =
+            |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+        let items = sessions
+            .iter()
+            .map(|entry| {
+                let title = entry.tabs.first().map_or("", |tab| {
+                    tab.name
+                        .as_deref()
+                        .filter(|name| !name.is_empty())
+                        .unwrap_or(&tab.title)
+                });
+                let place = if self.sessions.contains(&entry.session) {
+                    "here"
+                } else if entry.clients > 0 {
+                    "shown"
+                } else {
+                    "detached"
+                };
+                let label = format!(
+                    "{} · {title} — {}, {}, {place}",
+                    self.session_label(entry.session),
+                    count(entry.tabs.len(), "tab", "tabs"),
+                    count(entry.panes as usize, "pane", "panes"),
+                );
+                self.item(&label, Choice::SessionActions(entry.session), true)
+            })
+            .collect();
+        let at = self.keyed_menu_at();
+        self.show_menu(vec![items], at, false);
+    }
+
+    /// What can be done with `session`.
+    fn session_menu(&mut self, session: SessionId) {
+        let here = self.sessions.contains(&session);
+        let sections = vec![
+            vec![
+                self.item("Show Here", Choice::ShowSession(session), !here),
+                self.item("Open in New Window", Choice::SessionWindow(session), true),
+            ],
+            vec![self.item("Rename…", Choice::RenameSession(session), true)],
+            vec![
+                self.item("Detach", Choice::DetachSession(session), here),
+                self.item("Close…", Choice::CloseSession(session), true),
+            ],
+        ];
+        let at = self.keyed_menu_at();
+        self.show_menu(sections, at, false);
     }
 
     /// Opens a window for each session no window shows, or says there is none.

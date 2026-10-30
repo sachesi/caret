@@ -137,6 +137,8 @@ enum Asked {
     Menu((f32, f32)),
     /// The sessions, to show those no window shows.
     Reattach,
+    /// The sessions, to list in a menu.
+    SessionList,
 }
 
 /// Fields drop in order: the device before the surface it draws to, and both before
@@ -710,6 +712,9 @@ impl App {
             (Some(Asked::Menu(at)), Answer::Link { uri }) => self.terminal_menu(at, uri),
             (Some(Asked::Menu(at)), _) => self.terminal_menu(at, None),
             (Some(Asked::Reattach), Answer::Sessions { sessions }) => self.reattach(&sessions),
+            (Some(Asked::SessionList), Answer::SessionList { sessions }) => {
+                self.sessions_menu(&sessions);
+            }
             (Some(Asked::Copy { .. } | Asked::Find(_) | Asked::Link | Asked::Pane) | None, _) => {}
             (Some(_), answer) => {
                 tracing::error!("the server answered {answer:?}");
@@ -1274,6 +1279,7 @@ impl App {
             Action::FocusUp => return self.focus_towards(Direction::Up),
             Action::FocusDown => return self.focus_towards(Direction::Down),
             Action::ControlMode => self.enter_control(),
+            Action::Sessions => self.ask_sessions(),
             Action::NextTab => self.step_tab(1),
             Action::PreviousTab => self.step_tab(-1),
             Action::ShowTab(number) => {

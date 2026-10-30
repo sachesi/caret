@@ -31,6 +31,8 @@ pub enum Action {
     FocusDown,
     /// Moves, resizes and closes panes from the keys until left.
     ControlMode,
+    /// Lists the sessions, to show one here or in a window of its own.
+    Sessions,
     Find,
     NextTab,
     PreviousTab,
@@ -69,6 +71,7 @@ const ACTIONS: &[(Action, &str, &[&str])] = &[
     (Action::FocusUp, "focus-up", &["Alt+Up"]),
     (Action::FocusDown, "focus-down", &["Alt+Down"]),
     (Action::ControlMode, "control-mode", &["Ctrl+Shift+space"]),
+    (Action::Sessions, "sessions", &["Ctrl+Shift+S"]),
     (Action::Find, "find", &["Ctrl+Shift+F"]),
     (Action::NextTab, "next-tab", &["Ctrl+Page_Down", "Ctrl+Tab"]),
     (
