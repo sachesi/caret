@@ -6,7 +6,7 @@ use caret_protocol::SelectionKind;
 use gettextrs::gettext;
 
 use super::*;
-use caret_protocol::encode::{self, Key, Modifiers, MouseAction, MouseButton};
+use caret_protocol::encode::{self, Key, Modifiers, MouseAction, MouseButton, Press};
 
 fn modifiers(state: gdk::ModifierType) -> Modifiers {
     Modifiers {
@@ -215,7 +215,11 @@ impl TerminalView {
                 None => return glib::Propagation::Proceed,
             },
         };
-        match encode::key(key, modifiers, self.mode()) {
+        let text = match key {
+            Key::Char(c) => Some(c.to_string()),
+            _ => None,
+        };
+        match encode::key_event(key, modifiers, Press::Down, text.as_deref(), self.mode()) {
             Some(bytes) => {
                 self.input(bytes);
                 glib::Propagation::Stop

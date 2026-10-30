@@ -8,7 +8,7 @@ use std::os::unix::ffi::OsStringExt;
 use std::os::unix::process::CommandExt;
 use std::time::{Duration, Instant};
 
-use caret_protocol::encode::{self, Modifiers};
+use caret_protocol::encode::{self, Modifiers, Press};
 use caret_protocol::{
     Answer, Bytes, Command, Message, Options, Question, Request, Select, SessionId, Size,
     TerminalId,
@@ -982,16 +982,18 @@ impl App {
         }
     }
 
-    fn key(&mut self, event: &KeyEvent) {
-        if self.dialog_key(event) || self.menu_key(event) {
-            return;
-        }
-        if let Some(action) = self.shortcuts.action(event.keysym, self.modifiers) {
-            self.act(action);
-            return;
-        }
-        if self.search_key(event) {
-            return;
+    fn key(&mut self, event: &KeyEvent, press: Press) {
+        if press != Press::Up {
+            if self.dialog_key(event) || self.menu_key(event) {
+                return;
+            }
+            if let Some(action) = self.shortcuts.action(event.keysym, self.modifiers) {
+                self.act(action);
+                return;
+            }
+            if self.search_key(event) {
+                return;
+            }
         }
         let Some(terminal) = self.terminal() else {
             return;
@@ -1002,30 +1004,24 @@ impl App {
         let typed = event
             .utf8
             .as_deref()
-            .filter(|text| !text.is_empty() && !text.chars().any(char::is_control));
-        if let Some(text) = typed
-            && !ctrl
-            && !alt
-            && crate::keys::named(event.keysym).is_none()
-        {
-            self.server.send(&Request::Input {
-                terminal,
-                bytes: Bytes(text.as_bytes().to_vec()),
-                bottom: self.config.scroll_on_keystroke,
-            });
-            crate::timings::key();
-            return;
-        }
-        let Some(key) = crate::keys::key(event.keysym) else {
-            return;
+            .filter(|text| !text.is_empty() && !text.chars().any(char::is_control))
+            .filter(|_| crate::keys::named(event.keysym).is_none());
+        let bytes = match crate::keys::key(event.keysym) {
+            Some(key) => encode::key_event(key, self.modifiers, press, typed, self.grid.mode),
+            // Text that no single key types, as from a compose sequence.
+            None => typed
+                .filter(|_| press != Press::Up && !ctrl && !alt)
+                .map(|text| text.as_bytes().to_vec()),
         };
-        if let Some(bytes) = encode::key(key, self.modifiers, self.grid.mode) {
+        if let Some(bytes) = bytes {
             self.server.send(&Request::Input {
                 terminal,
                 bytes: Bytes(bytes),
-                bottom: self.config.scroll_on_keystroke,
+                bottom: press != Press::Up && self.config.scroll_on_keystroke,
             });
-            crate::timings::key();
+            if press == Press::Down {
+                crate::timings::key();
+            }
         }
     }
 
@@ -1218,7 +1214,7 @@ impl KeyboardHandler for App {
         event: KeyEvent,
     ) {
         self.serial = serial;
-        self.key(&event);
+        self.key(&event, Press::Down);
     }
 
     fn repeat_key(
@@ -1229,7 +1225,7 @@ impl KeyboardHandler for App {
         _: u32,
         event: KeyEvent,
     ) {
-        self.key(&event);
+        self.key(&event, Press::Repeat);
     }
 
     fn release_key(
@@ -1238,8 +1234,9 @@ impl KeyboardHandler for App {
         _: &QueueHandle<Self>,
         _: &wl_keyboard::WlKeyboard,
         _: u32,
-        _: KeyEvent,
+        event: KeyEvent,
     ) {
+        self.key(&event, Press::Up);
     }
 
     fn update_modifiers(
@@ -1312,7 +1309,7 @@ impl SeatHandler for App {
                 &seat,
                 None,
                 self.events.clone(),
-                Box::new(|app, _, event| app.key(&event)),
+                Box::new(|app, _, event| app.key(&event, Press::Repeat)),
             );
             match keyboard {
                 Ok(keyboard) => self.keyboard = Some(keyboard),

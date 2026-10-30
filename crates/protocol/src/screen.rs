@@ -147,6 +147,22 @@ flags! {
         ALT_SCREEN = 1 << 10,
         ALTERNATE_SCROLL = 1 << 11,
         MOUSE_MODE = 0b11_1000,
+        /// The keyboard enhancement flags the program asked for, as [`Mode::keyboard`]
+        /// reads them. A server that knows none leaves them unset.
+        KEYBOARD = 0b1_1111 << 16,
+    }
+}
+
+impl Mode {
+    /// The keyboard enhancement flags, of [`crate::encode::DISAMBIGUATE`] and the others.
+    #[must_use]
+    pub const fn keyboard(self) -> u8 {
+        ((self.0 >> 16) & 0b1_1111) as u8
+    }
+
+    #[must_use]
+    pub const fn with_keyboard(self, flags: u8) -> Self {
+        Self((self.0 & !Self::KEYBOARD.0) | ((flags as u32 & 0b1_1111) << 16))
     }
 }
 

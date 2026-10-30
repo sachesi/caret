@@ -139,6 +139,158 @@ fn char(c: char, modifiers: Modifiers) -> Vec<u8> {
     bytes
 }
 
+/// Whether a key went down, is held down and repeats, or came up.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Press {
+    #[default]
+    Down,
+    Repeat,
+    Up,
+}
+
+/// Keyboard enhancement flags a program can ask for: keys that would read the same as
+/// others in the old encoding are written apart.
+pub const DISAMBIGUATE: u8 = 1;
+/// Repeats and releases are told too.
+pub const EVENT_TYPES: u8 = 2;
+/// The shifted character is told beside the key's own.
+pub const ALTERNATE_KEYS: u8 = 4;
+/// Every key is an escape sequence, text-typing ones included.
+pub const ALL_AS_ESCAPES: u8 = 8;
+/// With every key an escape sequence, the text it types is told in it.
+pub const ASSOCIATED_TEXT: u8 = 16;
+
+/// The bytes for a key event, `text` being what the key types: as [`key`] writes them,
+/// or as the keyboard enhancements the program asked for in `mode` write them. Nothing
+/// for an event the program is not told of.
+#[must_use]
+pub fn key_event(
+    key: Key,
+    modifiers: Modifiers,
+    press: Press,
+    text: Option<&str>,
+    mode: Mode,
+) -> Option<Vec<u8>> {
+    let flags = mode.keyboard();
+    let typed = text.filter(|_| !modifiers.ctrl && !modifiers.alt);
+    if flags == 0 {
+        if press == Press::Up {
+            return None;
+        }
+        return match typed {
+            Some(text) => Some(text.as_bytes().to_vec()),
+            None => self::key(key, modifiers, mode),
+        };
+    }
+    if press == Press::Up && flags & EVENT_TYPES == 0 {
+        return None;
+    }
+    if flags & ALL_AS_ESCAPES == 0 {
+        // Text stays text, and so do the keys that are not told apart from anything, all
+        // without being told when they come up.
+        let plain = modifiers == Modifiers::default()
+            && matches!(key, Key::Enter | Key::Tab | Key::Backspace);
+        if let Some(text) = typed.filter(|_| matches!(key, Key::Char(_))) {
+            return (press != Press::Up).then(|| text.as_bytes().to_vec());
+        }
+        if plain {
+            return (press != Press::Up)
+                .then(|| self::key(key, modifiers, mode))
+                .flatten();
+        }
+    }
+
+    let mut field = String::new();
+    let parameter = modifiers.parameter();
+    let event = match press {
+        _ if flags & EVENT_TYPES == 0 => "",
+        Press::Down => "",
+        Press::Repeat => ":2",
+        Press::Up => ":3",
+    };
+    if parameter > 1 || !event.is_empty() {
+        let _ = write!(field, "{parameter}{event}");
+    }
+    let legacy = |letter: char| {
+        if field.is_empty() {
+            format!("\x1b[{letter}")
+        } else {
+            format!("\x1b[1;{field}{letter}")
+        }
+    };
+    let tilde = |number: u8| {
+        if field.is_empty() {
+            format!("\x1b[{number}~")
+        } else {
+            format!("\x1b[{number};{field}~")
+        }
+    };
+    let sequence = match key {
+        Key::Up => legacy('A'),
+        Key::Down => legacy('B'),
+        Key::Right => legacy('C'),
+        Key::Left => legacy('D'),
+        Key::Home => legacy('H'),
+        Key::End => legacy('F'),
+        Key::Function(1) => legacy('P'),
+        Key::Function(2) => legacy('Q'),
+        Key::Function(3) => tilde(13),
+        Key::Function(4) => legacy('S'),
+        Key::Insert => tilde(2),
+        Key::Delete => tilde(3),
+        Key::PageUp => tilde(5),
+        Key::PageDown => tilde(6),
+        Key::Function(number @ 5..=12) => {
+            const NUMBERS: [u8; 8] = [15, 17, 18, 19, 20, 21, 23, 24];
+            tilde(NUMBERS[usize::from(number - 5)])
+        }
+        _ => csi_u(key, modifiers, press, text, flags, &field)?,
+    };
+    Some(sequence.into_bytes())
+}
+
+/// A key as `CSI code u`, with `field` its modifiers and event type when it has any.
+fn csi_u(
+    key: Key,
+    modifiers: Modifiers,
+    press: Press,
+    text: Option<&str>,
+    flags: u8,
+    field: &str,
+) -> Option<String> {
+    let (code, shifted) = match key {
+        Key::Escape => (27, None),
+        Key::Enter => (13, None),
+        Key::Tab => (9, None),
+        Key::Backspace => (127, None),
+        // The key's own character is the unshifted one.
+        Key::Char(c) if c.is_uppercase() => {
+            let lower = c.to_lowercase().next().unwrap_or(c);
+            (u32::from(lower), Some(u32::from(c)))
+        }
+        Key::Char(c) => (u32::from(c), None),
+        Key::Function(number @ 13..=35) => (57_376 + u32::from(number - 13), None),
+        _ => return None,
+    };
+    let mut sequence = format!("\x1b[{code}");
+    if let Some(shifted) = shifted.filter(|_| flags & ALTERNATE_KEYS != 0 && modifiers.shift) {
+        let _ = write!(sequence, ":{shifted}");
+    }
+    let text = text.filter(|_| {
+        flags & ALL_AS_ESCAPES != 0 && flags & ASSOCIATED_TEXT != 0 && press != Press::Up
+    });
+    if !field.is_empty() || text.is_some() {
+        let modifiers = if field.is_empty() { "1" } else { field };
+        let _ = write!(sequence, ";{modifiers}");
+    }
+    if let Some(text) = text {
+        let codes: Vec<String> = text.chars().map(|c| u32::from(c).to_string()).collect();
+        let _ = write!(sequence, ";{}", codes.join(":"));
+    }
+    sequence.push('u');
+    Some(sequence)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MouseButton {
     Left,
@@ -320,6 +472,90 @@ mod tests {
         assert_eq!(sent(key(Key::Function(1), NONE, mode)), "\x1bOP");
         assert_eq!(sent(key(Key::Function(5), CTRL, mode)), "\x1b[15;5~");
         assert_eq!(sent(key(Key::Function(12), NONE, mode)), "\x1b[24~");
+    }
+
+    fn told(bytes: Option<Vec<u8>>) -> String {
+        bytes
+            .map(|bytes| String::from_utf8(bytes).unwrap())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn without_enhancements_keys_and_text_are_as_before() {
+        let none = Modifiers::default();
+        let event = |key, press, text| told(key_event(key, none, press, text, Mode::empty()));
+        assert_eq!(event(Key::Char('a'), Press::Down, Some("a")), "a");
+        assert_eq!(event(Key::Char('a'), Press::Up, Some("a")), "");
+        assert_eq!(event(Key::Escape, Press::Repeat, None), "\x1b");
+    }
+
+    #[test]
+    fn disambiguated_keys_are_told_apart() {
+        let mode = Mode::empty().with_keyboard(DISAMBIGUATE);
+        assert_eq!(mode.keyboard(), DISAMBIGUATE);
+        let none = Modifiers::default();
+        let ctrl = Modifiers {
+            ctrl: true,
+            ..Modifiers::default()
+        };
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::default()
+        };
+        let event = |key, modifiers, text| told(key_event(key, modifiers, Press::Down, text, mode));
+        assert_eq!(event(Key::Escape, none, None), "\x1b[27u");
+        assert_eq!(event(Key::Char('a'), ctrl, Some("a")), "\x1b[97;5u");
+        assert_eq!(event(Key::Char('a'), none, Some("a")), "a");
+        assert_eq!(event(Key::Char('A'), shift, Some("A")), "A");
+        assert_eq!(event(Key::Enter, none, None), "\r");
+        assert_eq!(event(Key::Enter, shift, None), "\x1b[13;2u");
+        assert_eq!(event(Key::Up, none, None), "\x1b[A");
+        assert_eq!(event(Key::Up, ctrl, None), "\x1b[1;5A");
+        assert_eq!(event(Key::Function(5), none, None), "\x1b[15~");
+    }
+
+    #[test]
+    fn repeats_and_releases_are_told_when_asked_for() {
+        let mode = Mode::empty().with_keyboard(DISAMBIGUATE | EVENT_TYPES);
+        let none = Modifiers::default();
+        let ctrl = Modifiers {
+            ctrl: true,
+            ..Modifiers::default()
+        };
+        assert_eq!(
+            told(key_event(Key::Up, none, Press::Up, None, mode)),
+            "\x1b[1;1:3A"
+        );
+        assert_eq!(
+            told(key_event(
+                Key::Char('a'),
+                ctrl,
+                Press::Repeat,
+                Some("a"),
+                mode
+            )),
+            "\x1b[97;5:2u"
+        );
+        assert_eq!(
+            told(key_event(Key::Char('a'), none, Press::Up, Some("a"), mode)),
+            ""
+        );
+        assert_eq!(told(key_event(Key::Enter, none, Press::Up, None, mode)), "");
+    }
+
+    #[test]
+    fn every_key_can_be_an_escape_with_its_text() {
+        let mode = Mode::empty()
+            .with_keyboard(DISAMBIGUATE | ALL_AS_ESCAPES | ASSOCIATED_TEXT | ALTERNATE_KEYS);
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::default()
+        };
+        let none = Modifiers::default();
+        let event = |key, modifiers, text| told(key_event(key, modifiers, Press::Down, text, mode));
+        assert_eq!(event(Key::Char('a'), none, Some("a")), "\x1b[97;1;97u");
+        assert_eq!(event(Key::Char('A'), shift, Some("A")), "\x1b[97:65;2;65u");
+        assert_eq!(event(Key::Enter, none, None), "\x1b[13u");
     }
 
     #[test]

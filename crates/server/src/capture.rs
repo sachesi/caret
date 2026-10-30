@@ -45,7 +45,7 @@ pub fn mode(term: &Term) -> Mode {
             mode.insert(flag);
         }
     }
-    mode
+    mode.with_keyboard(term.keyboard_flags())
 }
 
 /// The rows `view` shows of `term` in `palette`, with `link` underlined as the one a click
