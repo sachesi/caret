@@ -64,7 +64,9 @@ impl App {
             Keysym::t | Keysym::T => self.pane_to_tab(),
             Keysym::d | Keysym::D => {
                 self.leave_control();
-                self.end(true);
+                if let Some(session) = self.shown_session() {
+                    self.detach_session(session);
+                }
             }
             _ => self.leave_control(),
         }

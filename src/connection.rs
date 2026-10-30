@@ -266,7 +266,8 @@ impl Connection {
                 }
             }
             // Not sent in version 1, which this window speaks.
-            Message::Layout { .. } | Message::SessionNamed { .. } => {}
+            Message::Layout { .. } | Message::SessionNamed { .. } | Message::ShowSession { .. } => {
+            }
         }
     }
 

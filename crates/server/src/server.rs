@@ -418,6 +418,20 @@ impl Server {
                 true
             }),
             Request::PaneToTab { terminal } => self.pane_to_tab(terminal),
+            Request::ShowSession { terminal, session } => {
+                let Some(entry) = self.terminals.get(&terminal) else {
+                    return;
+                };
+                let clients: Vec<ClientId> = match entry.active {
+                    Some(active) => vec![active],
+                    None => entry.views.keys().copied().collect(),
+                };
+                for client in clients {
+                    if self.version(client) >= PANES {
+                        self.send(client, &Message::ShowSession { session });
+                    }
+                }
+            }
             Request::NameSession { session, name } => {
                 let Some(state) = self.sessions.get_mut(&session) else {
                     return;

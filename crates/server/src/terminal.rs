@@ -291,7 +291,9 @@ impl Terminal {
         events: &mpsc::Sender<Input>,
     ) -> io::Result<Self> {
         let launch = Launch(command);
-        let env = launch.environment();
+        let mut env = launch.environment();
+        // How `caret attach` run in the terminal finds the window it is in.
+        env.insert("CARET_TERMINAL".to_owned(), id.0.to_string());
         let program = launch.program();
         launch.check(&program, &env)?;
         let mut process = std::process::Command::new(&program);

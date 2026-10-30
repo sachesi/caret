@@ -1,7 +1,7 @@
 //! The window's menus: the main one from the header bar, and the terminal's from a
 //! right click, with what it can do where it was clicked.
 
-use caret_protocol::{Question, SessionInfo, TerminalId};
+use caret_protocol::{Question, SessionId, SessionInfo, TerminalId};
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
 use super::{App, Asked, pointer};
@@ -19,7 +19,9 @@ pub enum Choice {
     Profile(String),
     Detach,
     Reattach,
-    RenameSession,
+    RenameSession(SessionId),
+    DetachSession(SessionId),
+    CloseSession(SessionId),
     Preferences,
     About,
     /// The main menu, for a window without its header bar.
@@ -74,9 +76,14 @@ impl App {
             });
             sections.push(profiles.collect());
         }
+        let session = self.shown_session();
         sections.extend([
             vec![
-                self.item("Rename Session…", Choice::RenameSession, true),
+                self.item(
+                    "Rename Session…",
+                    Choice::RenameSession(session.unwrap_or(SessionId(0))),
+                    session.is_some(),
+                ),
                 self.item("Detach Window", Choice::Detach, true),
                 self.item("Reattach Windows", Choice::Reattach, true),
             ],
@@ -158,10 +165,33 @@ impl App {
         let Some(terminal) = self.tabs.get(index).map(|tab| tab.key) else {
             return;
         };
-        let sections = vec![
+        let mut sections = vec![
             vec![self.item("Rename Tab…", Choice::RenameTab(terminal), true)],
             vec![self.item("Close Tab", Choice::CloseTab(terminal), true)],
         ];
+        // Each session's tabs can go on their own while the window shows several.
+        if let Some(session) = self.tabs.get(index).map(|tab| tab.session)
+            && self.sessions.len() > 1
+        {
+            let label = self.session_label(session);
+            sections.push(vec![
+                self.item(
+                    &format!("Rename “{label}”…"),
+                    Choice::RenameSession(session),
+                    true,
+                ),
+                self.item(
+                    &format!("Detach “{label}”"),
+                    Choice::DetachSession(session),
+                    true,
+                ),
+                self.item(
+                    &format!("Close “{label}”"),
+                    Choice::CloseSession(session),
+                    true,
+                ),
+            ]);
+        }
         self.show_menu(sections, self.pointer_at(), false);
     }
 
@@ -199,11 +229,9 @@ impl App {
             }
             Some(Choice::Profile(profile)) => self.new_window(Some(&profile)),
             Some(Choice::Detach) => self.end(true),
-            Some(Choice::RenameSession) => {
-                if let Some(session) = self.session {
-                    self.rename_session(session);
-                }
-            }
+            Some(Choice::RenameSession(session)) => self.rename_session(session),
+            Some(Choice::DetachSession(session)) => self.detach_session(session),
+            Some(Choice::CloseSession(session)) => self.close_session(session),
             Some(Choice::Reattach) => {
                 let id = self.server.ask(Question::Sessions);
                 self.asked.insert(id, Asked::Reattach);

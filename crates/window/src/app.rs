@@ -161,7 +161,9 @@ struct App {
     events: LoopHandle<'static, Self>,
     server: connection::Connection,
     asked: HashMap<u32, Asked>,
-    session: Option<SessionId>,
+    /// The sessions whose tabs the window shows, each one's together in this order: the
+    /// first is the one the window started with.
+    sessions: Vec<SessionId>,
     /// The names the user gave sessions.
     session_names: HashMap<SessionId, String>,
     tabs: Vec<tabs::Tab>,
@@ -348,7 +350,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         events: events.handle(),
         server,
         asked,
-        session: None,
+        sessions: Vec::new(),
         session_names: HashMap::new(),
         tabs: Vec::new(),
         selected: 0,
@@ -620,14 +622,16 @@ impl App {
                 session,
                 terminal,
                 index,
-            } if Some(session) == self.session => self.tab_moved(terminal, index),
+            } if self.sessions.contains(&session) => self.tab_moved(terminal, index),
             // A window started on a session it was handed learns it is shown here.
             Message::Attached { session, tabs }
-                if self.session.is_none_or(|own| own == session) =>
+                if self.sessions.is_empty() || self.sessions.contains(&session) =>
             {
-                self.session = Some(session);
+                if !self.sessions.contains(&session) {
+                    self.sessions.push(session);
+                }
                 for (index, tab) in (0..).zip(tabs) {
-                    self.tab_opened(index, tab);
+                    self.tab_opened(session, index, tab);
                 }
                 self.open_first_tab();
             }
@@ -635,16 +639,17 @@ impl App {
                 session,
                 index,
                 tab,
-            } if Some(session) == self.session => self.tab_opened(index, tab),
-            Message::TabClosed { session, terminal } if Some(session) == self.session => {
+            } if self.sessions.contains(&session) => self.tab_opened(session, index, tab),
+            Message::TabClosed { session, terminal } if self.sessions.contains(&session) => {
                 self.tab_closed(terminal);
             }
-            Message::SessionClosed { session } if Some(session) == self.session => {
-                self.exit = true;
+            Message::SessionClosed { session } if self.sessions.contains(&session) => {
+                self.session_gone(session);
             }
-            Message::Layout { session, tab, root } if Some(session) == self.session => {
+            Message::Layout { session, tab, root } if self.sessions.contains(&session) => {
                 self.tab_layout(tab, root);
             }
+            Message::ShowSession { session } => self.show_session(session),
             Message::SessionNamed { session, name } => {
                 match name {
                     Some(name) => self.session_names.insert(session, name),
@@ -660,7 +665,7 @@ impl App {
     fn answered(&mut self, id: u32, answer: Answer) {
         match (self.asked.remove(&id), answer) {
             (Some(Asked::Session), Answer::Session { session }) => {
-                self.session = Some(session);
+                self.sessions.push(session);
                 self.server.send(&Request::Attach { session });
                 self.open_first_tab();
             }
@@ -794,7 +799,7 @@ impl App {
             maximized: self.chrome.maximized,
         }
         .save();
-        if let Some(session) = self.session {
+        for &session in &self.sessions {
             if detach {
                 self.server.send(&Request::Detach { session });
             } else {
@@ -806,7 +811,7 @@ impl App {
 
     /// Asks for the window's first tab once there is a session and a size to give it.
     fn open_first_tab(&mut self) {
-        if self.session.is_none() || self.grid_size.is_none() {
+        if self.sessions.is_empty() || self.grid_size.is_none() {
             return;
         }
         if self.opening || !self.tabs.is_empty() {

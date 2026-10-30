@@ -19,6 +19,7 @@ pub enum Confirm {
     Paste { terminal: TerminalId, text: Vec<u8> },
     Rename(TerminalId),
     RenameSession(SessionId),
+    CloseSession(SessionId),
     About,
 }
 
@@ -72,6 +73,9 @@ impl App {
                     .filter(|name| !name.is_empty());
                 self.server.send(&Request::NameTab { terminal, name });
             }
+            Some(Confirm::CloseSession(session)) if accepted => {
+                self.server.send(&Request::CloseSession { session });
+            }
             Some(Confirm::RenameSession(session)) if accepted => {
                 let name = field
                     .map(|field| field.text.trim().to_owned())
@@ -110,6 +114,16 @@ impl App {
             &name,
         );
         self.confirm(dialog, Confirm::RenameSession(session));
+    }
+
+    /// Closes `session`'s tabs and ends their programs, asking first.
+    pub(super) fn close_session(&mut self, session: SessionId) {
+        let body = format!(
+            "The programs in the tabs of “{}” will be stopped.",
+            self.session_label(session)
+        );
+        let dialog = Dialog::new("Close Session?", &body, ["Cancel", "Close"]);
+        self.confirm(dialog, Confirm::CloseSession(session));
     }
 
     /// Says what Caret is, which version, and under which licence, offering its website.

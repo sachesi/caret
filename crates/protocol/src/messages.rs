@@ -429,6 +429,12 @@ pub enum Request {
         session: SessionId,
         name: Option<String>,
     },
+    /// Since version 2. Asks the window `terminal` was last typed in from to show
+    /// `session` too.
+    ShowSession {
+        terminal: TerminalId,
+        session: SessionId,
+    },
 }
 variants!(Request {
     0 => Look { palette, options },
@@ -453,6 +459,7 @@ variants!(Request {
     19 => MovePane { terminal, beside, side },
     20 => PaneToTab { terminal },
     21 => NameSession { session, name },
+    22 => ShowSession { terminal, session },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -543,6 +550,11 @@ pub enum Message {
         session: SessionId,
         name: Option<String>,
     },
+    /// Since version 2. Someone asked from one of this client's terminals that it show
+    /// `session` too.
+    ShowSession {
+        session: SessionId,
+    },
 }
 variants!(Message {
     0 => Answer { id, answer },
@@ -563,4 +575,5 @@ variants!(Message {
     15 => Ended { terminal, code, signal },
     16 => Layout { session, tab, root },
     17 => SessionNamed { session, name },
+    18 => ShowSession { session },
 });

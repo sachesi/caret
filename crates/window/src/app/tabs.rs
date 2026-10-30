@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::os::unix::ffi::OsStrExt;
 
 use caret_protocol::layout::Node;
-use caret_protocol::{Bytes, Command, Frame, Question, Request, Size, TerminalId};
+use caret_protocol::{Bytes, Command, Frame, Question, Request, SessionId, Size, TerminalId};
 
 use super::{App, Asked};
 use crate::chrome::TabLabel;
@@ -41,6 +41,7 @@ impl Pane {
 pub struct Tab {
     /// What the server knows the tab by: the terminal it was opened with.
     pub key: TerminalId,
+    pub session: SessionId,
     pub root: Node,
     /// The pane that has the keys.
     pub focused: TerminalId,
@@ -174,10 +175,90 @@ impl App {
         }
     }
 
-    /// A tab the server opened in the window's session, at `index`.
-    pub(super) fn tab_opened(&mut self, index: u32, tab: caret_protocol::Tab) {
-        let index =
-            usize::try_from(index).map_or(self.tabs.len(), |index| index.min(self.tabs.len()));
+    /// Where the tabs of `session` start among the window's, and how many it has.
+    fn group(&self, session: SessionId) -> (usize, usize) {
+        let order = |session: SessionId| {
+            self.sessions
+                .iter()
+                .position(|&shown| shown == session)
+                .unwrap_or(usize::MAX)
+        };
+        let own = order(session);
+        let start = self
+            .tabs
+            .iter()
+            .take_while(|tab| order(tab.session) < own)
+            .count();
+        let count = self
+            .tabs
+            .iter()
+            .filter(|tab| tab.session == session)
+            .count();
+        (start, count)
+    }
+
+    /// The session of the tab shown, or the one the window started with.
+    pub(super) fn shown_session(&self) -> Option<SessionId> {
+        self.tabs
+            .get(self.selected)
+            .map(|tab| tab.session)
+            .or_else(|| self.sessions.first().copied())
+    }
+
+    /// The session as the user knows it: by the name they gave it, or its number.
+    pub(super) fn session_label(&self, session: SessionId) -> String {
+        self.session_names
+            .get(&session)
+            .cloned()
+            .unwrap_or_else(|| format!("Session {}", session.0))
+    }
+
+    /// Shows `session`'s tabs in the window too, after the others.
+    pub(super) fn show_session(&mut self, session: SessionId) {
+        if self.server.version < PANES {
+            self.toast("Showing sessions together needs a newer terminal server".to_owned());
+            return;
+        }
+        if !self.sessions.contains(&session) {
+            self.sessions.push(session);
+            self.server.send(&Request::Attach { session });
+        }
+    }
+
+    /// Stops showing `session`, which keeps running in the server; the window goes with
+    /// its last session.
+    pub(super) fn detach_session(&mut self, session: SessionId) {
+        if self.sessions == [session] {
+            self.end(true);
+            return;
+        }
+        self.server.send(&Request::Detach { session });
+        self.session_gone(session);
+    }
+
+    /// Lets go of `session`'s tabs, which the window no longer shows.
+    pub(super) fn session_gone(&mut self, session: SessionId) {
+        let keys: Vec<TerminalId> = self
+            .tabs
+            .iter()
+            .filter(|tab| tab.session == session)
+            .map(|tab| tab.key)
+            .collect();
+        for key in keys {
+            self.tab_closed(key);
+        }
+        self.sessions.retain(|&shown| shown != session);
+        self.session_names.remove(&session);
+        if self.sessions.is_empty() {
+            self.exit = true;
+        }
+        self.retitle();
+    }
+
+    /// A tab the server opened in `session`, at `index` of its tabs.
+    pub(super) fn tab_opened(&mut self, session: SessionId, index: u32, tab: caret_protocol::Tab) {
+        let (start, count) = self.group(session);
+        let index = start + usize::try_from(index).map_or(count, |index| index.min(count));
         if index <= self.selected && !self.tabs.is_empty() {
             self.selected += 1;
         }
@@ -186,6 +267,7 @@ impl App {
             index,
             Tab {
                 key,
+                session,
                 root: Node::Pane { terminal: key },
                 focused: key,
                 panes: HashMap::from([(key, Pane::new(tab.title))]),
@@ -291,15 +373,15 @@ impl App {
         self.retitle();
     }
 
-    /// Moves `terminal`'s tab to `index`, keeping the one shown.
+    /// Moves `terminal`'s tab to `index` of its session's tabs, keeping the one shown.
     pub(super) fn tab_moved(&mut self, terminal: TerminalId, index: u32) {
         let Some(from) = self.tab_of(terminal) else {
             return;
         };
         let shown = self.tabs.get(self.selected).map(|tab| tab.key);
         let tab = self.tabs.remove(from);
-        let index =
-            usize::try_from(index).map_or(self.tabs.len(), |index| index.min(self.tabs.len()));
+        let (start, count) = self.group(tab.session);
+        let index = start + usize::try_from(index).map_or(count, |index| index.min(count));
         self.tabs.insert(index, tab);
         if let Some(index) = shown.and_then(|shown| self.tab_of(shown)) {
             self.selected = index;
@@ -307,18 +389,25 @@ impl App {
         self.retitle();
     }
 
-    /// Moves `terminal`'s tab to where `x` is in the strip, as it is dragged there.
+    /// Moves `terminal`'s tab to where `x` is in the strip, as it is dragged there, among
+    /// its session's tabs.
     pub(super) fn drag_tab(&mut self, terminal: TerminalId, x: f64) {
-        let (Some(session), Some((width, _))) = (self.session, self.size) else {
+        let (Some(from), Some((width, _))) = (self.tab_of(terminal), self.size) else {
             return;
         };
+        let session = self.tabs[from].session;
         if let Some(target) = self.chrome.tab_at(x, width)
-            && Some(target) != self.tab_of(terminal)
+            && target != from
+            && self
+                .tabs
+                .get(target)
+                .is_some_and(|tab| tab.session == session)
         {
+            let (start, _) = self.group(session);
             self.server.send(&Request::MoveTab {
                 terminal,
                 session,
-                index: u32::try_from(target).unwrap_or(u32::MAX),
+                index: u32::try_from(target - start).unwrap_or(u32::MAX),
             });
         }
     }
@@ -545,7 +634,7 @@ impl App {
     /// Asks the server to start `command` in a tab after the shown one: the custom
     /// command or the shell, in this program's environment unless it has its own.
     pub(super) fn open_tab(&mut self, mut command: Command) {
-        let (Some(session), Some(size)) = (self.session, self.grid_size) else {
+        let (Some(session), Some(size)) = (self.shown_session(), self.grid_size) else {
             return;
         };
         if command.directory.is_none() && self.tabs.is_empty() {
@@ -554,10 +643,15 @@ impl App {
                 .map(|path| Bytes(path.as_os_str().as_bytes().to_vec()));
         }
         let command = self.filled(command);
-        let index = if self.tabs.is_empty() {
-            0
+        let (start, count) = self.group(session);
+        let index = if self
+            .tabs
+            .get(self.selected)
+            .is_some_and(|tab| tab.session == session)
+        {
+            self.selected - start + 1
         } else {
-            self.selected + 1
+            count
         };
         let id = self.server.ask(Question::OpenTab {
             session,
@@ -607,11 +701,16 @@ impl App {
 
     /// Shows the shown tab's title on the window and every tab's in the strip.
     pub(super) fn retitle(&mut self) {
+        let several = self.sessions.len() > 1;
         let labels: Vec<TabLabel> = self
             .tabs
             .iter()
             .map(|tab| TabLabel {
-                title: tab.label().to_owned(),
+                title: if several {
+                    format!("{} · {}", self.session_label(tab.session), tab.label())
+                } else {
+                    tab.label().to_owned()
+                },
                 attention: tab.attention,
             })
             .collect();
