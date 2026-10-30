@@ -51,6 +51,29 @@ fn main() -> ExitCode {
             println!("caret {}", env!("CARGO_PKG_VERSION"));
             return ExitCode::SUCCESS;
         }
+        Ok(cli::Parsed::Sessions) => {
+            return match cli::sessions() {
+                Ok(sessions) => {
+                    print!("{}", cli::listing(&sessions));
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    eprintln!("caret: {error}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        Ok(cli::Parsed::Attach(target)) => match attach(&target) {
+            Ok(None) => return ExitCode::SUCCESS,
+            Ok(Some(session)) => cli::Start {
+                attach: cli::Attach::Session(session),
+                ..cli::Start::default()
+            },
+            Err(error) => {
+                eprintln!("caret: {error}");
+                return ExitCode::FAILURE;
+            }
+        },
         Err(error) => {
             eprintln!("caret: {error}\n{}", cli::USAGE);
             return ExitCode::from(2);
@@ -81,4 +104,21 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Shows the session `target` names: in the window this runs in, if it runs in one of
+/// Caret's terminals; otherwise the session a new window should show.
+fn attach(target: &str) -> Result<Option<caret_protocol::SessionId>, String> {
+    let sessions = cli::sessions()?;
+    let session = cli::find(&sessions, target)?;
+    if let Some(terminal) = cli::own_terminal() {
+        cli::show_in_window(terminal, session)?;
+        return Ok(None);
+    }
+    if std::env::var_os("WAYLAND_DISPLAY").is_none() {
+        return Err("drawing a session in this terminal is not there yet: \
+                    run caret attach in a Caret window or a Wayland session"
+            .to_owned());
+    }
+    Ok(Some(session))
 }
