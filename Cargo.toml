@@ -1,6 +1,6 @@
 [workspace]
-members = ["crates/protocol", "crates/server", "crates/window"]
-default-members = [".", "crates/protocol", "crates/server"]
+members = ["crates/protocol", "crates/server", "crates/term", "crates/window"]
+default-members = [".", "crates/protocol", "crates/server", "crates/term"]
 
 [workspace.package]
 version = "0.2.0"

@@ -1,0 +1,20 @@
+[package]
+name = "caret-term"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Caret's terminal emulator: escape sequences in, screens and history out"
+repository.workspace = true
+publish = false
+
+[dependencies]
+unicode-segmentation = "1"
+unicode-width = "0.2"
+
+[dev-dependencies]
+alacritty_terminal.workspace = true
+vte = "0.15"
+
+[lints]
+workspace = true
