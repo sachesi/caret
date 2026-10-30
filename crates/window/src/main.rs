@@ -19,6 +19,7 @@ mod render;
 mod renderer;
 mod shortcuts;
 mod state;
+mod text;
 mod timings;
 
 use std::process::ExitCode;
@@ -63,17 +64,15 @@ fn main() -> ExitCode {
                 }
             };
         }
-        Ok(cli::Parsed::Attach(target)) => match attach(&target) {
-            Ok(None) => return ExitCode::SUCCESS,
-            Ok(Some(session)) => cli::Start {
-                attach: cli::Attach::Session(session),
-                ..cli::Start::default()
-            },
-            Err(error) => {
-                eprintln!("caret: {error}");
-                return ExitCode::FAILURE;
-            }
-        },
+        Ok(cli::Parsed::Attach(target)) => {
+            return match attach(&target) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("caret: {error}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Err(error) => {
             eprintln!("caret: {error}\n{}", cli::USAGE);
             return ExitCode::from(2);
@@ -107,18 +106,12 @@ fn main() -> ExitCode {
 }
 
 /// Shows the session `target` names: in the window this runs in, if it runs in one of
-/// Caret's terminals; otherwise the session a new window should show.
-fn attach(target: &str) -> Result<Option<caret_protocol::SessionId>, String> {
+/// Caret's terminals; otherwise drawn in this terminal.
+fn attach(target: &str) -> Result<(), String> {
     let sessions = cli::sessions()?;
     let session = cli::find(&sessions, target)?;
-    if let Some(terminal) = cli::own_terminal() {
-        cli::show_in_window(terminal, session)?;
-        return Ok(None);
+    match cli::own_terminal() {
+        Some(terminal) => cli::show_in_window(terminal, session),
+        None => text::run(session),
     }
-    if std::env::var_os("WAYLAND_DISPLAY").is_none() {
-        return Err("drawing a session in this terminal is not there yet: \
-                    run caret attach in a Caret window or a Wayland session"
-            .to_owned());
-    }
-    Ok(Some(session))
 }
