@@ -18,6 +18,8 @@ const TIGHT_PADDING: f32 = 8.0;
 /// Its buttons' and field's height, and the room between the buttons.
 const BUTTON: f32 = 34.0;
 const BUTTON_SPACING: f32 = 12.0;
+/// The room between buttons one above another, where their labels do not fit side by side.
+const STACK_SPACING: f32 = 6.0;
 /// The ring around the button the keys press: its width, and how far it stands out.
 const FOCUS: f32 = 2.0;
 /// The size of a colour to pick, and the room the ring around the picked one leaves.
@@ -45,6 +47,8 @@ pub struct Dialog {
     /// The body cut into lines that fit, and the height of one, in logical pixels.
     pub lines: Vec<String>,
     pub line: f32,
+    /// How wide each button's label is, in logical pixels.
+    pub label_widths: Vec<f32>,
 }
 
 /// How the button that does what was asked looks.
@@ -82,6 +86,7 @@ impl Dialog {
             picked: None,
             lines: Vec::new(),
             line: 0.0,
+            label_widths: Vec::new(),
         }
     }
 
@@ -120,8 +125,16 @@ impl Dialog {
         } else {
             PADDING / 2.0 + SWATCH
         };
+        let row = card_width - 2.0 * PADDING;
+        let widths = self.button_widths(row);
+        let count = self.responses.len() as f32;
+        let buttons = if widths.is_some() {
+            BUTTON
+        } else {
+            count * BUTTON + (count - 1.0) * STACK_SPACING
+        };
         let roomy =
-            PADDING + heading + SPACING + body + field + swatches + PADDING + BUTTON + PADDING;
+            PADDING + heading + SPACING + body + field + swatches + PADDING + buttons + PADDING;
         let tight = roomy > height;
         // Its buttons stay in reach in the lowest window, where it says less.
         let (padding, spacing, body, field, swatches) = if tight {
@@ -136,15 +149,12 @@ impl Dialog {
             (PADDING, SPACING, body, field, swatches)
         };
         let card_height =
-            2.0 * padding + heading + spacing + body + field + swatches + padding + BUTTON;
+            2.0 * padding + heading + spacing + body + field + swatches + padding + buttons;
         let (x, y) = (
             (width - card_width) / 2.0,
             ((height - card_height) / 2.0).max(0.0),
         );
-        let count = self.responses.len() as f32;
-        let button_width = (card_width - 2.0 * PADDING - (count - 1.0) * BUTTON_SPACING) / count;
-        let button_y = y + card_height - padding - BUTTON;
-        let row = card_width - 2.0 * PADDING;
+        let button_y = y + card_height - padding - buttons;
         let step = (row - SWATCH) / (self.swatches.len().max(2) - 1) as f32;
         let field_y = if tight {
             y + padding + heading
@@ -165,17 +175,53 @@ impl Dialog {
             swatches: (0..self.swatches.len())
                 .map(|index| [x + PADDING + index as f32 * step, swatch_y, SWATCH, SWATCH])
                 .collect(),
-            buttons: (0..self.responses.len())
-                .map(|index| {
-                    [
-                        x + PADDING + index as f32 * (button_width + BUTTON_SPACING),
-                        button_y,
-                        button_width,
-                        BUTTON,
-                    ]
-                })
-                .collect(),
+            buttons: match widths {
+                Some(widths) => {
+                    let mut left = x + PADDING;
+                    widths
+                        .into_iter()
+                        .map(|width| {
+                            let button = [left, button_y, width, BUTTON];
+                            left += width + BUTTON_SPACING;
+                            button
+                        })
+                        .collect()
+                }
+                // What it was asked to do on top, and declining at the bottom.
+                None => (0..self.responses.len())
+                    .map(|index| {
+                        let above = count - 1.0 - index as f32;
+                        let top = button_y + above * (BUTTON + STACK_SPACING);
+                        [x + PADDING, top, row, BUTTON]
+                    })
+                    .collect(),
+            },
         }
+    }
+
+    /// The buttons' widths side by side in a `row` that wide: the same where each label fits
+    /// that, or else as much as each label needs and a share of the rest. None if the labels
+    /// do not fit side by side.
+    fn button_widths(&self, row: f32) -> Option<Vec<f32>> {
+        let count = self.responses.len();
+        let room = row - (count as f32 - 1.0) * BUTTON_SPACING;
+        let equal = room / count as f32;
+        let needed: Vec<f32> = (0..count)
+            .map(|index| {
+                let label = self.label_widths.get(index).copied().unwrap_or(0.0);
+                (label + 2.0 * FLAT_RADIUS).ceil()
+            })
+            .collect();
+        if needed.iter().all(|&width| width <= equal) {
+            return Some(vec![equal; count]);
+        }
+        let spare = room - needed.iter().sum::<f32>();
+        (spare >= 0.0).then(|| {
+            needed
+                .iter()
+                .map(|width| width + spare / count as f32)
+                .collect()
+        })
     }
 
     /// The part at `(x, y)` from the corner of a window `size` big: a button, a colour,
@@ -440,6 +486,38 @@ pub(super) fn centred_line(x: f32, top: f32, (index, glyph): (u32, GpuGlyph), co
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn dialog(label_widths: Vec<f32>) -> Dialog {
+        let mut dialog = Dialog::new("Close?", "", ["Cancel", "Close"]);
+        dialog.responses.insert(1, "Detach".to_owned());
+        dialog.label_widths = label_widths;
+        dialog
+    }
+
+    #[test]
+    fn buttons_are_as_wide_as_each_other_where_their_labels_fit() {
+        let layout = dialog(vec![40.0; 3]).layout((600.0, 400.0));
+        assert!((layout.buttons[0][2] - layout.buttons[2][2]).abs() < 0.1);
+        assert!((layout.buttons[0][1] - layout.buttons[2][1]).abs() < 0.1);
+    }
+
+    #[test]
+    fn a_long_label_takes_room_from_the_short_ones() {
+        let layout = dialog(vec![30.0, 130.0, 30.0]).layout((600.0, 400.0));
+        assert!(layout.buttons[1][2] >= 130.0 + 2.0 * FLAT_RADIUS);
+        assert!(layout.buttons[0][2] < layout.buttons[1][2]);
+        assert!((layout.buttons[0][1] - layout.buttons[1][1]).abs() < 0.1);
+    }
+
+    #[test]
+    fn labels_too_long_for_a_row_stack_with_declining_at_the_bottom() {
+        let layout = dialog(vec![100.0; 3]).layout((600.0, 400.0));
+        let [cancel, detach, close] = [0, 1, 2].map(|index| layout.buttons[index]);
+        assert!(close[1] < detach[1] && detach[1] < cancel[1]);
+        assert!(cancel[1] + BUTTON <= layout.card[1] + layout.card[3]);
+        assert!(close[1] >= layout.card[1]);
+        assert!(close[2] >= 100.0 + 2.0 * FLAT_RADIUS);
+    }
 
     #[test]
     fn text_wraps_between_words_to_fit() {

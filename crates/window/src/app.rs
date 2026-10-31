@@ -1238,6 +1238,11 @@ impl App {
             dialog.lines =
                 chrome::wrap(&dialog.body, width, |text| fonts.label_advance(text, false));
             dialog.line = fonts.label_height() as f32 / scale;
+            dialog.label_widths = dialog
+                .responses
+                .iter()
+                .map(|label| fonts.label_advance(label, false) / scale)
+                .collect();
         }
         if let Some(list) = &mut self.chrome.shortcut_list {
             list.line = self.fonts.label_height() as f32 / scale;
