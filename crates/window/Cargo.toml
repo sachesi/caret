@@ -22,6 +22,7 @@ gettext-rs = { version = "0.8", features = ["gettext-system"] }
 harfrust = "0.13"
 rustix = { version = "1", features = ["event", "fs", "termios"] }
 shlex = "1"
+skrifa = { version = "0.44", default-features = false, features = ["std"] }
 smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop", "system", "xkbcommon"] }
 swash = "0.2"
 thiserror.workspace = true

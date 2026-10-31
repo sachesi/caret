@@ -6,6 +6,7 @@ mod atlas;
 mod box_drawing;
 mod chrome;
 mod cli;
+mod color_glyph;
 mod config;
 mod connection;
 mod desktop;

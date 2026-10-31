@@ -482,7 +482,9 @@ impl Fonts {
         for glyph in glyphs {
             let whole = glyph.x.floor();
             render.offset(Vector::new(glyph.x - whole, 0.0));
-            let Some(image) = render.render(&mut scaler, glyph.id) else {
+            let image = crate::color_glyph::paint(face.bytes(), face.index, glyph.id, size)
+                .or_else(|| render.render(&mut scaler, glyph.id));
+            let Some(image) = image else {
                 continue;
             };
             if image.placement.width == 0 || image.placement.height == 0 {
@@ -935,6 +937,29 @@ mod tests {
             pen: 0.0,
             advance: 8.0,
         }
+    }
+
+    #[test]
+    fn an_emoji_drawn_from_colr_comes_in_colour_where_such_a_font_is_installed() {
+        let Ok(mut fonts) = Fonts::new(installed(), &choice(None, true), 1.0) else {
+            return;
+        };
+        let smile = Glyph {
+            text: GlyphText::Char('\u{1F600}'),
+            style: 0,
+            wide: true,
+        };
+        let Some(raster) = fonts.raster(&smile).filter(|raster| raster.color) else {
+            return;
+        };
+        let cell = fonts.cell();
+        assert!(raster.width as i32 <= cell.width * 2 && raster.height as i32 <= cell.height);
+        assert!(
+            raster
+                .pixels
+                .chunks_exact(4)
+                .any(|p| p[0] > 200 && p[2] < 100 && p[3] > 200)
+        );
     }
 
     #[test]

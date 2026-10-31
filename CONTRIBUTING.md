@@ -35,6 +35,7 @@ Before a change goes in:
       atlas.rs, fonts.rs      fonts found, shaped and rasterised, and where glyphs sit in
                               the atlas
       box_drawing.rs          box drawing and block characters drawn to fill their cells
+      color_glyph.rs          colour glyphs of the COLRv1 table, painted on the CPU
       panes.rs                where a tab's panes go, and the gaps between them
       config.rs               config.toml, profiles and keys, and bringing over settings
                               from GSettings once
@@ -93,7 +94,8 @@ are instanced quads over them: rounded rectangles, shadows, outlines and glyphs.
 Fonts are found by scanning the font folders (fontdb), runs are shaped with harfrust,
 and glyphs are rasterised by swash at the screen's scale into an atlas texture that grows
 when it fills. Box drawing and block characters are drawn by `box_drawing.rs` to the
-cell's exact size, so lines join across cells.
+cell's exact size, so lines join across cells. Colour emoji in the COLRv1 table, which
+swash does not draw, are painted by `color_glyph.rs` from skrifa's description of them.
 
 ## Running
 

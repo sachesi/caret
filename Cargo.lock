@@ -346,6 +346,7 @@ dependencies = [
  "harfrust",
  "rustix",
  "shlex 1.3.0",
+ "skrifa",
  "smithay-client-toolkit",
  "swash",
  "thiserror",
