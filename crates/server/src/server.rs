@@ -60,6 +60,8 @@ struct Session {
     color: Option<u8>,
     /// What the last window to leave it left: the tab it showed and its profile.
     remembered: Option<(Option<TerminalId>, Option<String>)>,
+    /// The client that asked for it, which is about to attach to it or give it a tab.
+    asked_by: Option<ClientId>,
 }
 
 struct TabState {
@@ -613,12 +615,7 @@ impl Server {
             }
             Question::SessionList => self.session_list(),
             Question::Programs { sessions } => self.programs(&sessions),
-            Question::NewSession => {
-                let session = SessionId(self.next_session);
-                self.next_session += 1;
-                self.sessions.insert(session, Session::default());
-                Answer::Session { session }
-            }
+            Question::NewSession => self.new_session(client),
             // What the client sees is the terminal's thread's to answer.
             Question::SelectionText { terminal }
             | Question::LinkAt { terminal, .. }
@@ -693,6 +690,19 @@ impl Server {
             }
         };
         self.send(client, &Message::Answer { id, answer });
+    }
+
+    fn new_session(&mut self, client: ClientId) -> Answer {
+        let session = SessionId(self.next_session);
+        self.next_session += 1;
+        self.sessions.insert(
+            session,
+            Session {
+                asked_by: Some(client),
+                ..Session::default()
+            },
+        );
+        Answer::Session { session }
     }
 
     fn foreground(&self, terminal: TerminalId) -> Answer {
@@ -896,6 +906,12 @@ impl Server {
             self.detach(client, session);
         }
         self.clients.remove(&client);
+        // Asked for and never used, it would keep the server from ever ending.
+        self.sessions.retain(|_, session| {
+            session.asked_by != Some(client)
+                || !session.tabs.is_empty()
+                || !session.clients.is_empty()
+        });
     }
 
     /// A session with no tabs that no client shows is of no use to anyone.
@@ -2494,6 +2510,25 @@ mod tests {
                 assert!(server.sessions.contains_key(session), "seed {seed}");
             }
         }
+    }
+
+    #[test]
+    fn a_session_its_client_never_used_goes_with_the_client() {
+        let mut harness = harness();
+        harness.new_session();
+        assert_eq!(harness.server.sessions.len(), 1);
+        harness.server.handle(Input::Disconnected(CLIENT));
+        assert!(harness.server.sessions.is_empty());
+    }
+
+    #[test]
+    fn a_session_with_a_tab_stays_when_the_client_that_asked_for_it_goes() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        harness.open(session, &["cat"]);
+        harness.server.handle(Input::Disconnected(CLIENT));
+        assert_eq!(harness.server.sessions.len(), 1);
     }
 
     #[test]
