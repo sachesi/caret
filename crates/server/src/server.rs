@@ -2532,6 +2532,33 @@ mod tests {
     }
 
     #[test]
+    fn a_program_that_closes_its_terminal_and_opens_it_again_is_still_shown() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        let script = "exec 0<&- 1>&- 2>&-; sleep 0.4; echo back > /dev/tty; sleep 20";
+        let terminal = harness.open(session, &["sh", "-c", script]);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            harness.request(Request::Frame { terminal });
+            let Message::Frame { frame, .. } =
+                harness.next(|message| matches!(message, Message::Frame { .. }))
+            else {
+                panic!("not a frame");
+            };
+            let shown = frame.rows.iter().any(|row| {
+                row.cells.iter().any(
+                    |cell| matches!(&cell.glyph, Some(glyph) if glyph.text == GlyphText::Char('b')),
+                )
+            });
+            if shown {
+                break;
+            }
+            assert!(Instant::now() < deadline, "what it wrote never showed");
+        }
+    }
+
+    #[test]
     fn random_clients_leave_the_server_whole() {
         for seed in 1..=8u64 {
             let mut chaos = Chaos {

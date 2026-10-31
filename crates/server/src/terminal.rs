@@ -59,6 +59,10 @@ const MOST_LINES: u16 = 1024;
 /// asks and never reads would otherwise fill the server's memory with the answers.
 const MOST_BEHIND: usize = 1 << 20;
 
+/// How often a program that closed its side of the terminal is looked at again, as it can
+/// open it again from its name while it lives, and nothing tells of that.
+const REOPENED: Duration = Duration::from_millis(200);
+
 /// Bytes clients may have waiting for a program that does not read them.
 const MOST_INPUT: usize = 256 << 20;
 
@@ -623,9 +627,10 @@ impl Worker {
             let searching = self.viewers.values().any(|viewer| viewer.search.is_some());
             let timeout = if searching {
                 Some(Duration::ZERO)
+            } else if let Some(since) = self.synchronized {
+                Some(SYNCHRONIZED.saturating_sub(since.elapsed()))
             } else {
-                self.synchronized
-                    .map(|since| SYNCHRONIZED.saturating_sub(since.elapsed()))
+                (self.pty.is_some() && !self.reading).then_some(REOPENED)
             };
             let mut readers = vec![self.woken.as_fd()];
             let mut writers = Vec::new();
@@ -650,7 +655,7 @@ impl Worker {
                 return;
             }
             let exited = readable.get(1).copied().unwrap_or(false);
-            if readable.get(2).copied().unwrap_or(false) || exited {
+            if readable.get(2).copied().unwrap_or(false) || exited || !self.reading {
                 self.read();
             }
             if writable.first().copied().unwrap_or(false) {
@@ -877,12 +882,16 @@ impl Worker {
                     break;
                 }
                 Ok(count) => {
+                    self.reading = true;
                     self.term.advance(&self.buffer[..count]);
                     read += count;
                 }
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    self.reading = true;
+                    break;
+                }
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-                // EIO once no process has the program's side open.
+                // EIO while no process has the program's side open.
                 Err(_) => {
                     self.reading = false;
                     break;
