@@ -85,6 +85,11 @@ install:
     install -Dm644 data/{{app_id}}.gschema.xml {{datadir}}/glib-2.0/schemas/{{app_id}}.gschema.xml
     install -Dm644 data/icons/hicolor/scalable/apps/{{app_id}}.svg {{datadir}}/icons/hicolor/scalable/apps/{{app_id}}.svg
     install -Dm644 data/icons/hicolor/symbolic/apps/{{app_id}}-symbolic.svg {{datadir}}/icons/hicolor/symbolic/apps/{{app_id}}-symbolic.svg
+    # Shell completions, which ask caret itself what to offer as they go.
+    install -d {{datadir}}/bash-completion/completions {{datadir}}/zsh/site-functions {{datadir}}/fish/vendor_completions.d
+    {{release}}/caret completions bash > {{datadir}}/bash-completion/completions/caret
+    {{release}}/caret completions zsh > {{datadir}}/zsh/site-functions/_caret
+    {{release}}/caret completions fish > {{datadir}}/fish/vendor_completions.d/caret.fish
     for lang in $(cat po/LINGUAS); do install -d {{datadir}}/locale/$lang/LC_MESSAGES; msgfmt -o {{datadir}}/locale/$lang/LC_MESSAGES/caret.mo po/$lang.po; done
     # A staged install (DESTDIR) leaves the caches to the package manager's triggers.
     [ -n "{{destdir}}" ] || glib-compile-schemas {{datadir}}/glib-2.0/schemas
@@ -95,6 +100,7 @@ install:
 # Remove what install put under the prefix.
 uninstall:
     rm -f {{bindir}}/caret {{bindir}}/caret-server
+    rm -f {{datadir}}/bash-completion/completions/caret {{datadir}}/zsh/site-functions/_caret {{datadir}}/fish/vendor_completions.d/caret.fish
     rm -f {{unitdir}}/caret-server.socket {{unitdir}}/caret-server.service
     rm -f {{datadir}}/applications/{{app_id}}.desktop {{datadir}}/metainfo/{{app_id}}.metainfo.xml
     rm -f {{datadir}}/glib-2.0/schemas/{{app_id}}.gschema.xml

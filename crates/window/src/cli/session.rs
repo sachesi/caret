@@ -11,7 +11,9 @@ use caret_protocol::{
     Answer, Bytes, Command, Message, Question, Request, SessionEntry, SessionId, Size, TerminalId,
 };
 use clap::{Args, Subcommand};
+use clap_complete::ArgValueCandidates;
 
+use super::completions::sessions as session_names;
 use super::{json, lossy};
 use crate::config::Config;
 
@@ -40,7 +42,7 @@ enum SessionVerb {
     /// Shows a session: in the window this runs in, or else in this terminal. Left out,
     /// the only detached one.
     Attach {
-        #[arg(value_name = "SESSION")]
+        #[arg(value_name = "SESSION", add = ArgValueCandidates::new(session_names))]
         session: Option<String>,
     },
     /// Starts a session with no window and prints its number.
@@ -63,7 +65,7 @@ enum SessionVerb {
     /// Ends a session and all that runs in it, unless a program runs and --force is not
     /// given. Left out, the session this runs in.
     Close {
-        #[arg(value_name = "SESSION")]
+        #[arg(value_name = "SESSION", add = ArgValueCandidates::new(session_names))]
         session: Option<String>,
         /// Close it even with programs running.
         #[arg(long)]
@@ -76,13 +78,14 @@ enum SessionVerb {
             value_names = ["SESSION", "NAME"],
             num_args = 1..=2,
             required = true,
+            add = ArgValueCandidates::new(session_names)
         )]
         words: Vec<String>,
     },
     /// Has every window showing a session let it go; it keeps running. Left out, the
     /// session this runs in.
     Detach {
-        #[arg(value_name = "SESSION")]
+        #[arg(value_name = "SESSION", add = ArgValueCandidates::new(session_names))]
         session: Option<String>,
     },
 }

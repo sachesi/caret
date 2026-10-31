@@ -36,8 +36,8 @@ prefix, `/usr/local/share/locale` by default; give the same prefix to `build` an
 
 `install` copies what `just build` produced; it never builds. The default prefix is
 `/usr/local`. It puts `caret` and `caret-server` in `bin`, the server's systemd user
-units in `lib/systemd/user`, and the desktop entry, metainfo, icons, GSettings schema and
-translations under `share`, then compiles the schema and refreshes the desktop and icon
+units in `lib/systemd/user`, and the desktop entry, metainfo, icons, GSettings schema,
+translations and bash, zsh and fish completions under `share`, then compiles the schema and refreshes the desktop and icon
 caches. With `DESTDIR` set, those caches are left to the package manager. The schema is
 there for upgrades: the first start of this version copies settings made in GSettings by
 earlier versions into `config.toml`.

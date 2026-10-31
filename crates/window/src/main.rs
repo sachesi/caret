@@ -30,7 +30,8 @@ mod timings;
 
 use std::process::ExitCode;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::CompleteEnv;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::LevelFilter;
 
@@ -42,6 +43,10 @@ const APP_ID: &str = if cfg!(debug_assertions) {
 };
 
 fn main() -> ExitCode {
+    CompleteEnv::with_factory(cli::Cli::command)
+        .completer("caret")
+        .var(cli::COMPLETE)
+        .complete();
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
@@ -58,6 +63,7 @@ fn main() -> ExitCode {
     let mut start = match cli::Cli::parse().parsed() {
         Err(start) => start,
         Ok(cli::Noun::Session(command)) => return cli::session(command),
+        Ok(cli::Noun::Completions(command)) => return cli::completions(&command),
     };
     if start.attach == cli::Attach::Detached {
         let detached = match cli::detached() {

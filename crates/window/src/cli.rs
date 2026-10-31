@@ -2,6 +2,7 @@
 //! window shows instead of a new one; or what else `caret` does from a shell. `-e` and `-x`
 //! run the rest of it as a command, as other terminals and `xdg-terminal-exec` expect.
 
+mod completions;
 mod json;
 mod session;
 
@@ -10,7 +11,9 @@ use std::path::PathBuf;
 
 use caret_protocol::{Answer, Message, Question, Request, SessionId};
 use clap::{Args, Parser, Subcommand};
+use clap_complete::ArgValueCandidates;
 
+pub use completions::{VAR as COMPLETE, run as completions};
 pub use session::run as session;
 
 #[derive(Debug, Parser)]
@@ -31,6 +34,8 @@ pub struct Cli {
 pub enum Noun {
     /// Lists the sessions, or acts on one.
     Session(session::SessionCommand),
+    /// Prints or installs a shell's completions.
+    Completions(completions::CompletionsCommand),
 }
 
 #[derive(Debug, Args)]
@@ -44,13 +49,14 @@ struct StartArguments {
     )]
     directory: Option<PathBuf>,
     /// Open with the settings of profile NAME.
-    #[arg(long, value_name = "NAME")]
+    #[arg(long, value_name = "NAME", add = ArgValueCandidates::new(completions::profiles))]
     profile: Option<String>,
     /// Lay out the first tab as split preset NAME.
     #[arg(
         long,
         value_name = "NAME",
         conflicts_with_all = ["attach", "session"],
+        add = ArgValueCandidates::new(completions::presets)
     )]
     preset: Option<String>,
     /// Show the windows that were detached.
@@ -239,6 +245,7 @@ mod tests {
             &["session", "rename"],
             &["session", "rename", "a", "b", "c"],
             &["session", "attach", "a", "b"],
+            &["completions", "tcsh"],
         ] {
             let error = parsed(line).expect_err("a usage error");
             assert_eq!(error.exit_code(), 2, "{line:?}");

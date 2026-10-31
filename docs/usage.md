@@ -29,6 +29,17 @@ read from `/proc`, which is right unless the shell runs in a container or on ano
 machine. A new tab from a shell inside a toolbox or distrobox container, which says so
 when it enters one, enters the same container.
 
+## Completions
+
+    caret completions --install
+
+puts the completion script for your shell (bash, zsh, fish, elvish or nushell, taken from
+`$SHELL` unless named) under your home, and says what else the shell needs to find it, as
+zsh and others do. `caret completions SHELL` prints it instead, and `just install` puts
+the bash, zsh and fish ones in place for everyone. Completions ask Caret as you type, so
+sessions, profiles and presets complete by their names; nushell's cover only the commands
+and options.
+
 ## Tabs
 
 The tab bar shows once there are two tabs. A tab takes its title from the program, which
