@@ -53,6 +53,8 @@ const TAB_CLOSE_END: f32 = 19.0;
 const TAB_DOT: f32 = 8.0;
 const TAB_DOT_START: f32 = 14.0;
 const TAB_COUNT_GAP: f32 = 8.0;
+/// The mark of a tab whose command has run a while.
+const BUSY: f32 = 10.0;
 /// Between the find bar's edges, its field and its buttons; the field's padding.
 const SEARCH_INSET: f32 = 6.0;
 const FIELD_PADDING: f32 = 9.0;
@@ -188,6 +190,8 @@ pub struct TabLabel {
     pub title: String,
     /// Something happened in the tab while it was out of sight.
     pub attention: bool,
+    /// A command has run in it for a while.
+    pub busy: bool,
     /// It stands for a session, while the window shows several.
     pub session: Option<SessionLabel>,
 }
@@ -852,6 +856,16 @@ impl Painter<'_> {
                     chrome.dim(color),
                 ));
             }
+            if label.is_some_and(|label| label.busy) {
+                // Past a session's dot, where there is one.
+                let start = if session.is_some_and(|session| session.color.is_some()) {
+                    TAB_DOT_START + TAB_DOT + TAB_COUNT_GAP
+                } else {
+                    TAB_DOT_START
+                };
+                let centre = (left + inset + start * scale, middle);
+                quads.push(ring(centre, BUSY * scale, chrome.dim(colors.foreground)));
+            }
             if label.is_some_and(|label| label.attention) {
                 let (width, height) = ((share / 3.0).min(64.0 * scale), 3.0 * scale);
                 quads.push(Quad {
@@ -1214,6 +1228,18 @@ fn rounded(x: f32, y: f32, width: f32, height: f32, radius: f32, color: u32) -> 
     }
 }
 
+/// A ring as wide as `diameter`, its line a fifth of that.
+fn ring((x, y): (f32, f32), diameter: f32, color: u32) -> Quad {
+    let line = (diameter / 5.0).round().max(1.0);
+    let quad = circle(x, y, diameter, (color & !0xff) | ((color & 0xff) * 3 / 5));
+    let inner = quad.width - 2.0 * line;
+    Quad {
+        cut: [quad.x + line, quad.y + line, inner, inner],
+        cut_radius: inner / 2.0,
+        ..quad
+    }
+}
+
 fn circle(x: f32, y: f32, diameter: f32, color: u32) -> Quad {
     let (left, top) = ((x - diameter / 2.0).round(), (y - diameter / 2.0).round());
     rounded(left, top, diameter, diameter, diameter / 2.0, color)
@@ -1321,6 +1347,7 @@ mod tests {
         TabLabel {
             title: title.to_owned(),
             attention: false,
+            busy: false,
             session: None,
         }
     }
@@ -1409,6 +1436,22 @@ mod tests {
         );
         assert_eq!(chrome.part_at((20.0, 23.0), size), Some(Part::NewTab));
         assert_eq!(chrome.part_at((100.0, middle + 30.0), size), None);
+    }
+
+    #[test]
+    fn a_tab_whose_command_runs_a_while_has_a_ring() {
+        let mut chrome = Chrome {
+            floating: false,
+            tabs: vec![label("one"), label("two")],
+            ..floating()
+        };
+        let rings = |chrome: &Chrome| {
+            let (quads, _) = chrome.quads((800, 500), 1.0, 0, 0, |_| None);
+            quads.iter().filter(|quad| quad.cut[2] > 0.0).count()
+        };
+        assert_eq!(rings(&chrome), 0);
+        chrome.tabs[1].busy = true;
+        assert_eq!(rings(&chrome), 1);
     }
 
     #[test]

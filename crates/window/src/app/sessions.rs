@@ -67,6 +67,7 @@ impl App {
                 TabLabel {
                     title: format!("{} · {shown}", self.session_label(session)),
                     attention: tabs.clone().any(|tab| tab.attention),
+                    busy: tabs.clone().any(super::tabs::Tab::busy),
                     session: Some(SessionLabel {
                         tabs: tabs.count(),
                         color: self.session_color(session),

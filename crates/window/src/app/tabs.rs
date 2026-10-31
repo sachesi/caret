@@ -3,11 +3,13 @@
 
 use std::collections::HashMap;
 use std::os::unix::ffi::OsStrExt;
+use std::time::Duration;
 
 use caret_protocol::layout::Node;
 use caret_protocol::{Bytes, Command, Frame, Question, Request, SessionId, Size, TerminalId};
 
 use gettextrs::gettext;
+use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 
 use super::{App, Asked};
 use crate::chrome::{Preview, TabLabel};
@@ -17,6 +19,9 @@ use crate::panes::{self, Direction, Placed, Rect};
 
 /// The first protocol version with split panes.
 const PANES: u16 = 2;
+
+/// How long a command runs before its tab is marked, so that quick ones do not flicker.
+const MARKED_AFTER: Duration = Duration::from_secs(1);
 
 /// A tab's preview in blocks across and down, each about a cell's shape.
 const PREVIEW_COLUMNS: i32 = 64;
@@ -32,6 +37,10 @@ pub struct Pane {
     frame_asked: bool,
     /// Its size as the server was last told.
     size: Option<Size>,
+    /// The number of the command running in it, as the window counts them.
+    command: Option<u32>,
+    /// That command has run a while.
+    busy: bool,
 }
 
 impl Pane {
@@ -41,6 +50,8 @@ impl Pane {
             grid: Grid::default(),
             frame_asked: false,
             size: None,
+            command: None,
+            busy: false,
         }
     }
 }
@@ -72,6 +83,10 @@ impl Tab {
             .filter(|name| !name.is_empty())
             .or(Some(title).filter(|title| !title.is_empty()))
             .unwrap_or("Caret")
+    }
+
+    pub(super) fn busy(&self) -> bool {
+        self.panes.values().any(|pane| pane.busy)
     }
 
     fn has(&self, terminal: TerminalId) -> bool {
@@ -451,6 +466,51 @@ impl App {
             self.tabs[index].name = name;
             self.retitle();
         }
+    }
+
+    /// Marks `terminal`'s tab once the command started in it has run a while, unless
+    /// it ended first.
+    pub(super) fn command_started(&mut self, terminal: TerminalId) {
+        self.commands += 1;
+        let command = self.commands;
+        let Some(pane) = self.pane_mut(terminal) else {
+            return;
+        };
+        pane.command = Some(command);
+        let timer =
+            self.events
+                .insert_source(Timer::from_duration(MARKED_AFTER), move |_, (), app| {
+                    if let Some(pane) = app
+                        .pane_mut(terminal)
+                        .filter(|pane| pane.command == Some(command))
+                    {
+                        pane.busy = true;
+                        app.retitle();
+                        app.dirty = true;
+                        app.draw();
+                    }
+                    TimeoutAction::Drop
+                });
+        if let Err(error) = timer {
+            tracing::warn!("timing a command: {error}");
+        }
+    }
+
+    pub(super) fn command_ended(&mut self, terminal: TerminalId) {
+        let Some(pane) = self.pane_mut(terminal) else {
+            return;
+        };
+        pane.command = None;
+        if std::mem::take(&mut pane.busy) {
+            self.retitle();
+            self.dirty = true;
+            self.draw();
+        }
+    }
+
+    fn pane_mut(&mut self, terminal: TerminalId) -> Option<&mut Pane> {
+        let index = self.tab_of(terminal)?;
+        self.tabs[index].panes.get_mut(&terminal)
     }
 
     pub(super) fn tab_titled(&mut self, terminal: TerminalId, title: String) {
@@ -854,6 +914,7 @@ impl App {
                 .map(|tab| TabLabel {
                     title: tab.label().to_owned(),
                     attention: tab.attention,
+                    busy: tab.busy(),
                     session: None,
                 })
                 .collect();

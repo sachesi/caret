@@ -212,6 +212,8 @@ struct App {
     /// send theirs.
     toasts: u32,
     toaster: calloop::channel::Sender<String>,
+    /// Counts the commands started, so that a command's timer marks only its own.
+    commands: u32,
     /// The window is about to close once its tabs say whether programs run in them.
     closing: Option<confirm::Closing>,
     fonts: Fonts,
@@ -404,6 +406,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         choices: Vec::new(),
         toasts: 0,
         toaster,
+        commands: 0,
         closing: None,
         fonts,
         zoom: 0,
@@ -664,11 +667,15 @@ impl App {
                 title,
                 body,
             } => self.program_notification(terminal, title, body),
+            Message::CommandStarted { terminal } => self.command_started(terminal),
             Message::CommandFinished {
                 terminal,
                 seconds,
                 status,
-            } => self.command_finished(terminal, seconds, status),
+            } => {
+                self.command_ended(terminal);
+                self.command_finished(terminal, seconds, status);
+            }
             Message::TabNamed { terminal, name } => self.tab_named(terminal, name),
             Message::TabMoved {
                 session,
