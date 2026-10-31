@@ -284,6 +284,9 @@ impl App {
         self.arriving = None;
         self.show_session_tab(session);
         if let Some(replaced) = replaces.filter(|replaced| self.sessions.contains(replaced)) {
+            if let Some(place) = self.sessions.iter().position(|&shown| shown == replaced) {
+                self.move_session(session, place);
+            }
             self.detach_session(replaced);
         }
     }

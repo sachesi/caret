@@ -429,7 +429,19 @@ impl App {
         };
         self.sessions.remove(from);
         self.sessions.insert(to, session);
-        // Each session's tabs stay together, in the sessions' order.
+        self.keep_tabs_with_sessions();
+    }
+
+    /// Puts `session` at `place` among the window's sessions.
+    pub(super) fn move_session(&mut self, session: SessionId, place: usize) {
+        self.sessions.retain(|&shown| shown != session);
+        self.sessions
+            .insert(place.min(self.sessions.len()), session);
+        self.keep_tabs_with_sessions();
+    }
+
+    /// Each session's tabs stay together, in the sessions' order.
+    fn keep_tabs_with_sessions(&mut self) {
         let shown = self.tabs.get(self.selected).map(|tab| tab.key);
         let order = self.sessions.clone();
         self.tabs

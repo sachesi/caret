@@ -414,17 +414,11 @@ impl App {
     /// `entry`'s row in the Sessions list: its name and title, then its tabs, and its panes
     /// where those differ.
     fn session_row(&self, entry: &SessionEntry) -> (Item, Choice) {
-        let title = entry.tabs.first().map_or("", |tab| {
-            tab.name
-                .as_deref()
-                .filter(|name| !name.is_empty())
-                .unwrap_or(&tab.title)
-        });
         let label = gettext_f(
             "{session} · {title}",
             &[
                 ("session", &self.session_label(entry.session)),
-                ("title", title),
+                ("title", &self.listed_title(entry)),
             ],
         );
         let tabs = entry.tabs.len() as u32;
@@ -449,6 +443,21 @@ impl App {
         row.0.dot = self.session_color(entry.session);
         row.0.shortcut = Some(count);
         row
+    }
+
+    /// The title `entry` is listed with: of the tab the window shows of it, as its tab in the
+    /// strip has, or of its first.
+    fn listed_title(&self, entry: &SessionEntry) -> String {
+        if let Some(index) = self.session_tab(entry.session) {
+            return self.tabs[index].label().to_owned();
+        }
+        entry.tabs.first().map_or_else(String::new, |tab| {
+            tab.name
+                .as_deref()
+                .filter(|name| !name.is_empty())
+                .unwrap_or(&tab.title)
+                .to_owned()
+        })
     }
 
     /// Goes to a session listed in the Sessions list, as the setting has it.
@@ -536,17 +545,11 @@ impl App {
             .iter()
             .filter(|entry| !self.sessions.contains(&entry.session))
             .map(|entry| {
-                let title = entry.tabs.first().map_or("", |tab| {
-                    tab.name
-                        .as_deref()
-                        .filter(|name| !name.is_empty())
-                        .unwrap_or(&tab.title)
-                });
                 let label = gettext_f(
                     "Show {session} · {title}",
                     &[
                         ("session", &self.session_label(entry.session)),
-                        ("title", title),
+                        ("title", &self.listed_title(entry)),
                     ],
                 );
                 let mut item = self.item(&label, Choice::ShowSession(entry.session), true);
