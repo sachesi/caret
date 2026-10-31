@@ -8,7 +8,7 @@ use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
 use super::App;
 use crate::chrome::{self, Quad};
-use crate::panes::{self, Direction, Divider, Placed, Rect};
+use crate::panes::{self, Direction, Placed, Rect};
 
 const HINTS: &str =
     "Arrows focus · Shift swap · Ctrl resize · V S split · X close · Z zoom · T tab · D detach";
@@ -116,33 +116,18 @@ impl App {
         }
     }
 
-    /// Moves the edge of the focused pane towards `direction` by a cell: the edge on that
-    /// side, or the other one where the pane has none there.
+    /// Moves the edge of the focused pane towards `direction` by a cell.
     fn resize_towards(&mut self, direction: Direction) {
         let Some(terminal) = self.terminal() else {
             return;
         };
-        let placed = self.placed();
-        let Some(rect) = placed.rect(terminal) else {
-            return;
-        };
-        let vertical = matches!(direction, Direction::Left | Direction::Right);
-        let forward = matches!(direction, Direction::Right | Direction::Down);
-        let Some(divider) = edge(&placed, rect, vertical, forward) else {
-            return;
-        };
         let cell = self.fonts.cell();
-        let step = f64::from(if vertical { cell.width } else { cell.height });
-        let (start, length, ..) = along(divider.gap, vertical);
-        let middle = f64::from(start) + f64::from(length) / 2.0;
-        let share = divider.share_at(
-            if forward {
-                middle + step
-            } else {
-                middle - step
-            },
-            self.gap(),
-        );
+        let cell = (f64::from(cell.width), f64::from(cell.height));
+        let Some((divider, share)) =
+            panes::resized(&self.placed(), terminal, direction, cell, self.gap())
+        else {
+            return;
+        };
         if let Some(tab) = self.tabs.get_mut(self.selected)
             && tab.root.divide(divider.before, share)
         {
@@ -302,55 +287,9 @@ fn landing_in(rect: Rect, (x, y): (f64, f64), target: TerminalId) -> Landing {
     }
 }
 
-/// A rectangle's start, length, and start and length across, along an axis.
-fn along(rect: Rect, vertical: bool) -> (i32, i32, i32, i32) {
-    if vertical {
-        (rect.x, rect.width, rect.y, rect.height)
-    } else {
-        (rect.y, rect.height, rect.x, rect.width)
-    }
-}
-
-/// The divider at `rect`'s edge after it, `forward`, or before it, falling back to the
-/// other edge.
-fn edge(placed: &Placed, rect: Rect, vertical: bool, forward: bool) -> Option<Divider> {
-    let (start, length, across, span) = along(rect, vertical);
-    let edges = placed
-        .dividers
-        .iter()
-        .filter(|divider| divider.vertical == vertical)
-        .filter_map(|divider| {
-            let (gap_start, gap_length, gap_across, gap_span) = along(divider.gap, vertical);
-            if gap_across >= across + span || gap_across + gap_span <= across {
-                return None;
-            }
-            if gap_start == start + length {
-                Some((true, *divider))
-            } else if gap_start + gap_length == start {
-                Some((false, *divider))
-            } else {
-                None
-            }
-        });
-    let (mut after, mut before) = (None, None);
-    for (is_after, divider) in edges {
-        if is_after {
-            after.get_or_insert(divider);
-        } else {
-            before.get_or_insert(divider);
-        }
-    }
-    if forward {
-        after.or(before)
-    } else {
-        before.or(after)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use caret_protocol::TerminalId;
-    use caret_protocol::layout::Node;
 
     use super::*;
 
@@ -374,36 +313,6 @@ mod tests {
         assert_eq!(
             landing_in(rect, (200.0, 150.0), target),
             Landing::Swap(target)
-        );
-    }
-
-    #[test]
-    fn a_pane_resizes_by_the_edge_towards_the_key_or_else_its_other_edge() {
-        // 1 on the left; 2 over 3 on the right.
-        let mut root = Node::Pane {
-            terminal: TerminalId(1),
-        };
-        root.split(TerminalId(1), TerminalId(2), true);
-        root.split(TerminalId(2), TerminalId(3), false);
-        let area = Rect {
-            x: 0,
-            y: 0,
-            width: 210,
-            height: 110,
-        };
-        let placed = panes::place(&root, area, 10);
-        let left = placed.rect(TerminalId(1)).unwrap();
-        let top_right = placed.rect(TerminalId(2)).unwrap();
-        let before = |divider: Option<Divider>| divider.map(|divider| divider.before);
-        assert_eq!(before(edge(&placed, left, true, true)), Some(TerminalId(2)));
-        assert_eq!(
-            before(edge(&placed, left, true, false)),
-            Some(TerminalId(2))
-        );
-        assert_eq!(before(edge(&placed, left, false, true)), None);
-        assert_eq!(
-            before(edge(&placed, top_right, false, false)),
-            Some(TerminalId(3))
         );
     }
 }

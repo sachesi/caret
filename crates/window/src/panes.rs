@@ -185,6 +185,79 @@ pub fn neighbour(placed: &Placed, from: TerminalId, direction: Direction) -> Opt
         .map(|&(pane, _)| pane)
 }
 
+/// The divider that moves `from`'s edge towards `direction` by a `cell` (wide, high), and
+/// the share it gives the side before it then: the edge on that side, or the other one
+/// where the pane has none there.
+pub fn resized(
+    placed: &Placed,
+    from: TerminalId,
+    direction: Direction,
+    cell: (f64, f64),
+    gap: i32,
+) -> Option<(Divider, u16)> {
+    let rect = placed.rect(from)?;
+    let vertical = matches!(direction, Direction::Left | Direction::Right);
+    let forward = matches!(direction, Direction::Right | Direction::Down);
+    let divider = edge(placed, rect, vertical, forward)?;
+    let step = if vertical { cell.0 } else { cell.1 };
+    let (start, length, ..) = along(divider.gap, vertical);
+    let middle = f64::from(start) + f64::from(length) / 2.0;
+    let share = divider.share_at(
+        if forward {
+            middle + step
+        } else {
+            middle - step
+        },
+        gap,
+    );
+    Some((divider, share))
+}
+
+/// A rectangle's start, length, and start and length across, along an axis.
+fn along(rect: Rect, vertical: bool) -> (i32, i32, i32, i32) {
+    if vertical {
+        (rect.x, rect.width, rect.y, rect.height)
+    } else {
+        (rect.y, rect.height, rect.x, rect.width)
+    }
+}
+
+/// The divider at `rect`'s edge after it, `forward`, or before it, falling back to the
+/// other edge.
+fn edge(placed: &Placed, rect: Rect, vertical: bool, forward: bool) -> Option<Divider> {
+    let (start, length, across, span) = along(rect, vertical);
+    let edges = placed
+        .dividers
+        .iter()
+        .filter(|divider| divider.vertical == vertical)
+        .filter_map(|divider| {
+            let (gap_start, gap_length, gap_across, gap_span) = along(divider.gap, vertical);
+            if gap_across >= across + span || gap_across + gap_span <= across {
+                return None;
+            }
+            if gap_start == start + length {
+                Some((true, *divider))
+            } else if gap_start + gap_length == start {
+                Some((false, *divider))
+            } else {
+                None
+            }
+        });
+    let (mut after, mut before) = (None, None);
+    for (is_after, divider) in edges {
+        if is_after {
+            after.get_or_insert(divider);
+        } else {
+            before.get_or_insert(divider);
+        }
+    }
+    if forward {
+        after.or(before)
+    } else {
+        before.or(after)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,5 +332,30 @@ mod tests {
         assert_eq!(next(3, Direction::Up), Some(TerminalId(2)));
         assert_eq!(next(1, Direction::Left), None);
         assert_eq!(next(1, Direction::Up), None);
+    }
+
+    #[test]
+    fn a_pane_resizes_by_the_edge_towards_the_key_or_else_its_other_edge() {
+        let root = tree();
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 210,
+            height: 110,
+        };
+        let placed = place(&root, area, 10);
+        let left = placed.rect(TerminalId(1)).unwrap();
+        let top_right = placed.rect(TerminalId(2)).unwrap();
+        let before = |divider: Option<Divider>| divider.map(|divider| divider.before);
+        assert_eq!(before(edge(&placed, left, true, true)), Some(TerminalId(2)));
+        assert_eq!(
+            before(edge(&placed, left, true, false)),
+            Some(TerminalId(2))
+        );
+        assert_eq!(before(edge(&placed, left, false, true)), None);
+        assert_eq!(
+            before(edge(&placed, top_right, false, false)),
+            Some(TerminalId(3))
+        );
     }
 }
