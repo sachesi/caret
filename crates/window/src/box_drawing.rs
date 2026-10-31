@@ -1,6 +1,7 @@
 //! Box-drawing characters and block elements, drawn to fill the cell exactly instead of
 //! taken from the font, whose versions leave gaps between rows when the line is taller
-//! than the glyphs.
+//! than the glyphs. Braille patterns too, as few fonts have them and spinners and graphs
+//! in terminals use them.
 
 use swash::zeno::{Cap, Mask, PathBuilder, Stroke};
 
@@ -27,7 +28,20 @@ const HALF_LINES: [[u8; 4]; 12] = [
     [0,0,1,2], [1,2,0,0], [0,0,2,1], [2,1,0,0],
 ];
 
+/// The column and row of each dot of a braille pattern, by its bit.
+const BRAILLE_DOTS: [(i32, i32); 8] = [
+    (0, 0),
+    (0, 1),
+    (0, 2),
+    (1, 0),
+    (1, 1),
+    (1, 2),
+    (0, 3),
+    (1, 3),
+];
+
 enum Shape {
+    Braille(u8),
     Lines([u8; 4]),
     /// A rounded corner joining the two edges named, U+256D to U+2570.
     Arc {
@@ -106,6 +120,7 @@ fn shape(c: char) -> Option<Shape> {
         0x259d => Shape::Blocks(&[UPPER_RIGHT]),
         0x259e => Shape::Blocks(&[UPPER_RIGHT, LOWER_LEFT]),
         0x259f => Shape::Blocks(&[UPPER_RIGHT, LOWER_LEFT, LOWER_RIGHT]),
+        0x2800..=0x28ff => Shape::Braille((code - 0x2800) as u8),
         _ => return None,
     })
 }
@@ -208,6 +223,16 @@ pub fn coverage(c: char, width: u32, height: u32, light: u32) -> Option<Vec<u8>>
         Shape::Shade(alpha) => {
             fill(0, 0, width, height, (alpha * 255.0).round() as u8);
         }
+        Shape::Braille(pattern) => {
+            let size = (width / 4).max(1);
+            for (bit, (column, row)) in BRAILLE_DOTS.into_iter().enumerate() {
+                if pattern & (1 << bit) != 0 {
+                    let x = width * (2 * column + 1) / 4 - size / 2;
+                    let y = height * (2 * row + 1) / 8 - size / 2;
+                    fill(x, y, x + size, y + size, 255);
+                }
+            }
+        }
     }
     Some(cover)
 }
@@ -220,6 +245,27 @@ mod tests {
     fn rows(c: char) -> Vec<Vec<u8>> {
         let cover = coverage(c, 9, 18, 1).expect("drawn");
         cover.chunks(9).map(<[u8]>::to_vec).collect()
+    }
+
+    #[test]
+    fn a_braille_pattern_fills_only_its_dots() {
+        let dots = |c: char| {
+            let mut dots = Vec::new();
+            let drawn = rows(c);
+            for (column, x) in [2, 6].into_iter().enumerate() {
+                for (row, y) in [2, 6, 11, 15].into_iter().enumerate() {
+                    if drawn[y][x] == 255 {
+                        dots.push((column, row));
+                    }
+                }
+            }
+            dots
+        };
+        assert_eq!(dots('\u{2801}'), [(0, 0)]);
+        assert_eq!(dots('\u{2840}'), [(0, 3)]);
+        assert_eq!(dots('\u{2880}'), [(1, 3)]);
+        assert_eq!(dots('\u{28ff}').len(), 8);
+        assert!(rows('\u{2800}').iter().flatten().all(|&cover| cover == 0));
     }
 
     #[test]
