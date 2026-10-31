@@ -11,6 +11,7 @@ programs in the terminal. Each action can be bound to other keys in the `[keys]`
 | Ctrl+Shift+N | New window | `new-window` |
 | Ctrl+Shift+Q | Close the window | `close-window` |
 | Ctrl+Shift+T | New tab | `new-tab` |
+| Ctrl+Shift+Alt+T | New session in this window | `new-session` |
 | | Close the tab | `close-tab` |
 | Ctrl+Page Down, Ctrl+Tab | Next tab | `next-tab` |
 | Ctrl+Page Up, Ctrl+Shift+Tab | Previous tab | `previous-tab` |

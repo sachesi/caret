@@ -23,6 +23,7 @@ impl App {
                     line(gettext("New Window"), Action::NewWindow),
                     line(gettext("Close Window"), Action::CloseWindow),
                     line(gettext("New Tab"), Action::NewTab),
+                    line(gettext("New Session"), Action::NewSession),
                     line(gettext("Close Tab"), Action::CloseTab),
                     line(gettext("Next Tab"), Action::NextTab),
                     line(gettext("Previous Tab"), Action::PreviousTab),

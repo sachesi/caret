@@ -30,8 +30,6 @@ pub enum Choice {
     SessionWindow(SessionId),
     /// A tab of a session's list of tabs, by its key.
     ShowTab(TerminalId),
-    /// A session of its own in this window.
-    NewSession,
     NewTabIn(SessionId),
     About,
     /// The main menu, for a window without its header bar.
@@ -95,6 +93,7 @@ impl App {
         let mut sections = vec![vec![
             self.act_item(&gettext("New Window"), Action::NewWindow),
             self.act_item(&gettext("New Tab"), Action::NewTab),
+            self.act_item(&gettext("New Session"), Action::NewSession),
         ]];
         if !self.config.profiles.is_empty() {
             let profiles = self.config.profiles.iter().map(|profile| {
@@ -257,10 +256,6 @@ impl App {
                     self.show(index);
                 }
             }
-            Some(Choice::NewSession) => {
-                let id = self.server.ask(Question::NewSession);
-                self.asked.insert(id, Asked::SessionHere);
-            }
             Some(Choice::NewTabIn(session)) => {
                 self.show_session_tab(session);
                 self.new_tab();
@@ -386,6 +381,16 @@ impl App {
         }
     }
 
+    /// Asks for a session of its own in this window, with a tab.
+    pub(super) fn new_session(&mut self) {
+        if self.server.version < 2 {
+            self.toast(gettext("Listing sessions needs a newer terminal server"));
+            return;
+        }
+        let id = self.server.ask(Question::NewSession);
+        self.asked.insert(id, Asked::SessionHere);
+    }
+
     /// Asks for the sessions, to offer from the + button with a new one.
     pub(super) fn open_new_menu(&mut self) {
         if self.server.version < 2 {
@@ -422,7 +427,7 @@ impl App {
             })
             .collect();
         let sections = vec![
-            vec![self.item(&gettext("New Session"), Choice::NewSession, true)],
+            vec![self.act_item(&gettext("New Session"), Action::NewSession)],
             others,
         ];
         let at = Menu::under_new_tab_button(&self.chrome.buttons);

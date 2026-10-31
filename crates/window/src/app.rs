@@ -1411,6 +1411,7 @@ impl App {
             // The file being watched, the window takes the change from there.
             Action::TitleBar => config::write("title-bar", !self.config.title_bar),
             Action::NewTab => self.new_tab(),
+            Action::NewSession => self.new_session(),
             Action::Find => self.open_search(),
             Action::CloseTab => self.close_tab(self.selected),
             Action::SplitRight => self.split(true),

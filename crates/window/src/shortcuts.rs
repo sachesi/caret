@@ -21,6 +21,8 @@ pub enum Action {
     Fullscreen,
     TitleBar,
     NewTab,
+    /// A session of its own, in this window.
+    NewSession,
     CloseTab,
     SplitRight,
     SplitDown,
@@ -79,6 +81,7 @@ const ACTIONS: &[(Action, &str, &[&str])] = &[
     (Action::Fullscreen, "fullscreen", &["F11"]),
     (Action::TitleBar, "title-bar", &["Ctrl+Shift+H"]),
     (Action::NewTab, "new-tab", &["Ctrl+Shift+T"]),
+    (Action::NewSession, "new-session", &["Ctrl+Shift+Alt+T"]),
     (Action::CloseTab, "close-tab", &[]),
     (Action::SplitRight, "split-right", &["Ctrl+Shift+E"]),
     (Action::SplitDown, "split-down", &["Ctrl+Shift+O"]),
