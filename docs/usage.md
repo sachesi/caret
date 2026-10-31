@@ -73,8 +73,10 @@ on and names its keys at the bottom of the window, as listed in
 ## Sessions
 
 The programs in the tabs run in Caret's terminal server, which keeps them while no
-window shows them. A window's tabs are a session. Detach Window in the main menu closes
-the window and leaves its session running, with its history; Reattach Windows, or
+window shows them, until you log out unless you
+[set it up to go on](installing.md#install). A window's tabs are a session. Detach Window
+in the main menu closes the window and leaves its session running, with its history;
+Reattach Windows, or
 `caret --attach`, opens a window for each detached one, on the tab it showed and with its
 profile. A window that crashes or is
 killed is detached the same way. With `close-detaches`, closing a window detaches it

@@ -48,6 +48,15 @@ instead, which keeps its terminals out of the window's process tree and resource
 
     systemctl --user enable --now caret-server.socket
 
+Either way, terminals do not outlast logging out. To have them do so, enable the socket as
+above and let your user's services keep running without a login:
+
+    loginctl enable-linger
+
+`caret --attach` after logging in again then shows the windows that were detached. Programs
+in them go on running while you are logged out, until they end or you close them. Nothing
+outlasts a reboot, since the terminals live in the server's memory.
+
 ## Remove
 
     sudo just uninstall
