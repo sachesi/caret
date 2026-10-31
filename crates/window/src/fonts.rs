@@ -3,12 +3,16 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use caret_protocol::{BOLD, Glyph, GlyphText, ITALIC};
-use rustybuzz::{Direction, Feature, Script, ShapePlan, UnicodeBuffer};
+use harfrust::{
+    Direction, Feature, Script, ShapeOptions, ShapePlan, ShaperData, ShaperInstance, Tag,
+    UnicodeBuffer, Variation,
+};
 use swash::FontRef;
 use swash::scale::image::{Content, Image};
 use swash::scale::{Render, ScaleContext, Source, StrikeWith};
@@ -129,6 +133,11 @@ impl Face {
         FontRef::from_index(self.bytes(), self.index as usize)
     }
 
+    /// The face as the shaper reads it.
+    fn tables(&self) -> Option<harfrust::FontRef<'_>> {
+        harfrust::FontRef::from_index(self.bytes(), self.index).ok()
+    }
+
     fn has(&self, c: char) -> bool {
         self.font().is_some_and(|font| font.charmap().map(c) != 0)
     }
@@ -172,8 +181,8 @@ pub struct Fonts {
     ligatures: bool,
     /// How runs of symbols divide into ligatures, by style.
     divided: HashMap<(Box<str>, u8), Rc<[u8]>>,
-    /// Plans for shaping text, which take longer to make than shaping a line with.
-    plans: RefCell<HashMap<PlanKey, ShapePlan>>,
+    /// What shaping takes from each face, at each weight it is drawn at.
+    shapings: RefCell<HashMap<(u64, Option<u32>), Shaping>>,
     /// How far texts move the pen in the window's own face, regular and bold, as the
     /// window measures its menus and dialogs again for every frame.
     advances: RefCell<[HashMap<Box<str>, f32>; 2]>,
@@ -245,7 +254,7 @@ impl Fonts {
             features: choice.features.clone(),
             ligatures: choice.ligatures,
             divided: HashMap::new(),
-            plans: RefCell::default(),
+            shapings: RefCell::default(),
             advances: RefCell::default(),
             labels,
             label_size,
@@ -415,11 +424,8 @@ impl Fonts {
             return Some(parts.clone());
         }
         let face = &self.styles[usize::from(style)];
-        let shaper = shaper(face);
         let glyphs = |text: &str| {
-            shaper
-                .as_ref()
-                .and_then(|shaper| self.shape_with(shaper, face, text, self.size, true))
+            self.shape(face, text, self.size, true)
                 .map(|(glyphs, _)| glyphs)
                 .unwrap_or_default()
         };
@@ -552,20 +558,31 @@ fn preferred_faces(database: &fontdb::Database) -> Vec<fontdb::ID> {
         .collect()
 }
 
-/// What a plan for shaping is made for: a face, at a weight, with the terminal's
-/// features or none, for text of a direction and script.
-type PlanKey = (u64, Option<u32>, bool, Direction, Option<Script>);
+/// What a plan for shaping is made for: the terminal's features or none, for text of a
+/// direction and script.
+type PlanKey = (bool, Direction, Option<Script>);
 
-/// `face` ready to shape text in.
-fn shaper(face: &Face) -> Option<rustybuzz::Face<'_>> {
-    let mut shaper = rustybuzz::Face::from_slice(face.bytes(), face.index)?;
-    if let Some(weight) = face.weight {
-        shaper.set_variations(&[rustybuzz::Variation {
-            tag: rustybuzz::ttf_parser::Tag::from_bytes(b"wght"),
-            value: weight,
-        }]);
+/// What shaping in a face at a weight reads from the font once.
+struct Shaping {
+    data: ShaperData,
+    instance: Option<ShaperInstance>,
+    /// Plans take longer to make than shaping a line with.
+    plans: HashMap<PlanKey, ShapePlan>,
+}
+
+impl Shaping {
+    fn new(face: &Face) -> Option<Self> {
+        let font = face.tables()?;
+        let instance = face.weight.map(|value| {
+            let tag = Tag::new(b"wght");
+            ShaperInstance::from_variations(&font, [Variation { tag, value }])
+        });
+        Some(Self {
+            data: ShaperData::new(&font),
+            instance,
+            plans: HashMap::new(),
+        })
     }
-    Some(shaper)
 }
 
 impl Fonts {
@@ -578,19 +595,18 @@ impl Fonts {
         size: f32,
         terminal: bool,
     ) -> Option<(Vec<Shaped>, f32)> {
-        self.shape_with(&shaper(face)?, face, text, size, terminal)
-    }
-
-    /// As [`Self::shape`], in `face` made ready as `shaper`.
-    fn shape_with(
-        &self,
-        shaper: &rustybuzz::Face<'_>,
-        face: &Face,
-        text: &str,
-        size: f32,
-        terminal: bool,
-    ) -> Option<(Vec<Shaped>, f32)> {
         let features: &[Feature] = if terminal { &self.features } else { &[] };
+        let mut shapings = self.shapings.borrow_mut();
+        let shaping = match shapings.entry((face.key, face.weight.map(f32::to_bits))) {
+            Entry::Occupied(known) => known.into_mut(),
+            Entry::Vacant(place) => place.insert(Shaping::new(face)?),
+        };
+        let font = face.tables()?;
+        let shaper = shaping
+            .data
+            .shaper(&font)
+            .instance(shaping.instance.as_ref())
+            .build();
         let units = f32::from(u16::try_from(shaper.units_per_em()).ok()?);
         let to_pixels = size / units;
         let mut buffer = UnicodeBuffer::new();
@@ -598,20 +614,14 @@ impl Fonts {
         buffer.guess_segment_properties();
         // Text of no script of its own, such as symbols, has none, which the plan must
         // be made for as well.
-        let script = Some(buffer.script()).filter(|&script| script != rustybuzz::script::UNKNOWN);
+        let script = Some(buffer.script()).filter(|&script| script != harfrust::script::UNKNOWN);
         let direction = buffer.direction();
-        let key = (
-            face.key,
-            face.weight.map(f32::to_bits),
-            terminal,
-            direction,
-            script,
-        );
-        let mut plans = self.plans.borrow_mut();
-        let plan = plans
-            .entry(key)
-            .or_insert_with(|| ShapePlan::new(shaper, direction, script, None, features));
-        let shaped = rustybuzz::shape_with_plan(shaper, plan, buffer);
+        let plan = shaping
+            .plans
+            .entry((terminal, direction, script))
+            .or_insert_with(|| ShapePlan::new(&shaper, direction, script, None, features));
+        let options = ShapeOptions::new().plan(Some(plan)).features(features);
+        let shaped = shaper.shape(buffer, options);
         let mut pen = 0.0f32;
         let mut glyphs = Vec::new();
         for (info, position) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {

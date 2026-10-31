@@ -19,8 +19,8 @@ blocking = "~1.6.2"
 caret-protocol.workspace = true
 fontdb = { version = "0.24", default-features = false, features = ["std", "fs", "memmap"] }
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
+harfrust = "0.13"
 rustix = { version = "1", features = ["event", "fs", "termios"] }
-rustybuzz = "0.20"
 shlex = "1"
 smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop", "system", "xkbcommon"] }
 swash = "0.2"

@@ -90,7 +90,7 @@ changed; shaders turn them into backgrounds, glyphs from the atlas, the cursor, 
 selection and lines for underlines and strikeout. The frame, the bars, menus and dialogs
 are instanced quads over them: rounded rectangles, shadows, outlines and glyphs.
 
-Fonts are found by scanning the font folders (fontdb), runs are shaped with rustybuzz,
+Fonts are found by scanning the font folders (fontdb), runs are shaped with harfrust,
 and glyphs are rasterised by swash at the screen's scale into an atlas texture that grows
 when it fills. Box drawing and block characters are drawn by `box_drawing.rs` to the
 cell's exact size, so lines join across cells.

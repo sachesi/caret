@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use caret_protocol::CursorShape;
+use harfrust::Feature;
 use rustix::fs::inotify;
-use rustybuzz::Feature;
 use toml_edit::{DocumentMut, Item, TableLike, Value};
 
 use crate::palette;
