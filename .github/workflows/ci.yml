@@ -6,7 +6,7 @@ on:
     tags: ["v*"]
   pull_request:
   # Weekly, for advisories published since the last push, and against Rawhide, for what
-  # the next Fedora's GTK, libadwaita and toolchain will break.
+  # the next Fedora's libraries and toolchain will break.
   schedule:
     - cron: "17 5 * * 1"
   workflow_dispatch:
@@ -31,10 +31,9 @@ jobs:
       - name: Install the build dependencies
         run: >
           dnf install -y --setopt=install_weak_deps=False
-          git-core rust cargo rustfmt clippy just blueprint-compiler
-          gtk4-devel libadwaita-devel glib2-devel
-          glslc libxkbcommon-devel
-          desktop-file-utils appstream gettext
+          git-core rust cargo rustfmt clippy just
+          glslc wayland-devel libxkbcommon-devel
+          glib2 desktop-file-utils appstream gettext
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -51,8 +50,8 @@ jobs:
       - name: Install the build dependencies
         run: >
           dnf install -y --setopt=install_weak_deps=False
-          git-core gcc rustup blueprint-compiler
-          gtk4-devel libadwaita-devel glib2-devel
+          git-core gcc rustup
+          glslc wayland-devel libxkbcommon-devel
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
