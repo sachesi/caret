@@ -1,35 +1,44 @@
 # Settings
 
-Everything is in the GSettings schema `io.github.sachesi.caret`. Preferences (Ctrl+,)
-exposes all but the window's size and state, which the window writes when it closes:
+Settings are in `~/.config/caret/config.toml` (under `$XDG_CONFIG_HOME` where that is
+set). Preferences in the main menu, or Ctrl+,, opens the file with the program the
+desktop has for it; where there is none yet, it writes one first with every setting at
+its default and commented out. Open windows follow the file as it is saved; a value that
+cannot be read is skipped with a warning on stderr, and the rest still apply.
 
-    gsettings set io.github.sachesi.caret font 'JetBrains Mono 12'
+    font = "Source Code Pro 12"
+    color-scheme = "dark"
 
-Changes apply immediately to open windows.
+| Key | Values | Default |
+|---|---|---|
+| `font` | family and size, or empty | empty |
+| `font-features` | OpenType features as in CSS, or empty | empty |
+| `ligatures` | bool | true |
+| `color-scheme` | `"system"`, `"light"`, `"dark"` | `"system"` |
+| `light-scheme`, `dark-scheme` | `"caret"`, or the name of a scheme file | `"caret"` |
+| `opacity` | 0 to 1 | 1 |
+| `cursor-shape` | `"block"`, `"beam"`, `"underline"` | `"block"` |
+| `scrollback-lines` | a number of lines | 10000 |
+| `custom-command` | command line, or empty | empty |
+| `scroll-on-output` | bool | false |
+| `scroll-on-keystroke` | bool | true |
+| `program-notifications` | bool | true |
+| `program-clipboard` | bool | true |
+| `audible-bell` | bool | true |
+| `close-detaches` | bool | false |
+| `title-bar` | bool | true |
+| `server-side-decorations` | bool | true |
+| `session-click` | `"switch"`, `"popup"` | `"switch"` |
+| `session-colors` | bool | true |
+| `middle-click-detach` | bool | false |
+| `tab-previews` | bool | false |
 
-| Key | Values | Default | In Preferences as |
-|---|---|---|---|
-| `font` | Pango font description, or empty | empty | Use the System Font, Font |
-| `font-features` | OpenType features as in CSS, or empty | empty | Font Features |
-| `ligatures` | bool | true | Ligatures |
-| `color-scheme` | `system`, `light`, `dark` | `system` | Style |
-| `cursor-shape` | `block`, `beam`, `underline` | `block` | Cursor Shape |
-| `custom-command` | command line, or empty | empty | Custom Command, Instead of the Shell |
-| `scrollback-lines` | 0 to 1000000 | 10000 | Lines of History |
-| `scroll-on-output` | bool | false | Scroll on Output |
-| `scroll-on-keystroke` | bool | true | Scroll on Keystroke |
-| `program-notifications` | bool | true | Notifications |
-| `program-clipboard` | bool | true | Copying |
-| `audible-bell` | bool | true | Terminal Bell |
-| `close-detaches` | bool | false | Keep Closed Windows |
-| `title-bar` | bool | true | Title Bar |
-| `window-size` | (width, height) | (0, 0) | |
-| `window-maximized` | bool | false | |
-
-An empty `font` follows the desktop's monospace font, as libadwaita reads it from the
-settings portal (`monospace-font-name` in `org.gnome.desktop.interface`). A font that is
-not monospaced is replaced by fontconfig's `Monospace` at the same size, since a
-proportional font on the grid spreads its letters apart.
+An empty `font` follows the desktop's monospace font, read from the settings portal
+(`monospace-font-name` in `org.gnome.desktop.interface`). A family that is not installed
+gives way to the first of Adwaita Mono, Source Code Pro, DejaVu Sans Mono, Noto Sans
+Mono, Liberation Mono and Cascadia Mono that is, or else to any monospaced font. Caret
+finds fonts in the usual font folders itself, so fontconfig's aliases and rules do not
+apply to it.
 
 `font-features` turns features of the font on and off, written as in CSS: `zero, ss01`
 for a slashed zero and the first stylistic set, `calt=0` to turn one off. Which features
@@ -37,8 +46,46 @@ there are depends on the font. With `ligatures`, runs of up to twelve symbols th
 font draws joined, such as `->` and `!=`, are drawn that way; letters are never joined,
 and neither is the symbol under a block cursor.
 
-A `window-size` of 0 fits 80
-columns by 24 lines of the font.
+`color-scheme` follows the desktop's light or dark style with `"system"`. Each style
+takes its colours from its scheme: `"caret"` is Caret's own, and another name is a file
+in `~/.config/caret/schemes`, `"mine"` for `schemes/mine.toml`:
 
-Programs can change the cursor shape and ask for a blinking cursor; the setting is the
-shape they start with. Blinking follows GTK's `gtk-cursor-blink`.
+    foreground = "#d8d8d8"
+    background = "#181818"
+    palette = ["#181818", "#ab4642", "#a1b56c", "#f7ca88", "#7cafc2", "#ba8baf",
+               "#86c1b9", "#d8d8d8", "#585858", "#ab4642", "#a1b56c", "#f7ca88",
+               "#7cafc2", "#ba8baf", "#86c1b9", "#f8f8f8"]
+    selection = "#383838"     # optional
+
+`custom-command` runs in new tabs in place of the shell. `close-detaches` makes closing a
+window leave its programs running, to attach to again with `caret --attach`.
+`server-side-decorations` off has Caret draw its own frame and header bar even where the
+compositor offers to draw them. The `session-` settings, `middle-click-detach` and
+`tab-previews` are about windows that show several sessions, described under
+[sessions](usage.md#sessions).
+
+The cursor does not blink. Programs can change its shape; the setting is the shape they
+start with.
+
+## Profiles
+
+A profile is a table of settings of its own, used by the windows opened with it, from
+the main menu or with `caret --profile NAME`:
+
+    [profiles.work]
+    font = "Adwaita Mono 13"
+    custom-command = "ssh work"
+
+## Keys
+
+The `[keys]` table binds an action to other keys: one key, a list of them, or `[]` for
+none. A key is written as modifiers and a key name joined by `+`, the names as xkbcommon
+has them:
+
+    [keys]
+    copy = ["Ctrl+Insert", "Ctrl+Shift+C"]
+    close-tab = "Ctrl+Shift+W"
+    close-pane = []
+
+The file Preferences writes lists every action with its keys. The actions are in
+[keyboard shortcuts](keyboard-shortcuts.md).

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret 0.2.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-31 12:45+0200\n"
+"POT-Creation-Date: 2026-10-31 12:53+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -650,86 +650,92 @@ msgstr ""
 
 #: data/io.github.sachesi.caret.metainfo.xml:9
 msgid ""
-"Caret is a terminal built with GTK 4 and libadwaita. Its text is drawn by "
-"the GPU, pixel for pixel at any display scale."
+"Caret is a terminal for Wayland. It draws its window and its text with "
+"Vulkan, pixel for pixel at any display scale."
 msgstr ""
 
 #: data/io.github.sachesi.caret.metainfo.xml:11
 msgid ""
-"Tabs with an overview, and new tabs and windows in the folder of the current "
+"Tabs and split panes, and new tabs and windows in the folder of the current "
 "one"
 msgstr ""
 
 #: data/io.github.sachesi.caret.metainfo.xml:12
 msgid ""
+"Sessions whose programs go on running while no window shows them, and "
+"windows that show several"
+msgstr ""
+
+#: data/io.github.sachesi.caret.metainfo.xml:13
+msgid ""
 "Search through the history, selection by word or line, and addresses opened "
 "with Ctrl and a click"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:13
+#: data/io.github.sachesi.caret.metainfo.xml:14
 msgid "Mouse reporting, bracketed paste, true colour, and underline styles"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:14
+#: data/io.github.sachesi.caret.metainfo.xml:15
 msgid "The desktop's monospace font and colour scheme, or ones of its own"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:21
+#: data/io.github.sachesi.caret.metainfo.xml:22
 msgid "sachesi"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:37
+#: data/io.github.sachesi.caret.metainfo.xml:38
 msgid "Tangent is now called Caret. Its settings start from the defaults."
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:39
+#: data/io.github.sachesi.caret.metainfo.xml:40
 msgid ""
 "New tabs open in the folder of the current one, and in its Toolbox or "
 "Distrobox container, where the shell reports them"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:40
+#: data/io.github.sachesi.caret.metainfo.xml:41
 msgid ""
 "Tabs show a running command, and a finished one or a notification in a tab "
 "that is not in view; Ctrl+Shift+Up and Down scroll between prompts"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:41
+#: data/io.github.sachesi.caret.metainfo.xml:42
 msgid "Tabs can be renamed from their context menu"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:42
+#: data/io.github.sachesi.caret.metainfo.xml:43
 msgid "The title bar can be hidden, and is in full screen"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:43
+#: data/io.github.sachesi.caret.metainfo.xml:44
 msgid "Selecting with the mouse scrolls past the edge; Select All and Deselect"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:44
+#: data/io.github.sachesi.caret.metainfo.xml:45
 msgid ""
 "The link under the pointer is underlined, and one a program broke into lines "
 "is followed"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:45
+#: data/io.github.sachesi.caret.metainfo.xml:46
 msgid ""
 "Symbols the font joins, such as -> and !=, are drawn joined, and a setting "
 "turns features of the font on and off"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:46
+#: data/io.github.sachesi.caret.metainfo.xml:47
 msgid ""
 "Settings for a command to run instead of the shell and for scrolling on "
 "output and on keystroke"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:47
+#: data/io.github.sachesi.caret.metainfo.xml:48
 msgid ""
 "Pasting several lines asks first where they would run, and programs can be "
 "kept from notifying and from copying"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:53
+#: data/io.github.sachesi.caret.metainfo.xml:54
 msgid "The first release."
 msgstr ""

@@ -16,33 +16,45 @@ Before a change goes in:
 
 ## Where things are
 
-    build.rs                  runs blueprint-compiler and bundles the GResource, with the
-                              metainfo the About dialog reads
-    data/ui/*.blp             the window and the shortcuts dialog
-    src/main.rs               early setup: translations, resources, GTK's renderer
-    src/application.rs        GtkApplication subclass, command line, app actions, accels
-    src/window.rs             the window: tabs, find bar, win.* actions, closing
-    src/preferences.rs        the preferences dialog
-    src/settings.rs           the GSettings object, the font and the colour scheme
-    src/terminal_view.rs      one terminal: the widget, its GL context, sizing, scrolling
-                              and clipboard; in terminal_view/ its input, drawing, find
-                              and accessible text
-    src/connection.rs         the connection to the terminal server, started if none
-                              listens, and what it sends routed to windows and tabs
-    src/frame.rs              the screen as the server sent it, turned into quads
-    src/renderer.rs           OpenGL: shaders, the glyph atlas, the textures GTK composites
-    src/fonts.rs              cell metrics and glyphs rasterised by Pango and cairo
-    src/box_drawing.rs        box drawing and block characters drawn to fill their cells
-    src/palette.rs            the default colours, sent to the server
+    crates/window             caret, the window
+      main.rs, cli.rs         start-up, and the command line with `caret sessions` and
+                              `caret attach`
+      app.rs                  a window: Wayland events, keys, and the frames it hands to
+                              the render thread
+      app/                    its parts: tabs and their panes, control mode, sessions,
+                              menus, dialogs, find, the pointer, the clipboard, input
+                              methods, bells and notifications, screen readers
+      chrome.rs, chrome/      what the window draws around the terminal, as quads: the
+                              header bar, the tab strip, the find bar, menus, dialogs,
+                              toasts and the list of shortcuts
+      gpu.rs                  the Vulkan device and the swapchain
+      render.rs               the render thread
+      renderer.rs             the pipelines, the atlas texture, the draws of cells and quads
+      shaders/                GLSL, compiled to SPIR-V by build.rs with glslc
+      grid.rs                 the screen as the server sent it, as cells for the GPU
+      atlas.rs, fonts.rs      fonts found, shaped and rasterised, and where glyphs sit in
+                              the atlas
+      box_drawing.rs          box drawing and block characters drawn to fill their cells
+      panes.rs                where a tab's panes go, and the gaps between them
+      config.rs               config.toml, profiles and keys, and bringing over settings
+                              from GSettings once
+      shortcuts.rs, keys.rs   actions and their keys; keys as the terminal encodes them
+      desktop.rs              the style and the font from the settings portal
+      access.rs               what screen readers are told
+      text.rs                 a session drawn in another terminal, for `caret attach`
+                              outside a window
     crates/protocol           what clients and the server send each other, and how it
                               is written on the socket; in encode.rs, keys, mouse
                               events and pastes as bytes for the program
     crates/server             caret-server: terminals, their screens and history, the
                               sessions windows attach to, links and search
+    crates/term               caret-term, the terminal emulator
 
-Widgets are GObject subclasses; the window has a composite template from the Blueprint
-file. Actions use the usual prefixes: `app.`, `win.`, and `term.` on the terminal for its
-context menu.
+A window is one event loop (calloop) on the main thread, which takes the Wayland events
+and the server's messages. Its frames are drawn on a render thread with a Wayland event
+queue of its own, so a slow frame never holds up the keys. The settings portal and
+notifications talk D-Bus through zbus on threads of their own, and screen readers through
+AccessKit.
 
 Terminals live in `caret-server`, so that a window can detach and attach again later,
 or crash, without its programs ending. The server keeps sessions, each a list of tabs a
@@ -70,34 +82,32 @@ reused.
 
 ## Drawing
 
-A frame is one instanced draw of quads: backgrounds, the selection and cursor, glyphs
-from the atlas, and lines for underlines and strikeout. It goes into a texture the widget
-owns, as large as the widget in the screen's pixels, and GTK composites that texture one
-texel to a pixel, placed on the pixel grid. The widget makes its own `GdkGLContext` rather
-than being a `GtkGLArea`, whose buffer is sized by the integer scale and would be
-resampled on a fractional one. Caret asks GTK for its GL renderer, which takes that
-texture as it is, unless `GSK_RENDERER` already names one: the Vulkan renderer has to
-import it as a dmabuf, and where the driver refuses Mesa's implicit modifier it copies
-every frame through the CPU instead.
+Each frame is drawn with Vulkan 1.3 into the window's swapchain, at the screen's scale:
+at a fractional scale the buffer is as large as the window in the screen's pixels and the
+viewporter maps it onto the window, so a texel lands on each pixel. The cells of each pane
+shown are kept on the GPU as a buffer of rows, of which a frame copies only those that
+changed; shaders turn them into backgrounds, glyphs from the atlas, the cursor, the
+selection and lines for underlines and strikeout. The frame, the bars, menus and dialogs
+are instanced quads over them: rounded rectangles, shadows, outlines and glyphs.
 
-Glyphs are rasterised at the screen's scale, with the desktop's hinting, and packed into
-an atlas texture that grows when it fills. A frame rasterises new glyphs itself for a few
-milliseconds and hands the rest to a thread with its own copy of the fonts; those cells
-fill in over the next frames. Box drawing and block characters are drawn
-by `box_drawing.rs` to the cell's exact size, so lines join across cells.
+Fonts are found by scanning the font folders (fontdb), runs are shaped with rustybuzz,
+and glyphs are rasterised by swash at the screen's scale into an atlas texture that grows
+when it fills. Box drawing and block characters are drawn by `box_drawing.rs` to the
+cell's exact size, so lines join across cells.
 
 ## Running
 
     just run [-e COMMAND…]   # debug build, as io.github.sachesi.caret.Devel
-    just check               # fmt, clippy -D warnings, blueprint, validators, catalogues
+    just check               # fmt, clippy -D warnings, validators, catalogues
     just test                # the unit tests
     just deny                # advisories, licences and sources of the dependencies
     just bench               # how fast the release build is, in a headless session
 
-Debug builds are a separate application, `io.github.sachesi.caret.Devel`, with stripes in
-the header bar and settings of their own under `/io/github/sachesi/caret/Devel/`, so they
-run beside an installed Caret. A second `just run` opens a window in the first;
-`GSETTINGS_BACKEND=memory` keeps experiments out of the development settings. Warnings go to stderr; `RUST_LOG=debug` shows more.
+Debug builds are a separate application, `io.github.sachesi.caret.Devel`, with a terminal
+server of their own, so they run beside an installed Caret. They read the same
+`config.toml`, unless `XDG_CONFIG_HOME` points elsewhere. A second `just run` opens a
+window of its own on the first one's server. Warnings go to
+stderr; `RUST_LOG=debug` shows more.
 
 `just bench` needs sway and wdotool. It runs the release build in a headless session with
 settings of its own and prints, as the median of three runs, how fast output goes
@@ -108,15 +118,16 @@ in `target/bench`. Any build writes the same timings to the file `CARET_TIMINGS`
 ## A few things to know before changing them
 
 User-visible strings go through `gettext`, called by that name so xgettext finds it, and
-not inside a macro such as `glib::clone!`, whose body xgettext skips. Values go in through
-named placeholders with `gettext_f` and `ngettext_f` from `src/i18n.rs`, `{program}`
-rather than `%s`, so a translation can put them in its own order. Counts use `ngettext`
-even where English would not need it, because the plural rules of other languages do. `just pot`
-regenerates the template from the Rust sources, the Blueprint files, the desktop entry,
-the metainfo and the schema, and `just po` merges it into every `po/<lang>.po`. A new
-language is a new line in `po/LINGUAS` plus the `.po` file. `install` compiles the
-catalogues and merges the desktop and metainfo translations with `msgfmt`.
+not inside a macro, whose body xgettext skips. Values go in through named placeholders
+with `gettext_f` and `ngettext_f` from `crates/window/src/i18n.rs`, `{program}` rather
+than `%s`, so a translation can put them in its own order. Counts use `ngettext` even
+where English would not need it, because the plural rules of other languages do. `just
+pot` regenerates the template from the window's sources, the desktop entry, the metainfo
+and the schema, and `just po` merges it into every `po/<lang>.po`. A new language is a new
+line in `po/LINGUAS` plus the `.po` file. `install` compiles the catalogues and merges the
+desktop and metainfo translations with `msgfmt`.
 
 Shortcuts of the window take Ctrl and Shift; Ctrl with a single key belongs to the program
-in the terminal. Application accelerators are handled before the terminal sees the key,
-and only for actions the window can reach.
+in the terminal. The window matches its shortcuts before the terminal sees the key, and an
+action that has nothing to do at the time, such as going to a pane where there is none,
+lets the key through to the program.

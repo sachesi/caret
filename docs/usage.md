@@ -5,13 +5,14 @@
     caret                              # a window with your shell, in the current folder
     caret --working-directory ~/src    # in another folder; -w for short
     caret -e htop                      # running a command instead of the shell
-    caret -- ssh host                  # the same, the way GOption spells it
+    caret -- ssh host                  # the same
+    caret --profile work               # with the settings of a profile
 
 Everything after `-e` or `-x` is the command and its arguments, as launchers such as
-xdg-terminal-exec expect. The shell is `$SHELL`, or the one in your passwd entry; Custom Command in Preferences
-runs something else in its place. Each
-start opens a window in the Caret that is already running, and its program gets the
-environment of that start rather than the running Caret's. Variables that belong to
+xdg-terminal-exec expect. The shell is `$SHELL`, or the one in your passwd entry;
+`custom-command` in the [settings](settings.md) runs something else in its place. Each
+start opens a window of its own, and its program gets the environment of that start
+rather than the terminal server's. Variables that belong to
 another terminal, or to tmux or screen around the command line (`TMUX`, `VTE_VERSION`,
 `KITTY_WINDOW_ID` and the like), are left out.
 
@@ -33,33 +34,63 @@ The tab bar shows once there are two tabs. A tab takes its title from the progra
 sets it with the usual escape sequence; until it does, the tab is named after the
 program. Rename Tab in the tab's context menu gives it a name of your own, which stays
 until you clear it. A tab whose program rings the bell while the tab is in the background is marked
-until you look at it, and the bell sounds unless Terminal Bell is off in Preferences.
+until you look at it, and the bell sounds unless `audible-bell` is off. Tabs can be
+dragged along the strip to reorder them.
 
-Ctrl+Shift+H, or Title Bar in Preferences, hides the title bar, and so does full screen
-(F11, or Full Screen in the main menu). The context menu then
-has what the title bar had: a new window, all tabs, the title bar again, Preferences,
-Keyboard Shortcuts, About, Full Screen and closing the window. Super and a drag moves the window.
+Ctrl+Shift+H, or `title-bar` in the settings, hides the title bar, and so does full
+screen (F11, or Full Screen in the main menu). The context menu then has what the title
+bar had: a new window, the title bar again, full screen, closing the window and the main
+menu.
 
 A shell that marks its prompts and commands (OSC 133, which fish does by itself) tells
 Caret when a command starts and ends. A tab whose command is still running after a
-second shows a spinner, and one whose command ends while you look elsewhere is marked;
+second shows a ring before its title, and one whose command ends while you look
+elsewhere is marked;
 if the command took ten seconds or more and the window is not the one you are using, a
 notification says it finished, and clicking it brings the tab back. Programs can also
 send notifications themselves (OSC 9 and OSC 777), which show when their tab is out of
-sight, and put text on the clipboard (OSC 52), though never read it; both can be turned
-off under Programs in Preferences.
+sight, and put text on the clipboard (OSC 52), though never read it;
+`program-notifications` and `program-clipboard` turn them off.
 
 Closing a tab, or a window, where something other than the shell is running in the
 foreground asks first.
 
-## Detaching
+## Panes
+
+Ctrl+Shift+E splits the pane with a new one to its right, Ctrl+Shift+O with one below,
+and the terminal's menu has both. Alt and the arrows go to the pane that way, a click
+goes to the one clicked, and dragging the gap between two panes moves it. Ctrl+Shift+W
+closes the pane, and the tab with its last one.
+
+Control mode (Ctrl+Shift+Space) arranges panes from the keys: it rings the pane it acts
+on and names its keys at the bottom of the window, as listed in
+[keyboard shortcuts](keyboard-shortcuts.md). Escape or Enter leaves it.
+
+## Sessions
 
 The programs in the tabs run in Caret's terminal server, which keeps them while no
-window shows them. Detach Window in the main menu closes the window and leaves its tabs
-running, with their history; Reattach Windows, or `caret --attach`, opens a window for
-each detached one. A window that crashes or is killed is detached the same way. With
-Keep Closed Windows in Preferences, closing a window detaches it too; otherwise closing
-it ends its programs, as closing a tab does.
+window shows them. A window's tabs are a session. Detach Window in the main menu closes
+the window and leaves its session running, with its history; Reattach Windows, or
+`caret --attach`, opens a window for each detached one. A window that crashes or is
+killed is detached the same way. With `close-detaches`, closing a window detaches it
+too; otherwise closing it ends its programs, as closing a tab does.
+
+Sessions… in the main menu (Ctrl+Shift+S) lists them all, with their tabs and how many
+windows show them, to open one in a window of its own or in this one, rename it or close
+it. Right-clicking the + button lists them too, and offers a new session in this window.
+`caret sessions` prints the same list, and `caret attach` with a session's number or
+name shows it: in a Caret window when run in one, or else in the terminal it runs in,
+drawn with escape sequences, where control mode's D detaches back to the shell.
+
+A window that shows several sessions has one tab for each in the strip, with its name
+or number, the title of the tab it shows and how many tabs it has. A click on another
+session's tab shows the tab used last in it, and a click on the shown session's tab, or
+on the arrow of any, lists its tabs, with New Tab, Rename, Detach and Close Session;
+`session-click = "popup"` makes every click list them. Ctrl+Shift+L lists the shown
+session's tabs from the keys, and typing narrows the list. Ctrl+Page Up and Page Down
+and Alt and a number act on the shown session's tabs, and Ctrl+Shift+Page Up and Page
+Down and Ctrl+Alt and a number on the sessions. Each session has a colour of its own on
+its tab unless `session-colors` is off.
 
 ## Selecting, copying and pasting
 
@@ -81,7 +112,8 @@ Ctrl and a click opens a web, file, FTP, SSH, Gemini or mail address: one a prog
 marked as a link, or one in the text, found wherever it starts and even when it wraps
 onto the next line, or when a program broke it into lines that each fill the width. The
 address under the pointer is underlined. The pointer turns into a hand over one while
-Ctrl is held, and the address shows as a tooltip. A link a program made shows where it goes on hover without
+Ctrl is held, and the address shows at the bottom of the window. A link a program made
+shows where it goes on hover without
 Ctrl, since its text may say something else. The context menu of an address has Open
 Link and Copy Link Address; a link that cannot be opened says why at the bottom of the
 window.

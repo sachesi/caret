@@ -2,21 +2,22 @@
 
 ## What you need
 
-To build: Rust 1.92 or newer, `blueprint-compiler`, `just`, and the development packages
-of GTK 4.22 and libadwaita 1.9. On Fedora that is `gtk4-devel libadwaita-devel
-blueprint-compiler just`; on Debian `libgtk-4-dev libadwaita-1-dev blueprint-compiler
-just`. `just check` also wants `desktop-file-validate`, `appstreamcli` and gettext.
+To build: Rust 1.92 or newer, `just`, `glslc` for the shaders, `pkg-config`, and the
+development packages of libwayland and libxkbcommon. On Fedora that is `glslc
+wayland-devel libxkbcommon-devel just`; on Debian `glslc libwayland-dev libxkbcommon-dev
+pkg-config just`. `just check` also wants `glib-compile-schemas`, `desktop-file-validate`,
+`appstreamcli` and gettext.
 
-To run: GTK 4.22, libadwaita 1.9, `libEGL.so.1` with a driver for OpenGL 3.3 or OpenGL ES
-3.0, and a session bus. Without a GL context the tab says why and starts no
-program. Caret runs GTK's GL renderer unless `GSK_RENDERER` names another; the
-programs in the terminal do not inherit that choice.
+To run: a Wayland compositor, and the Vulkan loader, `libvulkan.so.1`, with a driver for
+Vulkan 1.3. Mesa's software driver will do where there is no GPU. A session bus is used
+where there is one, for the desktop's font and style from the settings portal, for
+notifications and for screen readers.
 
 ## Build
 
     just build          # release
     just build-debug
-    just check          # rustfmt, clippy, blueprint, schema, desktop and metainfo validation
+    just check          # rustfmt, clippy, schema, desktop and metainfo validation, catalogues
     just test
     just deny           # advisories, licences and sources of the dependencies
     just run            # debug build, uninstalled, as the separate io.github.sachesi.caret.Devel
@@ -25,6 +26,7 @@ programs in the terminal do not inherit that choice.
 The locale directory is compiled in (`CARET_LOCALEDIR`). `just build` sets it from the
 prefix, `/usr/local/share/locale` by default; give the same prefix to `build` and
 `install`. A plain `cargo build` uses that default unless `CARET_LOCALEDIR` is set.
+`GLSLC` names another shader compiler than the `glslc` on the path.
 
 ## Install
 
@@ -36,7 +38,9 @@ prefix, `/usr/local/share/locale` by default; give the same prefix to `build` an
 `/usr/local`. It puts `caret` and `caret-server` in `bin`, the server's systemd user
 units in `lib/systemd/user`, and the desktop entry, metainfo, icons, GSettings schema and
 translations under `share`, then compiles the schema and refreshes the desktop and icon
-caches. With `DESTDIR` set, those caches are left to the package manager.
+caches. With `DESTDIR` set, those caches are left to the package manager. The schema is
+there for upgrades: the first start of this version copies settings made in GSettings by
+earlier versions into `config.toml`.
 
 The first window starts `caret-server` when nothing listens on its socket, and the server
 ends once it keeps no terminal and no window is attached. To have systemd start it
@@ -49,4 +53,5 @@ instead, which keeps its terminals out of the window's process tree and resource
     sudo just uninstall
     just prefix=$HOME/.local uninstall
 
-Settings stay in dconf; `dconf reset -f /io/github/sachesi/caret/` clears them.
+Settings stay in `~/.config/caret` and the window's size in `~/.local/state/caret`;
+removing those folders clears them.

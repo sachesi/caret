@@ -1,16 +1,19 @@
 # Caret
 
-Caret is a terminal written in Rust with GTK 4 and libadwaita. Programs' output is
-parsed by a terminal emulator of Caret's own, and Caret draws the text itself with
-OpenGL, one texel to each pixel of the screen, so it stays sharp at fractional scales.
+Caret is a terminal for Wayland, written in Rust. Programs' output is parsed by a
+terminal emulator of Caret's own, and Caret draws its window and the text itself with
+Vulkan, one texel to each pixel of the screen, so it stays sharp at fractional scales.
+It uses no toolkit and draws its own header bar, tabs, menus and dialogs; the compositor
+draws the window's frame where it offers to.
 
-It runs on Wayland and X11 and does not depend on any desktop session. You need OpenGL
-3.3 or OpenGL ES 3.0 through EGL, GTK 4.22 and libadwaita 1.9.
+It does not depend on any desktop session. You need a Wayland compositor and a Vulkan 1.3
+driver.
 
-It has tabs, with an overview, and new tabs and windows start in the folder of the current
+It has tabs and split panes, and new tabs and windows start in the folder of the current
 one. The programs run in a terminal server, so a window can be detached and attached
-again later with its programs still running. You can search the history, select a word or a line with a double or triple click,
-and open an address with Ctrl and a click. Programs get mouse reporting, bracketed paste,
+again later with its programs still running, and one window can show several sessions.
+You can search the history, select a word or a line with a double or triple click, and
+open an address with Ctrl and a click. Programs get mouse reporting, bracketed paste,
 true colour and double, curly, dotted and dashed underlines. Box drawing and block
 characters are drawn to fill their cells, so lines join without gaps. The font and the
 light or dark style follow the desktop unless you choose others, and screen readers can
@@ -40,7 +43,7 @@ have `xUbuntu_26.04` in place of `Debian_Testing`:
     sudo apt update
     sudo apt install caret
 
-Debian 13 and Ubuntu 24.04 ship a GTK and libadwaita older than Caret needs.
+Debian 13 and Ubuntu 24.04 ship a Rust older than Caret needs.
 
 Arch Linux: the AUR package [caret](https://aur.archlinux.org/packages/caret), built
 from [packaging/aur/PKGBUILD](packaging/aur/PKGBUILD), which each release tag updates.
@@ -52,8 +55,8 @@ The same packages are attached to each [release](https://github.com/sachesi/care
     just build
     sudo just install        # or: just prefix=$HOME/.local build install
 
-Build needs Rust 1.92, `blueprint-compiler`, `just` and the development packages for GTK
-and libadwaita. Details, other prefixes and removal are in
+Build needs Rust 1.92, `just`, `glslc` and the development packages for libwayland and
+libxkbcommon. Details, other prefixes and removal are in
 [docs/installing.md](docs/installing.md).
 
 ## Starting it

@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-31 12:45+0200\n"
+"POT-Creation-Date: 2026-10-31 12:53+0200\n"
 "PO-Revision-Date: 2026-10-31 12:30+0200\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Russian\n"
@@ -680,19 +680,23 @@ msgstr "Окно развёрнуто"
 
 #: data/io.github.sachesi.caret.metainfo.xml:9
 msgid ""
-"Caret is a terminal built with GTK 4 and libadwaita. Its text is drawn by "
-"the GPU, pixel for pixel at any display scale."
-msgstr ""
-"Caret — терминал на GTK 4 и libadwaita. Его текст рисует графический "
-"процессор, пиксель в пиксель при любом масштабе экрана."
+"Caret is a terminal for Wayland. It draws its window and its text with "
+"Vulkan, pixel for pixel at any display scale."
+msgstr "Caret — терминал для Wayland. Окно и текст он рисует с помощью Vulkan, пиксель в пиксель при любом масштабе экрана."
 
 #: data/io.github.sachesi.caret.metainfo.xml:11
 msgid ""
-"Tabs with an overview, and new tabs and windows in the folder of the current "
+"Tabs and split panes, and new tabs and windows in the folder of the current "
 "one"
-msgstr "Вкладки с обзором; новые вкладки и окна открываются в папке текущей"
+msgstr "Вкладки и разделение на панели; новые вкладки и окна открываются в папке текущей"
 
 #: data/io.github.sachesi.caret.metainfo.xml:12
+msgid ""
+"Sessions whose programs go on running while no window shows them, and "
+"windows that show several"
+msgstr "Сеансы, программы которых продолжают работать, пока их не показывает ни одно окно, и окна, показывающие несколько сеансов"
+
+#: data/io.github.sachesi.caret.metainfo.xml:13
 msgid ""
 "Search through the history, selection by word or line, and addresses opened "
 "with Ctrl and a click"
@@ -700,28 +704,28 @@ msgstr ""
 "Поиск по истории, выделение словами и строками, адреса открываются щелчком с "
 "Ctrl"
 
-#: data/io.github.sachesi.caret.metainfo.xml:13
+#: data/io.github.sachesi.caret.metainfo.xml:14
 msgid "Mouse reporting, bracketed paste, true colour, and underline styles"
 msgstr ""
 "Передача событий мыши, вставка в скобках, полноцветный режим и стили "
 "подчёркивания"
 
-#: data/io.github.sachesi.caret.metainfo.xml:14
+#: data/io.github.sachesi.caret.metainfo.xml:15
 msgid "The desktop's monospace font and colour scheme, or ones of its own"
 msgstr ""
 "Моноширинный шрифт и цветовая схема рабочего стола или свои собственные"
 
-#: data/io.github.sachesi.caret.metainfo.xml:21
+#: data/io.github.sachesi.caret.metainfo.xml:22
 msgid "sachesi"
 msgstr "sachesi"
 
-#: data/io.github.sachesi.caret.metainfo.xml:37
+#: data/io.github.sachesi.caret.metainfo.xml:38
 msgid "Tangent is now called Caret. Its settings start from the defaults."
 msgstr ""
 "Tangent теперь называется Caret. Параметры начинаются со значений по "
 "умолчанию."
 
-#: data/io.github.sachesi.caret.metainfo.xml:39
+#: data/io.github.sachesi.caret.metainfo.xml:40
 msgid ""
 "New tabs open in the folder of the current one, and in its Toolbox or "
 "Distrobox container, where the shell reports them"
@@ -729,7 +733,7 @@ msgstr ""
 "Новые вкладки открываются в папке текущей и в её контейнере Toolbox или "
 "Distrobox, если оболочка о них сообщает"
 
-#: data/io.github.sachesi.caret.metainfo.xml:40
+#: data/io.github.sachesi.caret.metainfo.xml:41
 msgid ""
 "Tabs show a running command, and a finished one or a notification in a tab "
 "that is not in view; Ctrl+Shift+Up and Down scroll between prompts"
@@ -738,21 +742,21 @@ msgstr ""
 "уведомление во вкладке, которая не на виду; Ctrl+Shift+Вверх и Вниз "
 "прокручивают между приглашениями"
 
-#: data/io.github.sachesi.caret.metainfo.xml:41
+#: data/io.github.sachesi.caret.metainfo.xml:42
 msgid "Tabs can be renamed from their context menu"
 msgstr "Вкладку можно переименовать из её контекстного меню"
 
-#: data/io.github.sachesi.caret.metainfo.xml:42
+#: data/io.github.sachesi.caret.metainfo.xml:43
 msgid "The title bar can be hidden, and is in full screen"
 msgstr "Заголовок окна можно скрыть, а в полноэкранном режиме он скрыт"
 
-#: data/io.github.sachesi.caret.metainfo.xml:43
+#: data/io.github.sachesi.caret.metainfo.xml:44
 msgid "Selecting with the mouse scrolls past the edge; Select All and Deselect"
 msgstr ""
 "Выделение мышью прокручивает текст за краем; «Выделить всё» и «Снять "
 "выделение»"
 
-#: data/io.github.sachesi.caret.metainfo.xml:44
+#: data/io.github.sachesi.caret.metainfo.xml:45
 msgid ""
 "The link under the pointer is underlined, and one a program broke into lines "
 "is followed"
@@ -760,7 +764,7 @@ msgstr ""
 "Ссылка под указателем подчёркивается, а ссылка, которую программа разбила на "
 "строки, прослеживается целиком"
 
-#: data/io.github.sachesi.caret.metainfo.xml:45
+#: data/io.github.sachesi.caret.metainfo.xml:46
 msgid ""
 "Symbols the font joins, such as -> and !=, are drawn joined, and a setting "
 "turns features of the font on and off"
@@ -768,7 +772,7 @@ msgstr ""
 "Символы, которые шрифт соединяет, например -> и !=, рисуются слитно, а "
 "параметр включает и выключает возможности шрифта"
 
-#: data/io.github.sachesi.caret.metainfo.xml:46
+#: data/io.github.sachesi.caret.metainfo.xml:47
 msgid ""
 "Settings for a command to run instead of the shell and for scrolling on "
 "output and on keystroke"
@@ -776,7 +780,7 @@ msgstr ""
 "Параметры для команды, запускаемой вместо оболочки, и для прокрутки при "
 "выводе и при нажатии клавиш"
 
-#: data/io.github.sachesi.caret.metainfo.xml:47
+#: data/io.github.sachesi.caret.metainfo.xml:48
 msgid ""
 "Pasting several lines asks first where they would run, and programs can be "
 "kept from notifying and from copying"
@@ -784,7 +788,7 @@ msgstr ""
 "Перед вставкой нескольких строк, которые были бы выполнены, задаётся вопрос, "
 "а программам можно запретить уведомления и копирование"
 
-#: data/io.github.sachesi.caret.metainfo.xml:53
+#: data/io.github.sachesi.caret.metainfo.xml:54
 msgid "The first release."
 msgstr "Первый выпуск."
 

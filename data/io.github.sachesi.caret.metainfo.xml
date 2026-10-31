@@ -6,9 +6,10 @@
   <name>Caret</name>
   <summary>Use the command line</summary>
   <description>
-    <p>Caret is a terminal built with GTK 4 and libadwaita. Its text is drawn by the GPU, pixel for pixel at any display scale.</p>
+    <p>Caret is a terminal for Wayland. It draws its window and its text with Vulkan, pixel for pixel at any display scale.</p>
     <ul>
-      <li>Tabs with an overview, and new tabs and windows in the folder of the current one</li>
+      <li>Tabs and split panes, and new tabs and windows in the folder of the current one</li>
+      <li>Sessions whose programs go on running while no window shows them, and windows that show several</li>
       <li>Search through the history, selection by word or line, and addresses opened with Ctrl and a click</li>
       <li>Mouse reporting, bracketed paste, true colour, and underline styles</li>
       <li>The desktop's monospace font and colour scheme, or ones of its own</li>
