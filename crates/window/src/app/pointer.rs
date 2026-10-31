@@ -23,9 +23,9 @@ use crate::chrome::{Chrome, Part};
 use crate::panes::Divider;
 
 /// Linux's button codes.
-const BUTTON_LEFT: u32 = 0x110;
-const BUTTON_RIGHT: u32 = 0x111;
-const BUTTON_MIDDLE: u32 = 0x112;
+pub(super) const BUTTON_LEFT: u32 = 0x110;
+pub(super) const BUTTON_RIGHT: u32 = 0x111;
+pub(super) const BUTTON_MIDDLE: u32 = 0x112;
 
 /// Clicks this close together count as a double or triple click.
 const MULTI_CLICK: Duration = Duration::from_millis(400);
@@ -231,11 +231,16 @@ impl App {
 
     fn pressed_frame(&mut self, part: Part, button: u32, serial: u32) {
         // A press outside the menu closes it and goes no further, unless it resizes.
-        if self.chrome.menu.is_some() && !matches!(part, Part::MenuItem(_) | Part::Menu) {
+        if self.chrome.menu.is_some()
+            && !matches!(part, Part::MenuItem(_) | Part::MenuClose(_) | Part::Menu)
+        {
             self.close_menu();
             if part == Part::OffMenu {
                 return;
             }
+        }
+        if self.grouped() && self.pressed_session_tab(part, button) {
+            return;
         }
         match (part, button) {
             (Part::MainMenu, BUTTON_LEFT) => {
@@ -250,7 +255,8 @@ impl App {
                 | Part::FindUp
                 | Part::FindDown
                 | Part::Response(_)
-                | Part::MenuItem(_),
+                | Part::MenuItem(_)
+                | Part::MenuClose(_),
                 BUTTON_LEFT,
             ) => {
                 self.chrome.pressed = Some(part);
@@ -328,6 +334,7 @@ impl App {
                 Part::FindDown => self.find(false),
                 Part::Response(index) => self.respond(index == 1),
                 Part::MenuItem(index) => self.choose(index),
+                Part::MenuClose(index) => self.close_listed(index),
                 _ => {}
             }
         }
@@ -693,12 +700,14 @@ fn cursor(part: Part) -> Shape {
         | Part::NewTab
         | Part::Tab(_)
         | Part::CloseTab(_)
+        | Part::TabMenu(_)
         | Part::FindUp
         | Part::FindDown
         | Part::Response(_)
         | Part::Dialog
         | Part::MainMenu
         | Part::MenuItem(_)
+        | Part::MenuClose(_)
         | Part::Menu
         | Part::OffMenu => Shape::Default,
         Part::Edge(edge) => match edge {

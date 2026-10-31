@@ -26,6 +26,9 @@ pub enum Choice {
     SessionActions(SessionId),
     ShowSession(SessionId),
     SessionWindow(SessionId),
+    /// A tab of a session's list of tabs, by its key.
+    ShowTab(TerminalId),
+    NewTabIn(SessionId),
     Preferences,
     About,
     /// The main menu, for a window without its header bar.
@@ -35,7 +38,7 @@ pub enum Choice {
 }
 
 impl App {
-    fn item(&self, label: &str, choice: Choice, enabled: bool) -> (Item, Choice) {
+    pub(super) fn item(&self, label: &str, choice: Choice, enabled: bool) -> (Item, Choice) {
         let shortcut = match choice {
             Choice::Act(action) => self.shortcuts.label(action),
             _ => None,
@@ -44,6 +47,7 @@ impl App {
             label: label.to_owned(),
             shortcut,
             enabled,
+            ..Item::default()
         };
         (item, choice)
     }
@@ -52,16 +56,32 @@ impl App {
         self.item(label, Choice::Act(action), true)
     }
 
-    fn show_menu(&mut self, sections: Vec<Vec<(Item, Choice)>>, at: (f32, f32), main: bool) {
+    pub(super) fn show_menu(
+        &mut self,
+        sections: Vec<Vec<(Item, Choice)>>,
+        at: (f32, f32),
+        main: bool,
+    ) {
+        self.chrome.menu = Some(self.menu(sections, at, main));
+        self.popup = None;
+        self.hover();
+        self.dirty = true;
+        self.draw();
+    }
+
+    /// A menu of `sections`, keeping what each item does.
+    pub(super) fn menu(
+        &mut self,
+        sections: Vec<Vec<(Item, Choice)>>,
+        at: (f32, f32),
+        main: bool,
+    ) -> Menu {
         let (sections, choices): (Vec<Vec<Item>>, Vec<Vec<Choice>>) = sections
             .into_iter()
             .map(|section| section.into_iter().unzip())
             .unzip();
         self.choices = choices.into_iter().flatten().collect();
-        self.chrome.menu = Some(Menu::new(sections, at, main));
-        self.hover();
-        self.dirty = true;
-        self.draw();
+        Menu::new(sections, at, main)
     }
 
     /// The main menu: under its button in the header bar, or at `at` without one.
@@ -170,37 +190,15 @@ impl App {
         let Some(terminal) = self.tabs.get(index).map(|tab| tab.key) else {
             return;
         };
-        let mut sections = vec![
+        let sections = vec![
             vec![self.item("Rename Tab…", Choice::RenameTab(terminal), true)],
             vec![self.item("Close Tab", Choice::CloseTab(terminal), true)],
         ];
-        // Each session's tabs can go on their own while the window shows several.
-        if let Some(session) = self.tabs.get(index).map(|tab| tab.session)
-            && self.sessions.len() > 1
-        {
-            let label = self.session_label(session);
-            sections.push(vec![
-                self.item(
-                    &format!("Rename “{label}”…"),
-                    Choice::RenameSession(session),
-                    true,
-                ),
-                self.item(
-                    &format!("Detach “{label}”"),
-                    Choice::DetachSession(session),
-                    true,
-                ),
-                self.item(
-                    &format!("Close “{label}”"),
-                    Choice::CloseSession(session),
-                    true,
-                ),
-            ]);
-        }
         self.show_menu(sections, self.pointer_at(), false);
     }
 
     pub(super) fn close_menu(&mut self) {
+        self.popup = None;
         if self.chrome.menu.take().is_some() {
             self.choices.clear();
             self.hover();
@@ -242,6 +240,15 @@ impl App {
             Some(Choice::SessionWindow(session)) => {
                 self.open_window(vec!["--session".into(), session.0.to_string()]);
             }
+            Some(Choice::ShowTab(key)) => {
+                if let Some(index) = self.tab_of(key) {
+                    self.show(index);
+                }
+            }
+            Some(Choice::NewTabIn(session)) => {
+                self.show_session_tab(session);
+                self.new_tab();
+            }
             Some(Choice::Reattach) => {
                 let id = self.server.ask(Question::Sessions);
                 self.asked.insert(id, Asked::Reattach);
@@ -273,7 +280,7 @@ impl App {
     }
 
     /// Where a menu the keys opened goes: near the top, across the middle.
-    fn keyed_menu_at(&self) -> (f32, f32) {
+    pub(super) fn keyed_menu_at(&self) -> (f32, f32) {
         let width = self.size.map_or(0, |(width, _)| width);
         let x = (width as f32 / 2.0 - 160.0).max(8.0);
         (x, self.chrome.top() as f32 + 8.0)
@@ -353,6 +360,9 @@ impl App {
     /// Takes a key while a menu is open, which takes them all: Escape closes it, the
     /// arrows move between its items, and Enter chooses one.
     pub(super) fn menu_key(&mut self, event: &KeyEvent) -> bool {
+        if self.popup.is_some() && self.popup_key(event) {
+            return true;
+        }
         let Some(menu) = &mut self.chrome.menu else {
             return false;
         };

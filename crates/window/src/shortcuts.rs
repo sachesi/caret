@@ -38,6 +38,12 @@ pub enum Action {
     PreviousTab,
     /// Shows the tab of this number, counted from one.
     ShowTab(u8),
+    /// Lists the tabs of the session shown.
+    SessionTabs,
+    NextSession,
+    PreviousSession,
+    /// Shows the window's session of this number, counted from one.
+    ShowSession(u8),
 }
 
 /// Each action, its name in `config.toml`, and the keys it has unless bound to others.
@@ -88,6 +94,26 @@ const ACTIONS: &[(Action, &str, &[&str])] = &[
     (Action::ShowTab(7), "tab-7", &["Alt+7"]),
     (Action::ShowTab(8), "tab-8", &["Alt+8"]),
     (Action::ShowTab(9), "tab-9", &["Alt+9"]),
+    (Action::SessionTabs, "session-tabs", &["Ctrl+Shift+L"]),
+    (
+        Action::NextSession,
+        "next-session",
+        &["Ctrl+Shift+Page_Down"],
+    ),
+    (
+        Action::PreviousSession,
+        "previous-session",
+        &["Ctrl+Shift+Page_Up"],
+    ),
+    (Action::ShowSession(1), "session-1", &["Ctrl+Alt+1"]),
+    (Action::ShowSession(2), "session-2", &["Ctrl+Alt+2"]),
+    (Action::ShowSession(3), "session-3", &["Ctrl+Alt+3"]),
+    (Action::ShowSession(4), "session-4", &["Ctrl+Alt+4"]),
+    (Action::ShowSession(5), "session-5", &["Ctrl+Alt+5"]),
+    (Action::ShowSession(6), "session-6", &["Ctrl+Alt+6"]),
+    (Action::ShowSession(7), "session-7", &["Ctrl+Alt+7"]),
+    (Action::ShowSession(8), "session-8", &["Ctrl+Alt+8"]),
+    (Action::ShowSession(9), "session-9", &["Ctrl+Alt+9"]),
 ];
 
 /// Each action's name in `config.toml` and the keys it has unless bound to others.
@@ -259,6 +285,24 @@ mod tests {
             ..Modifiers::default()
         };
         assert_eq!(shortcuts.action(Keysym::space, ctrl), None);
+    }
+
+    #[test]
+    fn sessions_are_stepped_with_shift_and_picked_with_alt() {
+        let shortcuts = Shortcuts::new(&HashMap::new());
+        assert_eq!(
+            shortcuts.action(Keysym::Page_Down, CTRL_SHIFT),
+            Some(Action::NextSession)
+        );
+        let ctrl_alt = Modifiers {
+            ctrl: true,
+            alt: true,
+            ..Modifiers::default()
+        };
+        assert_eq!(
+            shortcuts.action(Keysym::_2, ctrl_alt),
+            Some(Action::ShowSession(2))
+        );
     }
 
     #[test]

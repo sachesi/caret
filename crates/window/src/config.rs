@@ -36,6 +36,15 @@ pub enum ColorScheme {
     Dark,
 }
 
+/// What a click on a session's tab does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionClick {
+    /// Shows the session's last tab, or lists its tabs if it is shown already.
+    Switch,
+    /// Lists its tabs.
+    Popup,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::struct_excessive_bools,
@@ -71,6 +80,14 @@ pub struct Config {
     pub title_bar: bool,
     /// The compositor draws the window's frame where it offers to.
     pub server_side_decorations: bool,
+    /// What a click on a session's tab does, while a window shows several.
+    pub session_click: SessionClick,
+    /// Each session has a colour of its own, on its tab and around the panes.
+    pub session_colors: bool,
+    /// A middle click on a session's tab detaches the session.
+    pub middle_click_detach: bool,
+    /// A session's list of tabs shows what each one holds.
+    pub tab_previews: bool,
     /// The keys of the actions bound to others than Caret's.
     pub keys: HashMap<Action, Vec<Shortcut>>,
     /// The names of the profiles, sets of settings windows may be opened with, in the
@@ -100,6 +117,10 @@ impl Default for Config {
             close_detaches: false,
             title_bar: true,
             server_side_decorations: true,
+            session_click: SessionClick::Switch,
+            session_colors: true,
+            middle_click_detach: false,
+            tab_previews: false,
             keys: HashMap::new(),
             profiles: Vec::new(),
         }
@@ -266,6 +287,16 @@ impl Config {
             "close-detaches" => self.close_detaches = boolean()?,
             "title-bar" => self.title_bar = boolean()?,
             "server-side-decorations" => self.server_side_decorations = boolean()?,
+            "session-click" => {
+                self.session_click = match item.as_str() {
+                    Some("switch") => SessionClick::Switch,
+                    Some("popup") => SessionClick::Popup,
+                    _ => return Err("\"switch\" or \"popup\""),
+                };
+            }
+            "session-colors" => self.session_colors = boolean()?,
+            "middle-click-detach" => self.middle_click_detach = boolean()?,
+            "tab-previews" => self.tab_previews = boolean()?,
             _ => return Err("a setting Caret knows"),
         }
         Ok(())
@@ -352,6 +383,17 @@ const STARTER: &str = r##"# Caret's settings. Take the # off a setting to change
 #title-bar = true
 # Whether the compositor draws the window's frame, where it offers to.
 #server-side-decorations = true
+# While a window shows several sessions, each has one tab. "switch": a click on
+# another session's tab shows its last tab, and on the shown session's tab or
+# the arrow lists its tabs; "popup": every click lists them.
+#session-click = "switch"
+# Whether each session has a colour of its own, on its tab, its list of tabs and
+# the ring of control mode.
+#session-colors = true
+# Whether a middle click on a session's tab detaches the session.
+#middle-click-detach = false
+# Whether a session's list of tabs shows a small picture of each.
+#tab-previews = false
 
 # Profiles are settings of their own for the windows opened with them, from the
 # main menu or with caret --profile NAME. Each is a table of the settings above,

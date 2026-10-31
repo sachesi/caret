@@ -44,6 +44,11 @@ const TAB_INSET: f32 = 3.0;
 const TAB_RADIUS: f32 = 9.0;
 /// From a tab's right edge to its close button's centre.
 const TAB_CLOSE_END: f32 = 19.0;
+/// A session tab's dot of its colour, and how far its middle is from the tab's start;
+/// the room between its title and its count of tabs.
+const TAB_DOT: f32 = 8.0;
+const TAB_DOT_START: f32 = 14.0;
+const TAB_COUNT_GAP: f32 = 8.0;
 /// Between the find bar's edges, its field and its buttons; the field's padding.
 const SEARCH_INSET: f32 = 6.0;
 const FIELD_PADDING: f32 = 9.0;
@@ -179,6 +184,16 @@ pub struct TabLabel {
     pub title: String,
     /// Something happened in the tab while it was out of sight.
     pub attention: bool,
+    /// It stands for a session, while the window shows several.
+    pub session: Option<SessionLabel>,
+}
+
+/// What a session's tab shows beside its title.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionLabel {
+    /// How many tabs it has.
+    pub tabs: usize,
+    pub color: Option<u32>,
 }
 
 /// Text an input method is composing, over the cursor's cell.
@@ -290,17 +305,21 @@ pub enum Part {
     NewTab,
     /// The button that opens the main menu.
     MainMenu,
-    /// The tab at this index, and its close button.
+    /// The tab at this index, and its close button; a session's tab has a button
+    /// that lists its tabs in place of the close button.
     Tab(usize),
     CloseTab(usize),
+    TabMenu(usize),
     SearchField,
     FindUp,
     FindDown,
     /// A dialog's button, and the rest of the window under the dialog.
     Response(usize),
     Dialog,
-    /// A menu's item, the menu between its items, and the window outside it.
+    /// A menu's item, the button that closes what it stands for, the menu between its
+    /// items, and the window outside it.
     MenuItem(usize),
+    MenuClose(usize),
     Menu,
     OffMenu,
 }
@@ -467,7 +486,15 @@ impl Chrome {
         let middle = header + f64::from(TAB_BAR) / 2.0;
         let reach = f64::from(BUTTON) / 2.0;
         Some(if (x - close).abs() < reach && (y - middle).abs() < reach {
-            Part::CloseTab(index)
+            if self
+                .tabs
+                .get(index)
+                .is_some_and(|tab| tab.session.is_some())
+            {
+                Part::TabMenu(index)
+            } else {
+                Part::CloseTab(index)
+            }
         } else {
             Part::Tab(index)
         })
@@ -480,6 +507,13 @@ impl Chrome {
         self.shares(width as f32)
             .position(|(left, share)| x < left + share)
             .or_else(|| self.tabs.len().checked_sub(1))
+    }
+
+    /// Where a menu opened from the tab at `index` of the strip of a window `width` wide
+    /// goes: under the tab, at its left edge.
+    pub fn under_tab(&self, index: usize, width: u32) -> Option<(f32, f32)> {
+        let (left, _) = self.shares(width as f32).nth(index)?;
+        Some((left, (self.header() + TAB_BAR) as f32))
     }
 
     /// Each tab's share of the strip of a window `width` wide: its left edge and width.
@@ -754,8 +788,9 @@ impl Painter<'_> {
         for (index, (left, share)) in chrome.shares(self.width / scale).enumerate() {
             let (left, share) = (margin + left * scale, share * scale);
             let inset = TAB_INSET * scale;
-            let hovered =
-                chrome.over(Part::Tab(index), false) || chrome.over(Part::CloseTab(index), false);
+            let hovered = chrome.over(Part::Tab(index), false)
+                || chrome.over(Part::CloseTab(index), false)
+                || chrome.over(Part::TabMenu(index), false);
             let shade = if index == chrome.selected {
                 Some(colors.button[0])
             } else if hovered {
@@ -775,15 +810,18 @@ impl Painter<'_> {
             }
             let room = share - 2.0 * (inset + TAB_CLOSE_END * scale + BUTTON * scale / 2.0);
             let label = chrome.tabs.get(index);
-            if let Some(label) = label.filter(|_| room > 0.0) {
-                let tab = Drawing::Label {
-                    text: label.title.clone(),
-                    width: room as u32,
-                    bold: false,
-                };
-                if let Some(label) = draw(&tab) {
-                    quads.push(self.label(left + share / 2.0, middle, label, colors.foreground));
-                }
+            let session = label.and_then(|label| label.session.as_ref());
+            if let Some(label) = label {
+                self.tab_title(quads, label, [left, share, middle, room], draw);
+            }
+            if let Some(color) = session.and_then(|session| session.color) {
+                let dot = TAB_DOT * scale;
+                quads.push(circle(
+                    left + inset + TAB_DOT_START * scale,
+                    middle,
+                    dot,
+                    chrome.dim(color),
+                ));
             }
             if label.is_some_and(|label| label.attention) {
                 let (width, height) = ((share / 3.0).min(64.0 * scale), 3.0 * scale);
@@ -799,14 +837,66 @@ impl Painter<'_> {
                     )
                 });
             }
-            if index == chrome.selected || hovered {
+            // A session's button is always there: it is how its tabs are reached.
+            if index == chrome.selected || hovered || session.is_some() {
                 let centre = left + share - TAB_CLOSE_END * scale;
-                if chrome.over(Part::CloseTab(index), false) {
-                    let shade = colors.flat[usize::from(chrome.over(Part::CloseTab(index), true))];
+                let (button, icon) = if session.is_some() {
+                    (Part::TabMenu(index), Icon::Down)
+                } else {
+                    (Part::CloseTab(index), Icon::Close)
+                };
+                if chrome.over(button, false) {
+                    let shade = colors.flat[usize::from(chrome.over(button, true))];
                     quads.push(circle(centre, middle, BUTTON * scale, chrome.dim(shade)));
                 }
-                if let Some(icon) = draw(&Drawing::Icon(Icon::Close)) {
+                if let Some(icon) = draw(&Drawing::Icon(icon)) {
                     quads.push(centred(centre, middle, icon, chrome.dim(colors.foreground)));
+                }
+            }
+        }
+    }
+
+    /// A tab's title, centred in its share, and a session's count of tabs after it.
+    fn tab_title(
+        &self,
+        quads: &mut Vec<Quad>,
+        label: &TabLabel,
+        [left, share, middle, room]: [f32; 4],
+        draw: &mut impl FnMut(&Drawing) -> Option<(u32, GpuGlyph)>,
+    ) {
+        let (chrome, scale) = (self.chrome, self.scale);
+        let colors = chrome.colors();
+        let session = label.session.as_ref();
+        // A session's count of tabs goes at the right of its title, dimmed.
+        let count = session
+            .map(|session| Drawing::Label {
+                text: session.tabs.to_string(),
+                width: room.max(0.0) as u32,
+                bold: false,
+            })
+            .and_then(|count| draw(&count));
+        let count_width = count.map_or(0.0, |(_, glyph)| {
+            halves(glyph.size).0 as f32 + TAB_COUNT_GAP * scale
+        });
+        if room - count_width > 0.0 {
+            let tab = Drawing::Label {
+                text: label.title.clone(),
+                width: (room - count_width) as u32,
+                bold: false,
+            };
+            if let Some(title) = draw(&tab) {
+                let centre = left + (share - count_width) / 2.0;
+                let title_width = halves(title.1.size).0 as f32;
+                quads.push(self.label(centre, middle, title, colors.foreground));
+                if let Some(count) = count {
+                    let x = centre + title_width / 2.0 + TAB_COUNT_GAP * scale;
+                    let dim = (colors.foreground & !0xff) | 0x8c;
+                    quads.push(self.label(
+                        x + halves(count.1.size).0 as f32 / 2.0,
+                        middle,
+                        count,
+                        chrome.dim(dim),
+                    ));
                 }
             }
         }
@@ -1202,6 +1292,7 @@ mod tests {
         TabLabel {
             title: title.to_owned(),
             attention: false,
+            session: None,
         }
     }
 

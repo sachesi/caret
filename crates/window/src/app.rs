@@ -105,6 +105,7 @@ mod menus;
 mod pointer;
 mod scale;
 mod search;
+mod sessions;
 mod tabs;
 mod text_input;
 mod toast;
@@ -168,6 +169,12 @@ struct App {
     sessions: Vec<SessionId>,
     /// The names the user gave sessions.
     session_names: HashMap<SessionId, String>,
+    /// The colours the user gave sessions, by their place among those there are.
+    session_colors: HashMap<SessionId, u8>,
+    /// The key of each session's tab shown last, to show again when the session is.
+    last_tabs: HashMap<SessionId, TerminalId>,
+    /// The session whose tabs the menu open lists.
+    popup: Option<SessionId>,
     tabs: Vec<tabs::Tab>,
     selected: usize,
     /// A tab has been asked for and not yet opened.
@@ -354,6 +361,9 @@ pub fn run(start: Start) -> Result<(), AppError> {
         asked,
         sessions: Vec::new(),
         session_names: HashMap::new(),
+        session_colors: HashMap::new(),
+        last_tabs: HashMap::new(),
+        popup: None,
         tabs: Vec::new(),
         selected: 0,
         opening: false,
@@ -1288,10 +1298,23 @@ impl App {
             Action::NextTab => self.step_tab(1),
             Action::PreviousTab => self.step_tab(-1),
             Action::ShowTab(number) => {
-                if let Some(index) = usize::from(number).checked_sub(1) {
+                let keys = self.session_keys();
+                if let Some(index) = usize::from(number)
+                    .checked_sub(1)
+                    .and_then(|at| keys.get(at))
+                    .and_then(|&key| self.tab_of(key))
+                {
                     self.show(index);
                 }
             }
+            Action::SessionTabs => {
+                if let Some(session) = self.shown_session() {
+                    self.session_popup(session);
+                }
+            }
+            Action::NextSession => self.step_session(1),
+            Action::PreviousSession => self.step_session(-1),
+            Action::ShowSession(number) => self.nth_session(usize::from(number)),
         }
         true
     }

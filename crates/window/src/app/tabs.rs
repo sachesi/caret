@@ -49,13 +49,13 @@ pub struct Tab {
     /// The name the user gave the tab.
     name: Option<String>,
     /// Something happened in it while it was out of sight.
-    attention: bool,
+    pub attention: bool,
     /// The focused pane takes the whole tab, the others hidden.
     pub zoomed: bool,
 }
 
 impl Tab {
-    fn label(&self) -> &str {
+    pub(super) fn label(&self) -> &str {
         let title = self
             .panes
             .get(&self.focused)
@@ -176,7 +176,7 @@ impl App {
     }
 
     /// Where the tabs of `session` start among the window's, and how many it has.
-    fn group(&self, session: SessionId) -> (usize, usize) {
+    pub(super) fn group(&self, session: SessionId) -> (usize, usize) {
         let order = |session: SessionId| {
             self.sessions
                 .iter()
@@ -519,6 +519,7 @@ impl App {
             self.swap_focused();
         }
         self.tabs[index].attention = false;
+        self.remember_tab();
         self.reveal();
         self.retitle();
     }
@@ -571,13 +572,18 @@ impl App {
         self.draw();
     }
 
-    /// Shows the tab `steps` after the shown one, round from the last to the first.
+    /// Shows the tab `steps` after the shown one among its session's, round from the
+    /// last to the first.
     pub(super) fn step_tab(&mut self, steps: isize) {
-        if let Ok(count) = isize::try_from(self.tabs.len())
+        let Some(session) = self.shown_session() else {
+            return;
+        };
+        let (start, count) = self.group(session);
+        if let Ok(count) = isize::try_from(count)
             && count > 0
-            && let Ok(selected) = isize::try_from(self.selected)
+            && let Ok(at) = isize::try_from(self.selected.saturating_sub(start))
         {
-            self.show((selected + steps).rem_euclid(count).unsigned_abs());
+            self.show(start + (at + steps).rem_euclid(count).unsigned_abs());
         }
     }
 
@@ -711,34 +717,51 @@ impl App {
         }
     }
 
-    /// Shows the shown tab's title on the window and every tab's in the strip.
+    /// Shows the shown tab's title on the window, and in the strip every tab's, or
+    /// every session's while the window shows several.
     pub(super) fn retitle(&mut self) {
-        let several = self.sessions.len() > 1;
-        let labels: Vec<TabLabel> = self
-            .tabs
-            .iter()
-            .map(|tab| TabLabel {
-                title: if several {
-                    format!("{} · {}", self.session_label(tab.session), tab.label())
-                } else {
-                    tab.label().to_owned()
-                },
-                attention: tab.attention,
-            })
-            .collect();
-        let title = labels
-            .get(self.selected)
-            .map_or_else(|| "Caret".to_owned(), |label| label.title.clone());
+        let shown = self.tabs.get(self.selected);
+        let title = match shown {
+            None => "Caret".to_owned(),
+            Some(tab) if self.grouped() => {
+                format!("{} · {}", self.session_label(tab.session), tab.label())
+            }
+            Some(tab) => match self.session_names.get(&tab.session) {
+                Some(name) => format!("{name} — {}", tab.label()),
+                None => tab.label().to_owned(),
+            },
+        };
         if title != self.chrome.title {
             self.window.set_title(title.clone());
             self.chrome.title = title;
         }
+        let (labels, selected) = if self.grouped() {
+            let session = self.shown_session();
+            let selected = self
+                .sessions
+                .iter()
+                .position(|&shown| Some(shown) == session)
+                .unwrap_or(0);
+            (self.session_labels(), selected)
+        } else {
+            let labels = self
+                .tabs
+                .iter()
+                .map(|tab| TabLabel {
+                    title: tab.label().to_owned(),
+                    attention: tab.attention,
+                    session: None,
+                })
+                .collect();
+            (labels, self.selected)
+        };
         let strip = self.chrome.tab_bar();
         self.chrome.tabs = labels;
-        self.chrome.selected = self.selected;
+        self.chrome.selected = selected;
         if self.chrome.tab_bar() != strip {
             self.fit();
         }
+        self.refresh_popup();
         self.dirty = true;
         self.draw();
     }
