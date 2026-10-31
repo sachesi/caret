@@ -1,5 +1,6 @@
 //! Caret's window: it shows the terminals the server keeps, drawn with Vulkan.
 
+mod access;
 mod app;
 mod atlas;
 mod box_drawing;

@@ -104,6 +104,7 @@ mod control;
 mod menus;
 mod pointer;
 mod scale;
+mod screen_reader;
 mod search;
 mod sessions;
 mod tabs;
@@ -252,6 +253,10 @@ struct App {
     /// The atlas whose entries the render thread has, and how many of them.
     sent_glyphs: (u64, usize),
     exit: bool,
+    /// Tells screen readers what the window shows.
+    reader: accesskit_unix::Adapter,
+    /// A screen reader listens, so is told of each frame.
+    listened: bool,
 }
 
 /// Protocols the window uses where the compositor offers them.
@@ -357,6 +362,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
     let mut events: EventLoop<App> = EventLoop::try_new()?;
     let (pastes, pasted) = calloop::channel::channel();
     let (toaster, toasts) = calloop::channel::channel();
+    let (reader, heard) = screen_reader::adapter();
     let clipboard = clipboard::Clipboard::new(
         DataDeviceManagerState::bind(&globals, &qh).ok(),
         PrimarySelectionManagerState::bind(&globals, &qh).ok(),
@@ -428,6 +434,8 @@ pub fn run(start: Start) -> Result<(), AppError> {
         waiting: false,
         sent_glyphs: (0, 0),
         exit: false,
+        reader,
+        listened: false,
     };
     app.activate_at_start();
 
@@ -440,6 +448,14 @@ pub fn run(start: Start) -> Result<(), AppError> {
         .insert_source(rendered, |event, (), app| {
             if let calloop::channel::Event::Msg(rendered) = event {
                 app.rendered(rendered);
+            }
+        })
+        .map_err(|error| AppError::Loop(error.error))?;
+    events
+        .handle()
+        .insert_source(heard, |event, (), app| {
+            if let calloop::channel::Event::Msg(heard) = event {
+                app.heard(heard);
             }
         })
         .map_err(|error| AppError::Loop(error.error))?;
@@ -1107,6 +1123,7 @@ impl App {
         self.render.draw(job, target);
         // Drawn, so ready for the next.
         self.ask_frame();
+        self.tell_reader();
     }
 
     /// The window's frame and bars for a window `size` big, their text and icons put in
@@ -1372,6 +1389,7 @@ impl App {
 
     fn set_focus(&mut self, focused: bool) {
         self.focused = focused;
+        self.reader.update_window_focus_state(focused);
         if !focused {
             self.close_menu();
         }

@@ -88,6 +88,37 @@ impl Grid {
         self.selection.is_some()
     }
 
+    /// The characters of `line` as a screen reader reads them, left to right.
+    pub fn characters(&self, line: usize) -> Vec<crate::access::Character> {
+        let Some(row) = self.rows.get(line) else {
+            return Vec::new();
+        };
+        row.iter()
+            .filter_map(|cell| {
+                let glyph = cell.glyph.as_ref()?;
+                let text = match &glyph.text {
+                    GlyphText::Char(c) => c.to_string(),
+                    GlyphText::Cluster(text) => text.to_string(),
+                };
+                Some(crate::access::Character {
+                    text,
+                    column: cell.column,
+                    cells: if glyph.wide { 2 } else { 1 },
+                })
+            })
+            .collect()
+    }
+
+    /// The selection's first and last cell, as line and column.
+    pub fn selection(&self) -> Option<((u16, u16), (u16, u16))> {
+        self.selection.map(|selection| {
+            (
+                (selection.start.line, selection.start.column),
+                (selection.end.line, selection.end.column),
+            )
+        })
+    }
+
     /// The cells of `columns` on `lines` seen from afar, as 0xRRGGBBAA: a cell with a
     /// glyph shows half its glyph's colour, half its background.
     pub fn shade(&self, columns: Range<usize>, lines: Range<usize>) -> u32 {
