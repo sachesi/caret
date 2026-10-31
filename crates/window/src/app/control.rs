@@ -267,23 +267,10 @@ enum Landing {
 
 /// Where a pane let go of at `point` over `target`'s `rect` goes: beside it at the edge
 /// nearest, unless the point is in its middle.
-fn landing_in(rect: Rect, (x, y): (f64, f64), target: TerminalId) -> Landing {
-    let across = (x - f64::from(rect.x)) / f64::from(rect.width.max(1));
-    let down = (y - f64::from(rect.y)) / f64::from(rect.height.max(1));
-    let (nearest, side) = [
-        (across, Side::Left),
-        (1.0 - across, Side::Right),
-        (down, Side::Above),
-        (1.0 - down, Side::Below),
-    ]
-    .into_iter()
-    .fold((f64::INFINITY, Side::Left), |near, edge| {
-        if edge.0 < near.0 { edge } else { near }
-    });
-    if nearest > 0.25 {
-        Landing::Swap(target)
-    } else {
-        Landing::Beside(target, side)
+fn landing_in(rect: Rect, point: (f64, f64), target: TerminalId) -> Landing {
+    match panes::side_near(rect, point) {
+        Some(side) => Landing::Beside(target, side),
+        None => Landing::Swap(target),
     }
 }
 

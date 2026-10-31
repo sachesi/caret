@@ -2,7 +2,7 @@
 //! and which pane is next to which.
 
 use caret_protocol::TerminalId;
-use caret_protocol::layout::{Node, WHOLE};
+use caret_protocol::layout::{Node, Side, WHOLE};
 
 /// A rectangle in device pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -44,7 +44,9 @@ impl Divider {
     pub fn share_at(&self, at: f64, gap: i32) -> u16 {
         let room = f64::from((self.length - gap).max(1));
         let first = at - f64::from(self.start) - f64::from(gap) / 2.0;
-        (first / room * f64::from(WHOLE)).clamp(1.0, f64::from(WHOLE - 1)) as u16
+        (first / room * f64::from(WHOLE))
+            .round()
+            .clamp(1.0, f64::from(WHOLE - 1)) as u16
     }
 }
 
@@ -95,7 +97,8 @@ fn place_into(node: &Node, area: Rect, gap: i32, placed: &mut Placed) {
         } => {
             let length = if *vertical { area.width } else { area.height };
             let room = (length - gap).max(0);
-            let before = (i64::from(room) * i64::from(*share) / i64::from(WHOLE)) as i32;
+            let before = ((i64::from(room) * i64::from(*share) + i64::from(WHOLE) / 2)
+                / i64::from(WHOLE)) as i32;
             let after = room - before;
             let (one, divider, two) = if *vertical {
                 (
@@ -183,6 +186,23 @@ pub fn neighbour(placed: &Placed, from: TerminalId, direction: Direction) -> Opt
             (other_x - x).abs() + (other_y - y).abs()
         })
         .map(|&(pane, _)| pane)
+}
+
+/// The side of `rect` nearest `(x, y)`, unless the point is in its middle.
+pub fn side_near(rect: Rect, (x, y): (f64, f64)) -> Option<Side> {
+    let across = (x - f64::from(rect.x)) / f64::from(rect.width.max(1));
+    let down = (y - f64::from(rect.y)) / f64::from(rect.height.max(1));
+    let (nearest, side) = [
+        (across, Side::Left),
+        (1.0 - across, Side::Right),
+        (down, Side::Above),
+        (1.0 - down, Side::Below),
+    ]
+    .into_iter()
+    .fold((f64::INFINITY, Side::Left), |near, edge| {
+        if edge.0 < near.0 { edge } else { near }
+    });
+    (nearest <= 0.25).then_some(side)
 }
 
 /// The divider that moves `from`'s edge towards `direction` by a `cell` (wide, high), and
@@ -357,5 +377,28 @@ mod tests {
             before(edge(&placed, top_right, false, false)),
             Some(TerminalId(3))
         );
+    }
+
+    #[test]
+    fn a_step_of_a_cell_moves_a_divider_by_a_cell() {
+        let mut root = tree();
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 109,
+            height: 27,
+        };
+        let width = |root: &Node| place(root, area, 1).rect(TerminalId(1)).unwrap().width;
+        let before = width(&root);
+        let (divider, share) = resized(
+            &place(&root, area, 1),
+            TerminalId(1),
+            Direction::Right,
+            (1.0, 1.0),
+            1,
+        )
+        .unwrap();
+        assert!(root.divide(divider.before, share));
+        assert_eq!(width(&root), before + 1);
     }
 }

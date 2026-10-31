@@ -1,7 +1,11 @@
 //! A session drawn in the terminal Caret runs in, with escape sequences: its tabs' panes
 //! side by side as the server lays them out, a line of tabs under them, and the keys
-//! going to the focused pane. Ctrl+] starts control mode, whose keys move between panes
-//! and tabs, split, close and zoom panes, and detach.
+//! going to the focused pane. Ctrl+Shift+Space starts control mode where the terminal
+//! tells it apart, Ctrl+] elsewhere; its keys move between panes and tabs, move, resize,
+//! split, close and zoom panes, and detach. The mouse focuses panes, picks tabs, drags
+//! dividers and, with Alt or in control mode, moves panes.
+
+mod host;
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -10,19 +14,19 @@ use std::os::unix::net::UnixStream;
 use std::sync::mpsc;
 use std::time::Duration;
 
+use caret_protocol::encode::{self, Key, Modifiers, MouseAction, MouseButton, Press};
 use caret_protocol::layout::Node;
 use caret_protocol::{
-    Answer, BOLD, Bytes, Cell, Command, Frame, GlyphText, ITALIC, Message, Point, Question,
-    Request, Rgb, SessionId, Size, Tab, TerminalId,
+    Answer, BOLD, Bytes, Cell, Command, Frame, GlyphText, ITALIC, Message, Mode, Point, Question,
+    Request, Rgb, Scroll, SessionId, Size, Tab, TerminalId,
 };
 use rustix::termios::{self, OptionalActions};
 
-use crate::panes::{self, Direction, Rect};
+use crate::panes::{self, Direction, Divider, Rect};
+use host::{Host, Input, Mouse};
 
-/// The byte Ctrl+] sends, which starts control mode.
-const CONTROL: u8 = 0x1d;
-
-const HINTS: &str = "arrows focus · n p tab · v s split · x close · z zoom · d detach · Esc";
+const HINTS: &str = "arrows focus · shift swap · ctrl resize · n p tab · v s split · x close \
+                     · z zoom · t to tab · d detach · Esc";
 
 /// Shows `session` in this terminal until it is detached or ends.
 ///
@@ -39,10 +43,18 @@ pub fn run(session: SessionId) -> Result<(), String> {
     raw.make_raw();
     termios::tcsetattr(&stdin, OptionalActions::Now, &raw)
         .map_err(|error| format!("setting the terminal up: {error}"))?;
-    // The other screen, the cursor hidden until a pane shows its own.
-    print!("\x1b[?1049h\x1b[?25l");
-    let ended = show(&mut stream, session);
-    print!("\x1b[0m\x1b[?25h\x1b[?1049l");
+    let host = host::probe();
+    // The other screen, the cursor hidden until a pane shows its own, mouse reports while
+    // a button is held, and keys written apart where the terminal can.
+    print!("\x1b[?1049h\x1b[?25l\x1b[?1002h\x1b[?1006h");
+    if host.enhanced {
+        print!("\x1b[>1u");
+    }
+    let ended = show(&mut stream, session, &host);
+    if host.enhanced {
+        print!("\x1b[<u");
+    }
+    print!("\x1b[?1006l\x1b[?1002l\x1b[0m\x1b[?25h\x1b[?1049l");
     let _ = io::stdout().flush();
     let _ = termios::tcsetattr(&stdin, OptionalActions::Now, &saved);
     ended
@@ -60,6 +72,7 @@ struct Screen {
     rows: Vec<Vec<Cell>>,
     background: Rgb,
     cursor: Option<Point>,
+    mode: Mode,
 }
 
 impl Screen {
@@ -76,6 +89,7 @@ impl Screen {
         }
         self.background = frame.background;
         self.cursor = frame.cursor.map(|cursor| cursor.point);
+        self.mode = frame.mode;
     }
 }
 
@@ -97,14 +111,28 @@ struct Client {
     /// Its size in cells, and in pixels where the terminal says.
     size: (u16, u16, u16, u16),
     sizes: HashMap<TerminalId, Size>,
+    /// The terminal it runs in writes keys apart: Ctrl+Shift+Space starts control mode.
+    enhanced: bool,
     control: bool,
     zoomed: bool,
     asked: u32,
     /// The pane split off, to give the keys once the server lays it out.
     opened: Option<TerminalId>,
+    /// The pane taken out to a tab of its own, to show once the tab is there.
+    moved: Option<TerminalId>,
+    drag: Option<Drag>,
 }
 
-fn show(stream: &mut UnixStream, session: SessionId) -> Result<(), String> {
+/// What a held mouse button moves.
+#[derive(Clone, Copy)]
+enum Drag {
+    Divider(Divider),
+    Pane(TerminalId),
+    /// The program asked for the mouse.
+    Program(TerminalId),
+}
+
+fn show(stream: &mut UnixStream, session: SessionId, host: &Host) -> Result<(), String> {
     let writer = stream.try_clone().map_err(|error| error.to_string())?;
     let (events, received) = mpsc::channel();
     let mut reader = stream.try_clone().map_err(|error| error.to_string())?;
@@ -134,12 +162,18 @@ fn show(stream: &mut UnixStream, session: SessionId) -> Result<(), String> {
         titles: HashMap::new(),
         size: window_size(),
         sizes: HashMap::new(),
+        enhanced: host.enhanced,
         control: false,
         zoomed: false,
         asked: 0,
         opened: None,
+        moved: None,
+        drag: None,
     };
     client.send(&Request::Attach { session });
+    if !host.typed.is_empty() {
+        client.typed(&host.typed);
+    }
     loop {
         match received.recv_timeout(Duration::from_millis(250)) {
             Ok(Event::Message(message)) => {
@@ -279,6 +313,15 @@ impl Client {
                     state.root = root;
                 }
                 self.zoomed = false;
+                let moved = self.moved.map(|terminal| Node::Pane { terminal });
+                if let Some(index) = self
+                    .tabs
+                    .iter()
+                    .position(|state| Some(&state.root) == moved.as_ref())
+                {
+                    self.moved = None;
+                    self.show_tab(index);
+                }
                 self.resize();
             }
             Message::SessionClosed { session } if session == self.session => return false,
@@ -295,6 +338,7 @@ impl Client {
                     rows: Vec::new(),
                     background: Rgb::default(),
                     cursor: None,
+                    mode: Mode::default(),
                 });
                 screen.apply(frame);
                 if self.placed().rect(terminal).is_some() {
@@ -351,77 +395,301 @@ impl Client {
     fn typed(&mut self, bytes: &[u8]) -> bool {
         let mut rest = bytes;
         while !rest.is_empty() {
-            if self.control {
-                let (used, go_on) = self.control_key(rest);
-                rest = &rest[used.max(1).min(rest.len())..];
-                if !go_on {
-                    return false;
+            let (input, used) = host::next(rest, self.enhanced);
+            rest = &rest[used.max(1).min(rest.len())..];
+            match input {
+                Input::Control => self.control = !self.control,
+                Input::Mouse(mouse) => self.mouse(mouse),
+                Input::Key(key, modifiers) if self.control => {
+                    let bytes = encode::key(key, modifiers, Mode::default()).unwrap_or_default();
+                    if !self.control_keys(&bytes) {
+                        return false;
+                    }
                 }
-                continue;
-            }
-            let until = rest.iter().position(|&byte| byte == CONTROL);
-            let (typed, after) = rest.split_at(until.unwrap_or(rest.len()));
-            if !typed.is_empty()
-                && let Some(terminal) = self.tab().map(|tab| tab.focused)
-            {
-                self.send(&Request::Input {
-                    terminal,
-                    bytes: Bytes(typed.to_vec()),
-                    bottom: true,
-                });
-            }
-            if until.is_some() {
-                self.control = true;
-                rest = &after[1..];
-            } else {
-                rest = &[];
+                Input::Bytes(bytes) if self.control => {
+                    if !self.control_keys(bytes) {
+                        return false;
+                    }
+                }
+                Input::Key(key, modifiers) => self.key(key, modifiers),
+                Input::Bytes(bytes) => {
+                    if let Some(terminal) = self.focused() {
+                        self.input(terminal, bytes.to_vec(), true);
+                    }
+                }
             }
         }
         true
     }
 
-    /// Does what the key at the start of `bytes` says in control mode: how many bytes it
-    /// took, and false to detach.
-    fn control_key(&mut self, bytes: &[u8]) -> (usize, bool) {
-        let arrow = match bytes {
-            [0x1b, b'[' | b'O', b'A', ..] | [b'k', ..] => Some(Direction::Up),
-            [0x1b, b'[' | b'O', b'B', ..] | [b'j', ..] => Some(Direction::Down),
-            [0x1b, b'[' | b'O', b'C', ..] | [b'l', ..] => Some(Direction::Right),
-            [0x1b, b'[' | b'O', b'D', ..] | [b'h', ..] => Some(Direction::Left),
+    fn focused(&self) -> Option<TerminalId> {
+        self.tab().map(|tab| tab.focused)
+    }
+
+    fn mode(&self, terminal: TerminalId) -> Mode {
+        self.screens
+            .get(&terminal)
+            .map_or(Mode::default(), |screen| screen.mode)
+    }
+
+    fn input(&mut self, terminal: TerminalId, bytes: Vec<u8>, bottom: bool) {
+        if !bytes.is_empty() {
+            self.send(&Request::Input {
+                terminal,
+                bytes: Bytes(bytes),
+                bottom,
+            });
+        }
+    }
+
+    /// A key the terminal wrote apart, encoded as the focused pane's program wants it.
+    fn key(&mut self, key: Key, modifiers: Modifiers) {
+        let Some(terminal) = self.focused() else {
+            return;
+        };
+        let text = match key {
+            Key::Char(c) if !modifiers.ctrl && !modifiers.alt => Some(c.to_string()),
             _ => None,
         };
-        if let Some(direction) = arrow {
-            self.focus_towards(direction);
-            return (if bytes[0] == 0x1b { 3 } else { 1 }, true);
+        let mode = self.mode(terminal);
+        if let Some(bytes) = encode::key_event(key, modifiers, Press::Down, text.as_deref(), mode) {
+            self.input(terminal, bytes, true);
         }
-        match bytes[0] {
-            b'n' => self.step_tab(1),
-            b'p' => self.step_tab(self.tabs.len().saturating_sub(1)),
-            b'v' => self.split(true),
-            b's' => self.split(false),
-            b'x' => {
-                if let Some(terminal) = self.tab().map(|tab| tab.focused) {
-                    self.send(&Request::ClosePane { terminal });
+    }
+
+    /// Does what keys say in control mode, an escape sequence whole or else each byte;
+    /// false to detach. A key it does not know leaves the mode, and the rest are dropped.
+    fn control_keys(&mut self, bytes: &[u8]) -> bool {
+        if bytes.first() == Some(&0x1b) {
+            match arrow(bytes) {
+                Some((direction, 1)) => self.focus_towards(direction),
+                Some((direction, 2)) => self.swap_towards(direction),
+                Some((direction, 5)) => self.resize_towards(direction),
+                _ => self.control = false,
+            }
+            return true;
+        }
+        for &byte in bytes {
+            match byte {
+                b'h' => self.focus_towards(Direction::Left),
+                b'j' => self.focus_towards(Direction::Down),
+                b'k' => self.focus_towards(Direction::Up),
+                b'l' => self.focus_towards(Direction::Right),
+                b'H' => self.swap_towards(Direction::Left),
+                b'J' => self.swap_towards(Direction::Down),
+                b'K' => self.swap_towards(Direction::Up),
+                b'L' => self.swap_towards(Direction::Right),
+                b'n' => self.step_tab(1),
+                b'p' => self.step_tab(self.tabs.len().saturating_sub(1)),
+                b'v' => self.split(true),
+                b's' => self.split(false),
+                b'x' => {
+                    if let Some(terminal) = self.focused() {
+                        self.send(&Request::ClosePane { terminal });
+                    }
+                }
+                b'z' => {
+                    self.zoomed = !self.zoomed;
+                    self.resize();
+                }
+                b't' => {
+                    if let Some(terminal) = self.focused() {
+                        self.pane_to_tab(terminal);
+                    }
+                }
+                b'd' => return false,
+                _ => {
+                    self.control = false;
+                    return true;
                 }
             }
-            b'z' => {
-                self.zoomed = !self.zoomed;
-                self.resize();
-            }
-            b'd' => return (1, false),
-            // A key it does not know leaves the mode; an escape sequence goes whole.
-            0x1b => {
-                self.control = false;
-                let length = bytes
-                    .iter()
-                    .skip(2)
-                    .position(|byte| byte.is_ascii_alphabetic() || *byte == b'~')
-                    .map_or(1, |end| end + 3);
-                return (if bytes.len() > 1 { length } else { 1 }, true);
-            }
-            _ => self.control = false,
         }
-        (1, true)
+        true
+    }
+
+    fn pane_to_tab(&mut self, terminal: TerminalId) {
+        if self.tab().is_some_and(|tab| tab.root.panes().len() > 1) {
+            self.moved = Some(terminal);
+            self.send(&Request::PaneToTab { terminal });
+        }
+    }
+
+    fn swap_towards(&mut self, direction: Direction) {
+        let Some(terminal) = self.focused() else {
+            return;
+        };
+        if let Some(other) = panes::neighbour(&self.placed(), terminal, direction) {
+            self.send(&Request::SwapPanes { terminal, other });
+        }
+    }
+
+    fn resize_towards(&mut self, direction: Direction) {
+        let Some(terminal) = self.focused() else {
+            return;
+        };
+        if let Some((divider, share)) =
+            panes::resized(&self.placed(), terminal, direction, (1.0, 1.0), 1)
+        {
+            self.send(&Request::Divide {
+                terminal: divider.before,
+                share,
+            });
+        }
+    }
+
+    fn focus(&mut self, terminal: TerminalId) {
+        if let Some(tab) = self.tabs.get_mut(self.selected)
+            && tab.focused != terminal
+        {
+            tab.focused = terminal;
+            self.send(&Request::Focus {
+                terminal,
+                focused: true,
+            });
+        }
+    }
+
+    fn mouse(&mut self, mouse: Mouse) {
+        let point = (f64::from(mouse.column) + 0.5, f64::from(mouse.line) + 0.5);
+        let placed = self.placed();
+        let left = mouse.button == MouseButton::Left;
+        let on_tabs = mouse.line + 1 >= self.size.1;
+        match mouse.action {
+            MouseAction::Press
+                if matches!(mouse.button, MouseButton::WheelUp | MouseButton::WheelDown) =>
+            {
+                if let Some(terminal) = placed.pane_at(point) {
+                    self.wheel(terminal, mouse);
+                }
+            }
+            MouseAction::Press if on_tabs => {
+                if let Some(index) = self.tab_at(mouse.column).filter(|_| left && !self.control) {
+                    self.show_tab(index);
+                }
+            }
+            MouseAction::Press => {
+                if let Some(divider) = placed.divider_at(point).filter(|_| left) {
+                    self.drag = Some(Drag::Divider(divider));
+                    return;
+                }
+                let Some(terminal) = placed.pane_at(point) else {
+                    return;
+                };
+                self.focus(terminal);
+                if left && (self.control || mouse.modifiers.alt) {
+                    self.drag = Some(Drag::Pane(terminal));
+                } else if self.report(terminal, mouse) {
+                    self.drag = Some(Drag::Program(terminal));
+                }
+            }
+            MouseAction::Motion => match self.drag {
+                Some(Drag::Divider(divider)) => {
+                    let share =
+                        divider.share_at(if divider.vertical { point.0 } else { point.1 }, 1);
+                    self.send(&Request::Divide {
+                        terminal: divider.before,
+                        share,
+                    });
+                }
+                Some(Drag::Program(terminal)) => {
+                    self.report(terminal, mouse);
+                }
+                _ => {}
+            },
+            MouseAction::Release => match self.drag.take() {
+                Some(Drag::Pane(terminal)) if on_tabs => self.pane_to_tab(terminal),
+                Some(Drag::Pane(terminal)) => {
+                    if let Some(target) = placed.pane_at(point).filter(|&target| target != terminal)
+                        && let Some(rect) = placed.rect(target)
+                    {
+                        self.send(&match panes::side_near(rect, point) {
+                            Some(side) => Request::MovePane {
+                                terminal,
+                                beside: target,
+                                side,
+                            },
+                            None => Request::SwapPanes {
+                                terminal,
+                                other: target,
+                            },
+                        });
+                    }
+                }
+                Some(Drag::Program(terminal)) => {
+                    self.report(terminal, mouse);
+                }
+                _ => {}
+            },
+        }
+    }
+
+    /// Tells the pane's program of a mouse event, if it asked for them: whether it did.
+    fn report(&mut self, terminal: TerminalId, mouse: Mouse) -> bool {
+        let Some(rect) = self.placed().rect(terminal) else {
+            return false;
+        };
+        let column = (i32::from(mouse.column) - rect.x).clamp(0, rect.width - 1);
+        let line = (i32::from(mouse.line) - rect.y).clamp(0, rect.height - 1);
+        let bytes = encode::mouse(
+            mouse.button,
+            mouse.action,
+            mouse.modifiers,
+            usize::try_from(column).unwrap_or(0),
+            usize::try_from(line).unwrap_or(0),
+            self.mode(terminal),
+        );
+        let reported = bytes.is_some();
+        if let Some(bytes) = bytes {
+            self.input(terminal, bytes, false);
+        }
+        reported
+    }
+
+    /// Scrolls the pane under the wheel, as its program or the view takes it.
+    fn wheel(&mut self, terminal: TerminalId, mouse: Mouse) {
+        const LINES: usize = 3;
+        if self.report(terminal, mouse) {
+            return;
+        }
+        let up = mouse.button == MouseButton::WheelUp;
+        let mode = self.mode(terminal);
+        if mode.contains(Mode::ALT_SCREEN | Mode::ALTERNATE_SCROLL) {
+            // Programs on the alternate screen have no history to scroll: they get arrows.
+            let key = if up { Key::Up } else { Key::Down };
+            if let Some(bytes) = encode::key(key, Modifiers::default(), mode) {
+                self.input(terminal, bytes.repeat(LINES), false);
+            }
+        } else {
+            let lines = LINES as i32;
+            self.send(&Request::Scroll {
+                terminal,
+                scroll: Scroll::Lines {
+                    lines: if up { lines } else { -lines },
+                },
+            });
+        }
+    }
+
+    /// Each tab's part of the line of tabs.
+    fn tab_labels(&self) -> Vec<String> {
+        self.tabs
+            .iter()
+            .enumerate()
+            .map(|(index, tab)| {
+                let title = tab.name.as_deref().unwrap_or(&tab.title);
+                let mark = if index == self.selected { '*' } else { ' ' };
+                format!(" {}{mark}{title} ", index + 1)
+            })
+            .collect()
+    }
+
+    /// The tab whose label is at `column` of the line of tabs.
+    fn tab_at(&self, column: u16) -> Option<usize> {
+        let mut end = 0;
+        self.tab_labels().iter().position(|label| {
+            end += label.chars().count();
+            usize::from(column) < end
+        })
     }
 
     /// Shows the tab `steps` after the one shown, round from the last to the first.
@@ -501,13 +769,12 @@ impl Client {
         let status = if self.control {
             format!(" {HINTS} ")
         } else {
-            let mut tabs = String::new();
-            for (index, tab) in self.tabs.iter().enumerate() {
-                let title = tab.name.as_deref().unwrap_or(&tab.title);
-                let mark = if index == self.selected { '*' } else { ' ' };
-                let _ = write!(tabs, " {}{mark}{title} ", index + 1);
-            }
-            tabs + "  Ctrl+] control"
+            let key = if self.enhanced {
+                "Ctrl+Shift+Space"
+            } else {
+                "Ctrl+]"
+            };
+            format!("{}  {key} control", self.tab_labels().concat())
         };
         let status: String = status.chars().take(usize::from(columns)).collect();
         let _ = write!(out, "{status:<width$}\x1b[0m", width = usize::from(columns));
@@ -530,6 +797,27 @@ impl Client {
         let _ = stdout.write_all(out.as_bytes());
         let _ = stdout.flush();
     }
+}
+
+/// The direction and xterm modifier parameter of an arrow key's sequence: 1 for none, 2
+/// with Shift, 5 with Ctrl.
+fn arrow(sequence: &[u8]) -> Option<(Direction, u8)> {
+    let (&last, inner) = sequence.strip_prefix(b"\x1b")?.split_last()?;
+    let direction = match last {
+        b'A' => Direction::Up,
+        b'B' => Direction::Down,
+        b'C' => Direction::Right,
+        b'D' => Direction::Left,
+        _ => return None,
+    };
+    let modifier = match inner {
+        b"[" | b"O" => 1,
+        _ => std::str::from_utf8(inner.strip_prefix(b"[1;")?)
+            .ok()?
+            .parse()
+            .ok()?,
+    };
+    Some((direction, modifier))
 }
 
 /// A line of cells, `width` wide, blank where it has no cell.
