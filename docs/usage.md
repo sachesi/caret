@@ -17,6 +17,9 @@ rather than the terminal server's. Variables that belong to
 another terminal, or to tmux or screen around the command line (`TMUX`, `VTE_VERSION`,
 `KITTY_WINDOW_ID` and the like), are left out.
 
+Launchers that go through xdg-terminal-exec open Caret once
+`io.github.sachesi.caret.desktop` is the first line of `~/.config/xdg-terminals.list`.
+
 A tab closes when its program exits, and the window goes with its last tab. A command
 named on the command line that fails stays on screen instead, with its output and how it
 ended under it, until you close the tab.

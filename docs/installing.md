@@ -1,5 +1,36 @@
 # Installing
 
+## Packages
+
+Fedora 44, 45 and Rawhide, from the Copr project
+[sachesi/software](https://copr.fedorainfracloud.org/coprs/sachesi/software/):
+
+    sudo dnf copr enable sachesi/software
+    sudo dnf install caret
+
+openSUSE Tumbleweed and Slowroll, from the OBS project
+[home:sachesi:software](https://build.opensuse.org/project/show/home:sachesi:software); for
+Slowroll the address has `openSUSE_Slowroll` in it, and on aarch64 `openSUSE_Factory_ARM`:
+
+    sudo zypper addrepo https://download.opensuse.org/repositories/home:sachesi:software/openSUSE_Tumbleweed/home:sachesi:software.repo
+    sudo zypper install caret
+
+Debian testing and Ubuntu 26.04, from the same OBS project; for Ubuntu the addresses
+have `xUbuntu_26.04` in place of `Debian_Testing`:
+
+    sudo install -d /etc/apt/keyrings
+    curl -fsSL https://download.opensuse.org/repositories/home:sachesi:software/Debian_Testing/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/sachesi-software.gpg
+    echo 'deb [signed-by=/etc/apt/keyrings/sachesi-software.gpg] https://download.opensuse.org/repositories/home:sachesi:software/Debian_Testing/ /' | sudo tee /etc/apt/sources.list.d/sachesi-software.list
+    sudo apt update
+    sudo apt install caret
+
+Debian 13 and Ubuntu 24.04 ship a Rust older than Caret needs.
+
+Arch Linux: the AUR package [caret](https://aur.archlinux.org/packages/caret), built
+from [packaging/aur/PKGBUILD](../packaging/aur/PKGBUILD), which each release tag updates.
+
+The same packages are attached to each [release](https://github.com/sachesi/caret/releases).
+
 ## What you need
 
 To build: Rust 1.92 or newer, `just`, `glslc` for the shaders, `pkg-config`, and the
