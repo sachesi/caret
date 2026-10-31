@@ -39,6 +39,10 @@ pub enum Input {
 /// The first protocol version with split panes.
 const PANES: u16 = 2;
 
+/// Containers a terminal keeps track of, innermost last. Any program's output can claim to
+/// enter one, and only a shell that says when commands run tells them apart.
+const MOST_CONTAINERS: usize = 16;
+
 struct Client {
     writer: Outbox,
     version: u16,
@@ -618,7 +622,12 @@ impl Server {
             // What the client sees is the terminal's thread's to answer.
             Question::SelectionText { terminal }
             | Question::LinkAt { terminal, .. }
-            | Question::Find { terminal, .. } => match self.running(terminal) {
+            | Question::Find { terminal, .. } => match self
+                .terminals
+                .get(&terminal)
+                .filter(|entry| entry.views.contains_key(&client))
+                .and_then(|entry| entry.terminal.as_ref())
+            {
                 Some(running) => {
                     running.ask(client, id, question);
                     return;
@@ -1537,6 +1546,12 @@ impl Server {
                 entry.exit_status = Some(status);
                 self.program_ended(terminal);
             }
+            Event::Crashed => {
+                let reason = "The terminal crashed".to_owned();
+                entry.terminal = None;
+                entry.failure = Some(reason.clone());
+                self.broadcast_for(terminal, &Message::Failed { terminal, reason });
+            }
         }
     }
 
@@ -1598,7 +1613,12 @@ impl Server {
                     );
                 }
             }
-            Report::ContainerEntered { name, runtime } => entry.containers.push((name, runtime)),
+            Report::ContainerEntered { name, runtime } => {
+                if entry.containers.len() == MOST_CONTAINERS {
+                    entry.containers.remove(0);
+                }
+                entry.containers.push((name, runtime));
+            }
             Report::ContainerLeft => {
                 entry.containers.pop();
             }
@@ -2227,5 +2247,297 @@ mod tests {
             .collect();
         assert_eq!(tabs, [(true, first), (true, second), (false, first)]);
         harness.request(Request::CloseSession { session });
+    }
+
+    /// A deterministic run of what clients might ask, sensible or not.
+    struct Chaos {
+        state: u64,
+        terminals: Vec<TerminalId>,
+        sessions: Vec<SessionId>,
+    }
+
+    impl Chaos {
+        fn next(&mut self) -> u64 {
+            self.state ^= self.state >> 12;
+            self.state ^= self.state << 25;
+            self.state ^= self.state >> 27;
+            self.state.wrapping_mul(0x2545_f491_4f6c_dd1d)
+        }
+
+        fn below(&mut self, limit: usize) -> usize {
+            (self.next() >> 33) as usize % limit
+        }
+
+        fn terminal(&mut self) -> TerminalId {
+            let known = self.terminals.len();
+            if known > 0 && self.below(8) > 0 {
+                let at = self.below(known);
+                self.terminals[at]
+            } else {
+                TerminalId(self.below(40) as u32)
+            }
+        }
+
+        fn session(&mut self) -> SessionId {
+            let known = self.sessions.len();
+            if known > 0 && self.below(8) > 0 {
+                let at = self.below(known);
+                self.sessions[at]
+            } else {
+                SessionId(self.below(10) as u32)
+            }
+        }
+
+        fn command(&mut self) -> Command {
+            let program: &[&str] = match self.below(6) {
+                0 => &["/no/such/program"],
+                1 => &["sh", "-c", "exit 3"],
+                2 => &[
+                    "sh",
+                    "-c",
+                    "printf '\\033]0;title\\007\\033]9;note\\007\\033[6n'; cat",
+                ],
+                _ => &["cat"],
+            };
+            Command {
+                argv: program.iter().map(|&arg| arg.to_owned()).collect(),
+                hold: self.below(2) == 0,
+                ..Command::default()
+            }
+        }
+
+        fn size(&mut self) -> Size {
+            let far = [0, 1, 2, 5, 40, 200];
+            Size {
+                columns: far[self.below(far.len())],
+                lines: far[self.below(far.len())],
+                cell_width: 8,
+                cell_height: 16,
+            }
+        }
+
+        fn plan(&mut self, depth: usize) -> Plan {
+            match self.below(4) {
+                0 | 1 if depth < 3 => Plan::Split {
+                    vertical: self.below(2) == 0,
+                    share: self.next() as u16,
+                    first: Box::new(self.plan(depth + 1)),
+                    second: Box::new(self.plan(depth + 1)),
+                },
+                2 => Plan::Kept,
+                _ => Plan::Run {
+                    command: self.command(),
+                    size: self.size(),
+                },
+            }
+        }
+
+        fn question(&mut self) -> Question {
+            let terminal = self.terminal();
+            let session = self.session();
+            match self.below(24) {
+                0 => Question::Sessions,
+                1 => Question::SessionList,
+                2 => Question::Programs {
+                    sessions: vec![session],
+                },
+                3 => Question::NewSession,
+                4 => Question::SelectionText { terminal },
+                5 => Question::LinkAt {
+                    terminal,
+                    point: caret_protocol::Point {
+                        line: self.next() as u16,
+                        column: self.next() as u16,
+                    },
+                },
+                6 => Question::Find {
+                    terminal,
+                    text: "a".to_owned(),
+                    upwards: self.below(2) == 0,
+                },
+                7 => Question::Busy { terminal },
+                8 => Question::Foreground { terminal },
+                9 => Question::Directory { terminal },
+                10 => Question::NextCommand { terminal },
+                11..=16 => Question::OpenTab {
+                    session,
+                    index: self.next() as u32,
+                    command: self.command(),
+                    size: self.size(),
+                },
+                17..=21 => Question::Split {
+                    terminal,
+                    vertical: self.below(2) == 0,
+                    command: self.command(),
+                    size: self.size(),
+                },
+                _ => Question::Arrange {
+                    terminal,
+                    plan: self.plan(0),
+                },
+            }
+        }
+
+        fn request(&mut self) -> Request {
+            let terminal = self.terminal();
+            let other = self.terminal();
+            let session = self.session();
+            if self.sessions.is_empty() {
+                return Request::Ask {
+                    id: 1,
+                    question: Question::NewSession,
+                };
+            }
+            match self.below(48) {
+                0..=25 => Request::Ask {
+                    id: self.next() as u32,
+                    question: self.question(),
+                },
+                26..=30 => Request::Attach { session },
+                31 => Request::Detach { session },
+                32 => Request::CloseTab { terminal },
+                33 => Request::ClosePane { terminal },
+                34 => Request::Divide {
+                    terminal,
+                    share: self.next() as u16,
+                },
+                35 => Request::SwapPanes { terminal, other },
+                36 => Request::MovePane {
+                    terminal,
+                    beside: other,
+                    side: caret_protocol::layout::Side::Below,
+                },
+                37 => Request::PaneToTab { terminal },
+                38 => Request::MoveTab {
+                    terminal,
+                    session,
+                    index: self.next() as u32,
+                },
+                39 => Request::Resize {
+                    terminal,
+                    size: self.size(),
+                },
+                40 => Request::Frame { terminal },
+                41 => Request::Input {
+                    terminal,
+                    bytes: Bytes(b"typed\n".to_vec()),
+                    bottom: self.below(2) == 0,
+                },
+                42 => Request::Scroll {
+                    terminal,
+                    scroll: Scroll::Lines {
+                        lines: self.next() as i32,
+                    },
+                },
+                43 => Request::Focus {
+                    terminal,
+                    focused: self.below(2) == 0,
+                },
+                44 if self.sessions.len() > 2 => Request::CloseSession { session },
+                45 => Request::Select {
+                    terminal,
+                    select: caret_protocol::Select::Start {
+                        kind: caret_protocol::SelectionKind::Word,
+                        point: caret_protocol::Point {
+                            line: self.next() as u16,
+                            column: self.next() as u16,
+                        },
+                        right: false,
+                    },
+                },
+                46 => Request::Hover {
+                    terminal,
+                    point: Some(caret_protocol::Point {
+                        line: self.next() as u16,
+                        column: self.next() as u16,
+                    }),
+                },
+                _ => Request::Annotate {
+                    terminal,
+                    text: "note".to_owned(),
+                },
+            }
+        }
+    }
+
+    /// What the rest of the server takes for granted about its state.
+    fn check_state(server: &Server, seed: u64) {
+        let mut seen = BTreeSet::new();
+        for (id, session) in &server.sessions {
+            for tab in &session.tabs {
+                for pane in tab.root.panes() {
+                    assert!(seen.insert(pane), "seed {seed}: {pane:?} is in two tabs");
+                    let entry = server.terminals.get(&pane);
+                    assert!(entry.is_some(), "seed {seed}: {pane:?} has no terminal");
+                    assert_eq!(entry.map(|entry| entry.session), Some(*id), "seed {seed}");
+                }
+                assert!(tab.root.panes().len() <= MOST_PANES, "seed {seed}");
+            }
+            for client in &session.clients {
+                assert!(
+                    server
+                        .clients
+                        .get(client)
+                        .is_some_and(|state| state.sessions.contains(id)),
+                    "seed {seed}: {client:?} is not told it is in {id:?}"
+                );
+            }
+        }
+        for terminal in server.terminals.keys() {
+            assert!(
+                seen.contains(terminal),
+                "seed {seed}: {terminal:?} is in no tab"
+            );
+        }
+        for state in server.clients.values() {
+            for session in &state.sessions {
+                assert!(server.sessions.contains_key(session), "seed {seed}");
+            }
+        }
+    }
+
+    #[test]
+    fn random_clients_leave_the_server_whole() {
+        for seed in 1..=8u64 {
+            let mut chaos = Chaos {
+                state: seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1,
+                terminals: Vec::new(),
+                sessions: Vec::new(),
+            };
+            let mut harness = harness();
+            let (writer, _older_sent) = outbox();
+            let older = ClientId(2);
+            harness.server.handle(Input::Connected {
+                client: older,
+                version: 1,
+                writer,
+            });
+            for step in 0..400 {
+                let request = chaos.request();
+                let client = if chaos.below(5) == 0 { older } else { CLIENT };
+                harness.server.handle(Input::Request(client, request));
+                while let Ok(input) = harness.inputs.try_recv() {
+                    harness.server.handle(input);
+                }
+                while harness.sent.try_recv().is_ok() {}
+                chaos.terminals = harness.server.terminals.keys().copied().collect();
+                chaos.terminals.sort();
+                chaos.sessions = harness.server.sessions.keys().copied().collect();
+                check_state(&harness.server, seed);
+                if step % 100 == 99 {
+                    harness.server.handle(Input::Disconnected(older));
+                    let (writer, _) = outbox();
+                    harness.server.handle(Input::Connected {
+                        client: older,
+                        version: 1,
+                        writer,
+                    });
+                }
+            }
+            for session in chaos.sessions.clone() {
+                harness.request(Request::CloseSession { session });
+            }
+            check_state(&harness.server, seed);
+        }
     }
 }

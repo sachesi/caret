@@ -11,6 +11,7 @@ use std::os::fd::AsFd;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
+use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::sync::mpsc;
@@ -34,6 +35,11 @@ use crate::server::{ClientId, Input, encoded};
 /// Bytes read from the program before the clients are sent what they did.
 const READ_BUDGET: usize = 1 << 20;
 
+/// How long the program's output is read for before the clients are sent what it did and
+/// the keyboard is looked at. What a few bytes cost varies by thousands of times, so bytes
+/// alone do not keep Ctrl+C from waiting.
+const READ_TIME: Duration = Duration::from_millis(16);
+
 /// How long a program may hold the screen back while it draws.
 const SYNCHRONIZED: Duration = Duration::from_millis(150);
 
@@ -42,6 +48,22 @@ const SEARCH_STEP: usize = 2000;
 
 /// How long a program has to end after it is hung up on, before it is killed.
 const PATIENCE: Duration = Duration::from_secs(2);
+
+/// The largest terminal there is, whatever size a client asks for: its screens are kept
+/// whole in memory, and failing to allocate them would end the server and every program in
+/// it. Past what any display shows at a readable size.
+const MOST_COLUMNS: u16 = 2048;
+const MOST_LINES: u16 = 1024;
+
+/// Bytes waiting for the program past which the emulator's replies are dropped: one that
+/// asks and never reads would otherwise fill the server's memory with the answers.
+const MOST_BEHIND: usize = 1 << 20;
+
+/// Bytes clients may have waiting for a program that does not read them.
+const MOST_INPUT: usize = 256 << 20;
+
+/// Bytes written past which what was written is let go of, while more waits behind it.
+const COMPACTED: usize = 1 << 20;
 
 /// What the server's loop hears of a terminal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +78,8 @@ pub enum Event {
     Report(Report),
     /// The program exited, and what it wrote before has been read.
     Exited(ExitStatus),
+    /// The terminal's thread gave up, and the program has been hung up on.
+    Crashed,
 }
 
 /// How a client shows terminals: its colours, and whether output brings its view down.
@@ -293,6 +317,11 @@ impl Terminal {
         palette: &Palette,
         events: &mpsc::Sender<Input>,
     ) -> io::Result<Self> {
+        let (wake, woken) = UnixStream::pair()?;
+        woken.set_nonblocking(true)?;
+        // A thread busy for long leaves the socket full of wakes it has yet to see. More of
+        // them say nothing new, and must not hold up the server's loop.
+        wake.set_nonblocking(true)?;
         let launch = Launch(command);
         let mut env = launch.environment();
         // How `caret attach` run in the terminal finds the window it is in.
@@ -308,16 +337,16 @@ impl Terminal {
         if let Some(directory) = launch.directory() {
             process.current_dir(directory);
         }
-        let size = Size {
-            columns: size.columns.max(2),
-            lines: size.lines.max(1),
-            ..size
-        };
+        let size = fitted(size);
         let pty = Pty::spawn(process, size)?;
         let child = pty.id();
-        let controller = pty.controller.try_clone()?;
-        let (wake, woken) = UnixStream::pair()?;
-        woken.set_nonblocking(true)?;
+        let controller = match pty.controller.try_clone() {
+            Ok(controller) => controller,
+            Err(error) => {
+                pty.hang_up(Duration::ZERO);
+                return Err(error);
+            }
+        };
         let (orders, received) = mpsc::channel();
 
         let mut term = Term::new(usize::from(size.columns), usize::from(size.lines), options);
@@ -328,7 +357,7 @@ impl Terminal {
             term,
             pty: Some(pty),
             reading: true,
-            unwritten: Vec::new(),
+            unwritten: Unwritten::default(),
             buffer: vec![0; 64 * 1024],
             orders: received,
             woken,
@@ -337,9 +366,10 @@ impl Terminal {
             synchronized: None,
             focused: true,
         };
+        let told = events.clone();
         std::thread::Builder::new()
             .name(format!("terminal {}", id.0))
-            .spawn(move || worker.run())?;
+            .spawn(move || guarded(id, &told, || worker.run()))?;
         Ok(Self {
             orders,
             wake,
@@ -459,6 +489,74 @@ impl Terminal {
     }
 }
 
+/// Runs a terminal's thread. A panic in it would otherwise leave a tab that shows the same
+/// screen forever and takes no input, the program having been hung up on as it unwound.
+fn guarded(id: TerminalId, events: &mpsc::Sender<Input>, run: impl FnOnce()) {
+    if panic::catch_unwind(AssertUnwindSafe(run)).is_err() {
+        tracing::error!("terminal {} crashed", id.0);
+        let _ = events.send(Input::Terminal(id, Event::Crashed));
+    }
+}
+
+/// The size of the terminal a client asks for at `size`.
+fn fitted(size: Size) -> Size {
+    Size {
+        columns: size.columns.clamp(2, MOST_COLUMNS),
+        lines: size.lines.clamp(1, MOST_LINES),
+        ..size
+    }
+}
+
+/// Bytes on their way to the program, in the order they came, as far as it has read them.
+/// What it read stays until a lot has been or all is, since the pseudoterminal takes a few
+/// kilobytes at a time and moving the rest down for each makes a long paste quadratic.
+#[derive(Default)]
+struct Unwritten {
+    bytes: Vec<u8>,
+    written: usize,
+}
+
+impl Unwritten {
+    fn waiting(&self) -> &[u8] {
+        &self.bytes[self.written..]
+    }
+
+    fn is_empty(&self) -> bool {
+        self.waiting().is_empty()
+    }
+
+    /// What a client typed or pasted; dropped, as the only way left, past [`MOST_INPUT`].
+    fn input(&mut self, bytes: &[u8]) {
+        if self.waiting().len() + bytes.len() > MOST_INPUT {
+            tracing::warn!("dropping {} bytes for a program not reading", bytes.len());
+            return;
+        }
+        self.bytes.extend_from_slice(bytes);
+    }
+
+    /// What the emulator answers; dropped past [`MOST_BEHIND`].
+    fn reply(&mut self, bytes: &[u8]) {
+        if self.waiting().len() < MOST_BEHIND {
+            self.bytes.extend_from_slice(bytes);
+        }
+    }
+
+    fn wrote(&mut self, count: usize) {
+        self.written += count;
+        if self.written == self.bytes.len() {
+            self.clear();
+        } else if self.written >= COMPACTED {
+            self.bytes.drain(..self.written);
+            self.written = 0;
+        }
+    }
+
+    fn clear(&mut self) {
+        self.bytes.clear();
+        self.written = 0;
+    }
+}
+
 /// What one client sees of the terminal, and what it was sent.
 #[expect(
     clippy::struct_excessive_bools,
@@ -506,7 +604,7 @@ struct Worker {
     /// The program's output is still read: its side of the terminal is open.
     reading: bool,
     /// Bytes for the program it has not read yet.
-    unwritten: Vec<u8>,
+    unwritten: Unwritten,
     /// What the program wrote, a read at a time.
     buffer: Vec<u8>,
     orders: mpsc::Receiver<Order>,
@@ -594,22 +692,16 @@ impl Worker {
     fn order(&mut self, order: Order) {
         match order {
             Order::Input(bytes) => {
-                self.unwritten.extend_from_slice(&bytes);
+                self.unwritten.input(&bytes);
                 self.write();
             }
             Order::Resize(size) => {
-                let (columns, lines) = (
-                    usize::from(size.columns.max(2)),
-                    usize::from(size.lines.max(1)),
-                );
-                self.term.resize(columns, lines);
+                let size = fitted(size);
+                self.term
+                    .resize(usize::from(size.columns), usize::from(size.lines));
                 self.term.set_cell_size(size.cell_width, size.cell_height);
                 if let Some(pty) = &self.pty {
-                    pty.resize(Size {
-                        columns: columns as u16,
-                        lines: lines as u16,
-                        ..size
-                    });
+                    pty.resize(size);
                 }
                 self.touch_all();
             }
@@ -683,11 +775,8 @@ impl Worker {
                 if focused != self.focused {
                     self.focused = focused;
                     if self.term.modes().focus {
-                        self.unwritten.extend_from_slice(if focused {
-                            b"\x1b[I"
-                        } else {
-                            b"\x1b[O"
-                        });
+                        self.unwritten
+                            .reply(if focused { b"\x1b[I" } else { b"\x1b[O" });
                         self.write();
                     }
                 }
@@ -780,7 +869,8 @@ impl Worker {
             return;
         };
         let mut read = 0;
-        while read < READ_BUDGET {
+        let started = Instant::now();
+        while read < READ_BUDGET && started.elapsed() < READ_TIME {
             match pty.controller.read(&mut self.buffer) {
                 Ok(0) => {
                     self.reading = false;
@@ -811,10 +901,8 @@ impl Worker {
             return;
         };
         while !self.unwritten.is_empty() {
-            match pty.controller.write(&self.unwritten) {
-                Ok(written) => {
-                    self.unwritten.drain(..written);
-                }
+            match pty.controller.write(self.unwritten.waiting()) {
+                Ok(written) => self.unwritten.wrote(written),
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
                 Err(_) => {
@@ -830,28 +918,48 @@ impl Worker {
     fn output(&mut self) {
         let replies = self.term.take_replies();
         if !replies.is_empty() {
-            self.unwritten.extend_from_slice(&replies);
+            self.unwritten.reply(&replies);
             self.write();
         }
         let events = self.term.take_events();
-        // Of what was read at once, only the last title and one bell reach the clients: a
-        // program setting its title in a loop would otherwise send them more than they
-        // can take in.
-        let last_title = events
-            .iter()
-            .rposition(|event| matches!(event, caret_term::Event::Title(_)));
+        // Of what was read at once, only the last of what replaces the one before reaches
+        // the clients, and one bell: a program doing these in a loop would otherwise send
+        // them more than they can take in.
+        let last = |wanted: fn(&caret_term::Event) -> bool| events.iter().rposition(wanted);
+        let last_title = last(|event| matches!(event, caret_term::Event::Title(_)));
+        let last_copy =
+            last(|event| matches!(event, caret_term::Event::Clipboard { primary: false, .. }));
+        let last_primary =
+            last(|event| matches!(event, caret_term::Event::Clipboard { primary: true, .. }));
+        let last_notice = last(|event| {
+            matches!(
+                event,
+                caret_term::Event::Report(Report::Notification { .. })
+            )
+        });
         let mut rung = false;
         for (index, event) in events.into_iter().enumerate() {
+            let last = Some(index);
             let event = match event {
-                caret_term::Event::Title(title) if Some(index) == last_title => Event::Title(title),
+                caret_term::Event::Title(title) if last == last_title => Event::Title(title),
                 caret_term::Event::Bell if !rung => {
                     rung = true;
                     Event::Bell
                 }
-                caret_term::Event::Title(_) | caret_term::Event::Bell => continue,
-                caret_term::Event::Clipboard { primary, text } => {
+                caret_term::Event::Clipboard { primary, text }
+                    if last == if primary { last_primary } else { last_copy } =>
+                {
                     Event::Clipboard { primary, text }
                 }
+                caret_term::Event::Report(report @ Report::Notification { .. })
+                    if last == last_notice =>
+                {
+                    Event::Report(report)
+                }
+                caret_term::Event::Title(_)
+                | caret_term::Event::Bell
+                | caret_term::Event::Clipboard { .. }
+                | caret_term::Event::Report(Report::Notification { .. }) => continue,
                 caret_term::Event::Report(report) => Event::Report(report),
             };
             // Fails only once the loop has ended.
@@ -1003,6 +1111,70 @@ pub fn options(options: &caret_protocol::Options) -> caret_term::Options {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replies_stop_piling_up_for_a_program_that_does_not_read() {
+        let mut unwritten = Unwritten::default();
+        for _ in 0..1_000_000 {
+            unwritten.reply(b"\x1b[24;80R");
+        }
+        assert!(unwritten.waiting().len() < MOST_BEHIND + 16);
+        // What is typed still goes through past them.
+        unwritten.input(b"typed");
+        assert!(unwritten.waiting().ends_with(b"typed"));
+    }
+
+    #[test]
+    fn input_stays_in_order_however_it_is_written() {
+        let mut unwritten = Unwritten::default();
+        let sent: Vec<u8> = (0..4 * COMPACTED).map(|at| at as u8).collect();
+        unwritten.input(&sent);
+        let mut received = Vec::new();
+        for take in (1..).map(|round| 1 + round * 7919 % 65536) {
+            if unwritten.is_empty() {
+                break;
+            }
+            let waiting = unwritten.waiting();
+            let take = take.min(waiting.len());
+            received.extend_from_slice(&waiting[..take]);
+            unwritten.wrote(take);
+        }
+        assert_eq!(received, sent);
+        assert!(unwritten.bytes.is_empty());
+    }
+
+    #[test]
+    fn a_terminal_is_never_larger_than_memory_allows() {
+        let asked = Size {
+            columns: u16::MAX,
+            lines: u16::MAX,
+            cell_width: 8,
+            cell_height: 16,
+        };
+        let size = fitted(asked);
+        assert_eq!((size.columns, size.lines), (MOST_COLUMNS, MOST_LINES));
+        let size = fitted(Size {
+            columns: 0,
+            lines: 0,
+            ..asked
+        });
+        assert_eq!((size.columns, size.lines), (2, 1));
+    }
+
+    #[test]
+    fn a_crashed_terminal_tells_the_server() {
+        let (events, inputs) = mpsc::channel();
+        let id = TerminalId(5);
+        guarded(id, &events, || {});
+        assert!(inputs.try_recv().is_err());
+        std::thread::spawn(move || guarded(id, &events, || panic!("on purpose")))
+            .join()
+            .expect("the panic stays in the guard");
+        assert!(matches!(
+            inputs.try_recv(),
+            Ok(Input::Terminal(TerminalId(5), Event::Crashed))
+        ));
+    }
 
     fn command(env: &[(&str, &str)]) -> Command {
         Command {
