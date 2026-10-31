@@ -73,6 +73,7 @@ fn main() -> ExitCode {
         }
     }
 
+    pty::raise_descriptor_limit();
     // SAFETY: no thread has been started yet.
     let activated = unsafe { listen::activated() };
     let listener = if let Some(listener) = activated {

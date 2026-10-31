@@ -6,9 +6,34 @@ use std::io;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use caret_protocol::Size;
+
+/// The limit on open files the server was started with, once it raised its own.
+static STARTED_WITH: OnceLock<libc::rlimit> = OnceLock::new();
+
+/// Lets the server open as many files as it may. Each terminal takes five descriptors and
+/// each client three, so the usual limit of 1024 is reached at about 200 panes. Programs
+/// still start with the limit they would have had, as some cannot take a larger one.
+#[expect(unsafe_code, reason = "the limits are only reached through libc")]
+pub fn raise_descriptor_limit() {
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    // SAFETY: the pointer is to a live rlimit, which the call fills in.
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &raw mut limit) } != 0 {
+        return;
+    }
+    let started_with = limit;
+    limit.rlim_cur = limit.rlim_max;
+    // SAFETY: the pointer is to a live rlimit, which the call reads.
+    if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &raw const limit) } == 0 {
+        let _ = STARTED_WITH.set(started_with);
+    }
+}
 
 fn winsize(size: Size) -> libc::winsize {
     libc::winsize {
@@ -111,16 +136,21 @@ impl Pty {
             .stdin(Stdio::from(terminal.try_clone()?))
             .stdout(Stdio::from(terminal.try_clone()?))
             .stderr(Stdio::from(terminal));
-        // SAFETY: between fork and exec the closure calls only setsid, ioctl and signal, which
-        // are async-signal-safe, and allocates nothing.
+        let started_with = STARTED_WITH.get().copied();
+        // SAFETY: between fork and exec the closure calls only setsid, ioctl, signal and
+        // setrlimit, which are async-signal-safe, and allocates nothing.
         unsafe {
-            program.pre_exec(|| {
+            program.pre_exec(move || {
                 check(libc::setsid())?;
                 check(libc::ioctl(0, libc::TIOCSCTTY, 0))?;
                 // A shell starting the server in the background leaves SIGINT and SIGQUIT
-                // ignored, and an exec keeps that: Ctrl+C would stop nothing in the session.
-                for signal in [libc::SIGINT, libc::SIGQUIT] {
+                // ignored, and nohup SIGHUP, and an exec keeps that: Ctrl+C would stop
+                // nothing in the session, and hanging up would end nothing.
+                for signal in [libc::SIGINT, libc::SIGQUIT, libc::SIGHUP] {
                     libc::signal(signal, libc::SIG_DFL);
+                }
+                if let Some(limit) = &started_with {
+                    check(libc::setrlimit(libc::RLIMIT_NOFILE, limit))?;
                 }
                 Ok(())
             });
@@ -249,9 +279,52 @@ pub fn foreground(controller: BorrowedFd<'_>) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write as _;
+    use std::io::{Read as _, Write as _};
 
     use super::*;
+
+    fn size() -> Size {
+        Size {
+            columns: 80,
+            lines: 24,
+            cell_width: 8,
+            cell_height: 16,
+        }
+    }
+
+    /// What `pty`'s program writes before it exits.
+    fn output(pty: &mut Pty) -> String {
+        let mut output = Vec::new();
+        let mut buffer = [0; 4096];
+        loop {
+            let ready = wait_readable(&[pty.controller.as_fd()], Some(Duration::from_secs(5)));
+            assert_eq!(ready.expect("poll works"), [true]);
+            match pty.controller.read(&mut buffer) {
+                Ok(count) if count > 0 => output.extend_from_slice(&buffer[..count]),
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+                _ => return String::from_utf8_lossy(&output).into_owned(),
+            }
+        }
+    }
+
+    #[test]
+    fn a_program_starts_with_the_limit_the_server_was_started_with() {
+        let mut before = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        #[expect(unsafe_code, reason = "getrlimit through libc")]
+        // SAFETY: the pointer is to a live rlimit, which the call fills in.
+        unsafe {
+            libc::getrlimit(libc::RLIMIT_NOFILE, &raw mut before);
+        }
+        raise_descriptor_limit();
+        let mut shell = Command::new("sh");
+        shell.args(["-c", "ulimit -n"]);
+        let mut pty = Pty::spawn(shell, size()).expect("sh starts");
+        let told = output(&mut pty);
+        assert_eq!(told.trim(), before.rlim_cur.to_string());
+    }
 
     #[test]
     #[expect(unsafe_code, reason = "signal through libc")]
