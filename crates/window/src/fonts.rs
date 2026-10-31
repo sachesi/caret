@@ -4,6 +4,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -45,6 +46,9 @@ const FALLBACKS: &[&str] = &[
     "DejaVu Sans",
     "Noto Sans",
 ];
+
+/// How tall a line of the window's own text is, against its ascent.
+const LINE_TO_ASCENT: f32 = 1.25;
 
 /// Families tried in order for the window's own text, before any sans-serif face.
 const LABEL_FAMILIES: &[&str] = &["Adwaita Sans", "Cantarell", "Noto Sans", "DejaVu Sans"];
@@ -109,6 +113,9 @@ struct Shaped {
     advance: f32,
 }
 
+/// Part of a line of text, shaped in the face that draws it.
+type FaceRun = (Face, Vec<Shaped>);
+
 #[derive(Clone)]
 struct Face {
     data: Arc<dyn AsRef<[u8]> + Send + Sync>,
@@ -142,6 +149,11 @@ impl Face {
         self.font().is_some_and(|font| font.charmap().map(c) != 0)
     }
 
+    /// Whether it draws glyphs in colours of its own.
+    fn colored(&self) -> bool {
+        colored(self.bytes(), self.index)
+    }
+
     /// Draws the face at `weight`: from its weight axis if it has one that reaches it,
     /// else heavier than it is. Drawing heavier would garble the overlapping outlines
     /// variable faces have.
@@ -162,20 +174,13 @@ impl Face {
 const WEIGHT_AXIS: swash::Tag = swash::tag_from_bytes(b"wght");
 
 pub struct Fonts {
-    database: fontdb::Database,
     /// Regular, bold, italic, bold italic: indexed by style.
     styles: [Face; 4],
     /// The size in pixels to the em.
     size: f32,
     cell: CellMetrics,
     context: ScaleContext,
-    fallbacks: HashMap<char, Option<Face>>,
-    /// The faces of the families tried first for a missing character, in their order,
-    /// once looked up; then the faces found among all others before, tried before all
-    /// are searched again; and the faces mapped for missing characters.
-    preferred: Option<Vec<fontdb::ID>>,
-    found: Vec<fontdb::ID>,
-    mapped: HashMap<fontdb::ID, Face>,
+    fallbacks: RefCell<Fallbacks>,
     /// The OpenType features the terminal's text is shaped with.
     features: Vec<Feature>,
     ligatures: bool,
@@ -192,6 +197,60 @@ pub struct Fonts {
     label_size: f32,
     label_ascent: i32,
     label_height: i32,
+}
+
+/// Where a character a face lacks is drawn from, among all the fonts installed.
+struct Fallbacks {
+    database: fontdb::Database,
+    /// The face found for each character, and whether it had to be of one colour.
+    faces: HashMap<(char, bool), Option<Face>>,
+    /// The faces of the families tried first for a missing character, in their order,
+    /// once looked up; then the faces found among all others before, tried before all
+    /// are searched again; and the faces mapped for missing characters.
+    preferred: Option<Vec<fontdb::ID>>,
+    found: Vec<fontdb::ID>,
+    mapped: HashMap<fontdb::ID, Face>,
+}
+
+impl Fallbacks {
+    /// A face with `c`; one drawing it in the text's own colour if `plain`.
+    fn face(&mut self, c: char, plain: bool) -> Option<Face> {
+        if let Some(found) = self.faces.get(&(c, plain)) {
+            return found.clone();
+        }
+        let preferred = self
+            .preferred
+            .take()
+            .unwrap_or_else(|| preferred_faces(&self.database));
+        let found = std::mem::take(&mut self.found);
+        let known = preferred.iter().chain(&found).find_map(|&id| {
+            self.mapped(id)
+                .filter(|face| face.has(c) && !(plain && face.colored()))
+        });
+        self.preferred = Some(preferred);
+        self.found = found;
+        let found = known.or_else(|| {
+            let id = self
+                .database
+                .faces()
+                .find(|info| regular(info) && face_has(&self.database, info.id, c, plain))?
+                .id;
+            self.found.push(id);
+            self.mapped(id)
+        });
+        self.faces.insert((c, plain), found.clone());
+        found
+    }
+
+    /// The face `id`, mapped the first time it is asked for.
+    fn mapped(&mut self, id: fontdb::ID) -> Option<Face> {
+        if let Some(face) = self.mapped.get(&id) {
+            return Some(face.clone());
+        }
+        let face = shared(&mut self.database, id)?;
+        self.mapped.insert(id, face.clone());
+        Some(face)
+    }
 }
 
 /// The fonts installed, found by reading every font file's names.
@@ -242,15 +301,17 @@ impl Fonts {
             })
             .unwrap_or_default();
         Ok(Self {
-            database,
             styles: [regular, bold, italic, bold_italic],
             size,
             cell,
             context: ScaleContext::new(),
-            fallbacks: HashMap::new(),
-            preferred: None,
-            found: Vec::new(),
-            mapped: HashMap::new(),
+            fallbacks: RefCell::new(Fallbacks {
+                database,
+                faces: HashMap::new(),
+                preferred: None,
+                found: Vec::new(),
+                mapped: HashMap::new(),
+            }),
             features: choice.features.clone(),
             ligatures: choice.ligatures,
             divided: HashMap::new(),
@@ -269,7 +330,7 @@ impl Fonts {
     ///
     /// When no monospaced font is installed.
     pub fn at(&self, choice: &FontChoice, scale: f32) -> Result<Self, FontError> {
-        Self::new(self.database.clone(), choice, scale)
+        Self::new(self.fallbacks.borrow().database.clone(), choice, scale)
     }
 
     pub fn cell(&self) -> CellMetrics {
@@ -289,7 +350,7 @@ impl Fonts {
         }
         let advance = self.labels[usize::from(bold)]
             .as_ref()
-            .and_then(|face| self.shape(face, text, self.label_size, false))
+            .and_then(|face| self.shape_line(face, bold, text, self.label_size))
             .map_or(0.0, |(_, advance)| advance);
         let advances = &mut self.advances.borrow_mut()[usize::from(bold)];
         if advances.len() >= LABEL_ADVANCES {
@@ -303,42 +364,122 @@ impl Fonts {
     /// with an ellipsis to fit `width` pixels; none if nothing in it draws.
     pub fn label(&mut self, text: &str, width: u32, bold: bool) -> Option<Raster> {
         let face = self.labels[usize::from(bold)].clone()?;
-        self.line(&face, text, width, self.label_size, self.label_ascent)
+        self.line(&face, bold, text, width, self.label_size, self.label_ascent)
     }
 
     /// `text` as a heading: a bold label [`HEADING`] times as large.
     pub fn heading(&mut self, text: &str, width: u32) -> Option<Raster> {
         let face = self.labels[1].clone()?;
         let ascent = (self.label_ascent as f32 * HEADING).ceil() as i32;
-        self.line(&face, text, width, self.label_size * HEADING, ascent)
+        self.line(&face, true, text, width, self.label_size * HEADING, ascent)
     }
 
     fn line(
         &mut self,
         face: &Face,
+        bold: bool,
         text: &str,
         width: u32,
         size: f32,
         ascent: i32,
     ) -> Option<Raster> {
-        let (mut glyphs, advance) = self.shape(face, text, size, false)?;
+        let (mut runs, advance) = self.shape_line(face, bold, text, size)?;
         if advance > width as f32 {
             let (dots, dots_advance) = self.shape(face, "\u{2026}", size, false)?;
             let room = width as f32 - dots_advance;
-            let kept = glyphs
+            for (_, glyphs) in &mut runs {
+                let kept = glyphs
+                    .iter()
+                    .position(|glyph| glyph.pen + glyph.advance > room)
+                    .unwrap_or(glyphs.len());
+                glyphs.truncate(kept);
+            }
+            let pen = runs
                 .iter()
-                .position(|glyph| glyph.pen + glyph.advance > room)
-                .unwrap_or(glyphs.len());
-            glyphs.truncate(kept);
-            let pen = glyphs.last().map_or(0.0, |glyph| glyph.pen + glyph.advance);
-            glyphs.extend(dots.into_iter().map(|dot| Shaped {
-                x: dot.x + pen,
-                pen: dot.pen + pen,
-                ..dot
-            }));
+                .flat_map(|(_, glyphs)| glyphs)
+                .next_back()
+                .map_or(0.0, |glyph| glyph.pen + glyph.advance);
+            runs.push((face.clone(), moved(dots, pen, 0)));
         }
-        let placed = self.render(face, size, &glyphs, ascent);
+        let height = (ascent as f32 * LINE_TO_ASCENT).ceil() as u32;
+        let mut placed = Vec::new();
+        for (face, glyphs) in runs {
+            let (ours, theirs): (Vec<_>, Vec<_>) = glyphs
+                .into_iter()
+                .partition(|glyph| glyph.id == 0 && missing_drawn(text, glyph).is_some());
+            placed.extend(
+                ours.iter()
+                    .filter_map(|glyph| drawn_in_line(text, glyph, height)),
+            );
+            placed.extend(
+                self.render(&face, size, &theirs, ascent)
+                    .into_iter()
+                    .map(|glyph| plain(glyph, size, ascent)),
+            );
+        }
         compose(&placed)
+    }
+
+    /// `text` shaped in `face`, with what `face` lacks in faces that have it, each
+    /// stretch placed after the one before; and how far it all moves the pen.
+    fn shape_line(
+        &self,
+        face: &Face,
+        bold: bool,
+        text: &str,
+        size: f32,
+    ) -> Option<(Vec<FaceRun>, f32)> {
+        let mut runs = Vec::new();
+        let mut pen = 0.0;
+        for (face, range) in self.stretches(face, bold, text) {
+            let start = range.start;
+            let (glyphs, advance) = self.shape(&face, &text[range], size, false)?;
+            runs.push((face, moved(glyphs, pen, start)));
+            pen += advance;
+        }
+        Some((runs, pen))
+    }
+
+    /// The parts of `text` that each take one face: `face` for all it has, and for what
+    /// no font has, whose box at least shows something is there.
+    fn stretches(&self, face: &Face, bold: bool, text: &str) -> Vec<(Face, Range<usize>)> {
+        let mut parts: Vec<(Face, Range<usize>)> = Vec::new();
+        for (at, c) in text.char_indices() {
+            let end = at + c.len_utf8();
+            let last = parts.last_mut();
+            // These change how the character before them looks, in that character's face.
+            if matches!(c, '\u{200D}' | '\u{FE00}'..='\u{FE0F}')
+                && let Some((_, range)) = last
+            {
+                range.end = end;
+                continue;
+            }
+            let wanted = if face.has(c) {
+                face.clone()
+            } else if let Some((known, _)) = last.filter(|(known, _)| known.has(c)) {
+                known.clone()
+            } else {
+                self.label_fallback(c, bold).unwrap_or_else(|| face.clone())
+            };
+            match parts.last_mut() {
+                Some((known, range)) if known.key == wanted.key => range.end = end,
+                _ => parts.push((wanted, at..end)),
+            }
+        }
+        parts
+    }
+
+    /// A face for `c`, which the window's own face lacks: one that draws it in the text's
+    /// colour where there is one, as a label is of one colour.
+    fn label_fallback(&self, c: char, bold: bool) -> Option<Face> {
+        let mut fallbacks = self.fallbacks.borrow_mut();
+        let mut face = fallbacks
+            .face(c, true)
+            .or_else(|| fallbacks.face(c, false))?;
+        if bold {
+            face.weigh(fontdb::Weight::BOLD);
+        }
+        Some(face)
     }
 
     /// The pixels of `glyph`, or none for one that draws nothing, such as a space.
@@ -359,7 +500,7 @@ impl Fonts {
         let face = if face.has(first) {
             face
         } else {
-            let mut fallback = self.fallback(first)?;
+            let mut fallback = self.fallbacks.borrow_mut().face(first, false)?;
             if glyph.style & BOLD != 0 {
                 fallback.weigh(fontdb::Weight::BOLD);
             }
@@ -495,45 +636,6 @@ impl Fonts {
             placed.push((left, top, image));
         }
         placed
-    }
-
-    /// A face with `c`, for a character the terminal's font lacks.
-    fn fallback(&mut self, c: char) -> Option<Face> {
-        if let Some(found) = self.fallbacks.get(&c) {
-            return found.clone();
-        }
-        let preferred = self
-            .preferred
-            .take()
-            .unwrap_or_else(|| preferred_faces(&self.database));
-        let found = std::mem::take(&mut self.found);
-        let known = preferred
-            .iter()
-            .chain(&found)
-            .find_map(|&id| self.mapped(id).filter(|face| face.has(c)));
-        self.preferred = Some(preferred);
-        self.found = found;
-        let found = known.or_else(|| {
-            let id = self
-                .database
-                .faces()
-                .find(|info| regular(info) && face_has(&self.database, info.id, c))?
-                .id;
-            self.found.push(id);
-            self.mapped(id)
-        });
-        self.fallbacks.insert(c, found.clone());
-        found
-    }
-
-    /// The face `id`, mapped the first time it is asked for.
-    fn mapped(&mut self, id: fontdb::ID) -> Option<Face> {
-        if let Some(face) = self.mapped.get(&id) {
-            return Some(face.clone());
-        }
-        let face = shared(&mut self.database, id)?;
-        self.mapped.insert(id, face.clone());
-        Some(face)
     }
 }
 
@@ -774,11 +876,13 @@ fn shared(database: &mut fontdb::Database, id: fontdb::ID) -> Option<Face> {
     })
 }
 
-/// Whether face `id` has a glyph for `c`, read without keeping its file mapped.
-fn face_has(database: &fontdb::Database, id: fontdb::ID, c: char) -> bool {
+/// Whether face `id` has a glyph for `c`, and draws it in the text's colour if `plain`,
+/// read without keeping its file mapped.
+fn face_has(database: &fontdb::Database, id: fontdb::ID, c: char, plain: bool) -> bool {
     database
         .with_face_data(id, |data, index| {
             FontRef::from_index(data, index as usize).is_some_and(|font| font.charmap().map(c) != 0)
+                && !(plain && colored(data, index))
         })
         .unwrap_or(false)
 }
@@ -864,6 +968,70 @@ fn compose(placed: &[(i32, i32, Image)]) -> Option<Raster> {
     })
 }
 
+/// Whether the font at `index` of `data` draws glyphs in colours of its own.
+fn colored(data: &[u8], index: u32) -> bool {
+    harfrust::FontRef::from_index(data, index).is_ok_and(|font| {
+        [b"COLR", b"CBDT", b"sbix"]
+            .iter()
+            .any(|tag| font.table_data(Tag::new(tag)).is_some())
+    })
+}
+
+/// `glyphs` of a part of a text that begins at byte `start`, placed `pen` pixels further
+/// along.
+fn moved(glyphs: Vec<Shaped>, pen: f32, start: usize) -> Vec<Shaped> {
+    glyphs
+        .into_iter()
+        .map(|glyph| Shaped {
+            cluster: glyph.cluster + start,
+            x: glyph.x + pen,
+            pen: glyph.pen + pen,
+            ..glyph
+        })
+        .collect()
+}
+
+/// The character of `text` at `glyph` if no font has it and it can be drawn without one.
+fn missing_drawn(text: &str, glyph: &Shaped) -> Option<char> {
+    let c = text.get(glyph.cluster..)?.chars().next()?;
+    crate::box_drawing::coverage(c, 1, 1, 1).map(|_| c)
+}
+
+/// What [`missing_drawn`] found for `glyph`, in the room the glyph took, `height` tall.
+fn drawn_in_line(text: &str, glyph: &Shaped, height: u32) -> Option<(i32, i32, Image)> {
+    let c = missing_drawn(text, glyph)?;
+    let width = glyph.advance.round().max(1.0) as u32;
+    let mut image = Image::new();
+    image.placement.width = width;
+    image.placement.height = height;
+    image.data = crate::box_drawing::coverage(c, width, height, 1)?;
+    Some((glyph.pen.round() as i32, 0, image))
+}
+
+/// A glyph of a label as a mask for the label's one colour, no higher than `size`:
+/// a colour bitmap comes at the size it was drawn at.
+fn plain(glyph: (i32, i32, Image), size: f32, ascent: i32) -> (i32, i32, Image) {
+    if !matches!(glyph.2.content, Content::Color) {
+        return glyph;
+    }
+    let Some(mut raster) = compose(std::slice::from_ref(&glyph)) else {
+        return glyph;
+    };
+    if raster.height as f32 > size {
+        raster = shrink(&raster, size / raster.height as f32);
+        raster.top = ascent - (raster.height * 4 / 5) as i32;
+    }
+    let mut image = Image::new();
+    image.placement.width = raster.width;
+    image.placement.height = raster.height;
+    image.data = raster
+        .pixels
+        .chunks_exact(4)
+        .map(|pixel| pixel[3])
+        .collect();
+    (raster.left, raster.top, image)
+}
+
 /// Premultiplied `source` drawn over `target`.
 fn over(target: &mut [u8], source: [u8; 4]) {
     let keep = 255 - u16::from(source[3]);
@@ -937,6 +1105,48 @@ mod tests {
             pen: 0.0,
             advance: 8.0,
         }
+    }
+
+    #[test]
+    fn a_label_draws_what_its_face_lacks_from_another_and_the_rest_from_its_own() {
+        let Ok(fonts) = Fonts::new(installed(), &choice(None, true), 1.0) else {
+            return;
+        };
+        let Some(face) = fonts.labels[1].clone() else {
+            return;
+        };
+        let star = '\u{2733}';
+        if face.has(star) || fonts.label_fallback(star, true).is_none() {
+            return;
+        }
+        let parts = fonts.stretches(&face, true, "\u{2733} Vulkan");
+        let ranges: Vec<_> = parts.iter().map(|(_, range)| range.clone()).collect();
+        assert_eq!(ranges, [0..3, 3..10]);
+        assert_ne!(parts[0].0.key, face.key);
+        assert_eq!(parts[1].0.key, face.key);
+    }
+
+    #[test]
+    fn a_label_draws_a_braille_spinner_no_font_may_have() {
+        let Ok(mut fonts) = Fonts::new(installed(), &choice(None, true), 1.0) else {
+            return;
+        };
+        let lit = |raster: &Raster| raster.pixels.chunks_exact(4).filter(|p| p[3] > 0).count();
+        let one = fonts.label("\u{2801}", 400, true).expect("drawn");
+        let all = fonts.label("\u{28ff}", 400, true).expect("drawn");
+        assert_eq!(lit(&all), 8 * lit(&one));
+    }
+
+    #[test]
+    fn a_label_with_an_emoji_stays_of_one_colour_and_of_its_line_height() {
+        let Ok(mut fonts) = Fonts::new(installed(), &choice(None, true), 1.0) else {
+            return;
+        };
+        let Some(raster) = fonts.label("\u{1F600} done", 400, false) else {
+            return;
+        };
+        assert!(!raster.color);
+        assert!(raster.height as f32 <= fonts.label_height() as f32 * 1.5);
     }
 
     #[test]
