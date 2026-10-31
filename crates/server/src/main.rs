@@ -44,6 +44,7 @@ fn main() -> ExitCode {
                 .with_default_directive(LevelFilter::WARN.into())
                 .from_env_lossy(),
         )
+        .with_writer(std::io::stderr)
         .init();
 
     let mut socket = None;

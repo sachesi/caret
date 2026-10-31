@@ -41,6 +41,7 @@ fn main() -> ExitCode {
                 .with_default_directive(LevelFilter::WARN.into())
                 .from_env_lossy(),
         )
+        .with_writer(std::io::stderr)
         .init();
     let mut start = match cli::parse(std::env::args_os().skip(1)) {
         Ok(cli::Parsed::Start(start)) => start,
