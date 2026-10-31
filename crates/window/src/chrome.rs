@@ -313,8 +313,9 @@ pub enum Part {
     SearchField,
     FindUp,
     FindDown,
-    /// A dialog's button, and the rest of the window under the dialog.
+    /// A dialog's button, a colour it offers, and the rest of the window under it.
     Response(usize),
+    Swatch(usize),
     Dialog,
     /// A menu's item, the button that closes what it stands for, the menu between its
     /// items, and the window outside it.

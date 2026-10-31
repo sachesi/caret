@@ -307,6 +307,8 @@ pub struct SessionEntry {
     pub session: SessionId,
     /// The name the user gave it.
     pub name: Option<String>,
+    /// The colour the user gave it.
+    pub color: Option<u8>,
     pub tabs: Vec<Tab>,
     /// Its panes, in all its tabs.
     pub panes: u32,
@@ -316,6 +318,7 @@ pub struct SessionEntry {
 record!(SessionEntry {
     session,
     name,
+    color,
     tabs,
     panes,
     clients
@@ -435,6 +438,12 @@ pub enum Request {
         terminal: TerminalId,
         session: SessionId,
     },
+    /// Since version 2. Gives the session a colour, by its place among those clients
+    /// show, or takes it away.
+    ColorSession {
+        session: SessionId,
+        color: Option<u8>,
+    },
 }
 variants!(Request {
     0 => Look { palette, options },
@@ -460,6 +469,7 @@ variants!(Request {
     20 => PaneToTab { terminal },
     21 => NameSession { session, name },
     22 => ShowSession { terminal, session },
+    23 => ColorSession { session, color },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -555,6 +565,12 @@ pub enum Message {
     ShowSession {
         session: SessionId,
     },
+    /// Since version 2. The session's colour, after `Attached` when it has one and
+    /// whenever it changes.
+    SessionColored {
+        session: SessionId,
+        color: Option<u8>,
+    },
 }
 variants!(Message {
     0 => Answer { id, answer },
@@ -576,4 +592,5 @@ variants!(Message {
     16 => Layout { session, tab, root },
     17 => SessionNamed { session, name },
     18 => ShowSession { session },
+    19 => SessionColored { session, color },
 });

@@ -5,7 +5,7 @@
 use caret_protocol::{Answer, Bytes, Question, Request, SessionId, TerminalId, encode};
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
-use super::{App, Asked, pointer};
+use super::{App, Asked, pointer, sessions};
 use crate::chrome::{Appearance, Dialog};
 
 /// Where Caret is made, which About offers to open.
@@ -48,7 +48,11 @@ impl App {
 
     /// Closes the dialog, doing what it asked if `accepted`.
     pub(super) fn respond(&mut self, accepted: bool) {
-        let field = self.chrome.dialog.take().and_then(|dialog| dialog.field);
+        let (field, picked) = self
+            .chrome
+            .dialog
+            .take()
+            .map_or((None, None), |dialog| (dialog.field, dialog.picked));
         let confirm = self.confirming.take();
         self.hover();
         self.dirty = true;
@@ -81,6 +85,13 @@ impl App {
                     .map(|field| field.text.trim().to_owned())
                     .filter(|name| !name.is_empty());
                 self.server.send(&Request::NameSession { session, name });
+                if let Some(picked) = picked
+                    && picked != self.session_color_index(session)
+                {
+                    let color = (picked != sessions::automatic_color(session))
+                        .then(|| u8::try_from(picked).unwrap_or_default());
+                    self.server.send(&Request::ColorSession { session, color });
+                }
             }
             _ => {}
         }
@@ -107,13 +118,26 @@ impl App {
             .get(&session)
             .cloned()
             .unwrap_or_default();
-        let dialog = Dialog::asking(
+        let mut dialog = Dialog::asking(
             "Rename Session",
             "Without a name, the session is known by its number.",
             ["Cancel", "Rename"],
             &name,
         );
+        if self.config.session_colors {
+            dialog.swatches = sessions::COLORS.to_vec();
+            dialog.picked = Some(self.session_color_index(session));
+        }
         self.confirm(dialog, Confirm::RenameSession(session));
+    }
+
+    /// Picks the dialog's colour at `index`.
+    pub(super) fn pick_swatch(&mut self, index: usize) {
+        if let Some(dialog) = &mut self.chrome.dialog {
+            dialog.picked = Some(index);
+            self.dirty = true;
+            self.draw();
+        }
     }
 
     /// Closes `session`'s tabs and ends their programs, asking first.

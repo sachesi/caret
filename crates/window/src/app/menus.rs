@@ -294,12 +294,7 @@ impl App {
 
     /// A menu of the sessions, each opening a menu of what can be done with it.
     pub(super) fn sessions_menu(&mut self, sessions: &[SessionEntry]) {
-        for entry in sessions {
-            match &entry.name {
-                Some(name) => self.session_names.insert(entry.session, name.clone()),
-                None => self.session_names.remove(&entry.session),
-            };
-        }
+        self.learn_sessions(sessions);
         let count =
             |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
         let items = sessions
@@ -324,11 +319,27 @@ impl App {
                     count(entry.tabs.len(), "tab", "tabs"),
                     count(entry.panes as usize, "pane", "panes"),
                 );
-                self.item(&label, Choice::SessionActions(entry.session), true)
+                let mut item = self.item(&label, Choice::SessionActions(entry.session), true);
+                item.0.dot = self.session_color(entry.session);
+                item
             })
             .collect();
         let at = self.keyed_menu_at();
         self.show_menu(vec![items], at, false);
+    }
+
+    /// Keeps the names and colours the server lists, for sessions not shown here too.
+    fn learn_sessions(&mut self, sessions: &[SessionEntry]) {
+        for entry in sessions {
+            match &entry.name {
+                Some(name) => self.session_names.insert(entry.session, name.clone()),
+                None => self.session_names.remove(&entry.session),
+            };
+            match entry.color {
+                Some(color) => self.session_colors.insert(entry.session, color),
+                None => self.session_colors.remove(&entry.session),
+            };
+        }
     }
 
     /// Asks for the sessions, to offer from the + button with a new one.
@@ -343,11 +354,7 @@ impl App {
     /// The + button's menu: a new session in this window, and the sessions it does not
     /// show, to show them here.
     pub(super) fn new_menu(&mut self, sessions: &[SessionEntry]) {
-        for entry in sessions {
-            if let Some(name) = &entry.name {
-                self.session_names.insert(entry.session, name.clone());
-            }
-        }
+        self.learn_sessions(sessions);
         let others: Vec<(Item, Choice)> = sessions
             .iter()
             .filter(|entry| !self.sessions.contains(&entry.session))

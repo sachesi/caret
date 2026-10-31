@@ -270,6 +270,7 @@ impl App {
                 | Part::FindUp
                 | Part::FindDown
                 | Part::Response(_)
+                | Part::Swatch(_)
                 | Part::MenuItem(_)
                 | Part::MenuClose(_),
                 BUTTON_LEFT,
@@ -365,6 +366,7 @@ impl App {
                 Part::FindUp => self.find(true),
                 Part::FindDown => self.find(false),
                 Part::Response(index) => self.respond(index == 1),
+                Part::Swatch(index) => self.pick_swatch(index),
                 Part::MenuItem(index) => self.choose(index),
                 Part::MenuClose(index) => self.close_listed(index),
                 _ => {}
@@ -757,6 +759,7 @@ fn cursor(part: Part) -> Shape {
         | Part::FindUp
         | Part::FindDown
         | Part::Response(_)
+        | Part::Swatch(_)
         | Part::Dialog
         | Part::MainMenu
         | Part::MenuItem(_)

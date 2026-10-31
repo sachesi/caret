@@ -189,6 +189,7 @@ pub fn sessions() -> Result<Vec<SessionEntry>, String> {
                     .map(|info| SessionEntry {
                         session: info.session,
                         name: None,
+                        color: None,
                         panes: u32::try_from(info.tabs.len()).unwrap_or(u32::MAX),
                         tabs: info.tabs,
                         clients: info.clients,

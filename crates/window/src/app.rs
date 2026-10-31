@@ -680,6 +680,13 @@ impl App {
                 };
                 self.retitle();
             }
+            Message::SessionColored { session, color } => {
+                match color {
+                    Some(color) => self.session_colors.insert(session, color),
+                    None => self.session_colors.remove(&session),
+                };
+                self.retitle();
+            }
             _ => {}
         }
     }

@@ -27,6 +27,11 @@ pub const COLORS: [u32; 9] = [
     0x6f83_96ff,
 ];
 
+/// The colour `session` takes when none was picked for it.
+pub(super) fn automatic_color(session: SessionId) -> usize {
+    session.0.saturating_sub(1) as usize % COLORS.len()
+}
+
 impl App {
     /// The window shows several sessions: the strip has a tab for each.
     pub(super) fn grouped(&self) -> bool {
@@ -35,16 +40,18 @@ impl App {
 
     /// The colour of `session`, unless sessions go without.
     pub(super) fn session_color(&self, session: SessionId) -> Option<u32> {
-        if !self.config.session_colors {
-            return None;
-        }
-        let index = self
+        self.config
             .session_colors
+            .then(|| COLORS[self.session_color_index(session)])
+    }
+
+    /// Which of the colours `session` has: the one picked for it, else one by its number.
+    pub(super) fn session_color_index(&self, session: SessionId) -> usize {
+        self.session_colors
             .get(&session)
-            .map_or(session.0.saturating_sub(1) as usize, |&index| {
-                usize::from(index)
-            });
-        Some(COLORS[index % COLORS.len()])
+            .map_or(automatic_color(session), |&index| {
+                usize::from(index) % COLORS.len()
+            })
     }
 
     /// The strip's tab for each session, in the window's order.

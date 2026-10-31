@@ -78,6 +78,10 @@ impl App {
             return None;
         }
         let rect = placed.rect(self.terminal()?)?;
+        let color = self
+            .shown_session()
+            .and_then(|session| self.session_color(session))
+            .unwrap_or(chrome::ACCENT);
         let ring = self.device(2) as f32;
         let (x, y) = (rect.x as f32, rect.y as f32);
         let (width, height) = (rect.width as f32, rect.height as f32);
@@ -86,7 +90,7 @@ impl App {
             y: y - ring,
             width: width + 2.0 * ring,
             height: height + 2.0 * ring,
-            color: chrome::ACCENT,
+            color,
             cut: [x, y, width, height],
             ..Quad::default()
         })

@@ -18,6 +18,9 @@ const BUTTON: f32 = 34.0;
 const BUTTON_SPACING: f32 = 12.0;
 /// The ring around the button the keys press: its width, and how far it stands out.
 const FOCUS: f32 = 2.0;
+/// The size of a colour to pick, and the room the ring around the picked one leaves.
+const SWATCH: f32 = 24.0;
+const SWATCH_GAP: f32 = 3.0;
 /// What shades a coloured button, hovered and then pressed: its white text lightens
 /// it, as text of the window's colour shades other buttons.
 const WARNING_SHADES: [u32; 2] = [0xffff_ff1a, 0x0000_0633];
@@ -33,6 +36,9 @@ pub struct Dialog {
     pub focused: Option<usize>,
     /// The line of text it asks for.
     pub field: Option<Field>,
+    /// The colours it offers to pick from under the field, and the one picked.
+    pub swatches: Vec<u32>,
+    pub picked: Option<usize>,
     /// The body cut into lines that fit, and the height of one, in logical pixels.
     pub lines: Vec<String>,
     pub line: f32,
@@ -53,6 +59,7 @@ struct Layout {
     heading: f32,
     body: f32,
     field: [f32; 4],
+    swatches: Vec<[f32; 4]>,
     buttons: [[f32; 4]; 2],
 }
 
@@ -66,6 +73,8 @@ impl Dialog {
             appearance: Appearance::Destructive,
             focused: Some(0),
             field: None,
+            swatches: Vec::new(),
+            picked: None,
             lines: Vec::new(),
             line: 0.0,
         }
@@ -95,13 +104,22 @@ impl Dialog {
         } else {
             0.0
         };
-        let card_height = PADDING + heading + SPACING + body + field + PADDING + BUTTON + PADDING;
+        let swatches = if self.swatches.is_empty() {
+            0.0
+        } else {
+            PADDING / 2.0 + SWATCH
+        };
+        let card_height =
+            PADDING + heading + SPACING + body + field + swatches + PADDING + BUTTON + PADDING;
         let (x, y) = (
             (width - card_width) / 2.0,
             ((height - card_height) / 2.0).max(0.0),
         );
         let button_width = (card_width - 2.0 * PADDING - BUTTON_SPACING) / 2.0;
         let button_y = y + card_height - PADDING - BUTTON;
+        let row = card_width - 2.0 * PADDING;
+        let step = (row - SWATCH) / (self.swatches.len().max(2) - 1) as f32;
+        let swatch_y = y + PADDING + heading + SPACING + body + field + PADDING / 2.0;
         Layout {
             card: [x, y, card_width, card_height],
             heading: y + PADDING,
@@ -112,6 +130,9 @@ impl Dialog {
                 card_width - 2.0 * PADDING,
                 BUTTON,
             ],
+            swatches: (0..self.swatches.len())
+                .map(|index| [x + PADDING + index as f32 * step, swatch_y, SWATCH, SWATCH])
+                .collect(),
             buttons: [0.0, 1.0].map(|index| {
                 [
                     x + PADDING + index * (button_width + BUTTON_SPACING),
@@ -123,17 +144,21 @@ impl Dialog {
         }
     }
 
-    /// The part at `(x, y)` from the corner of a window `size` big: a button, or the
-    /// dialog and all it covers.
+    /// The part at `(x, y)` from the corner of a window `size` big: a button, a colour,
+    /// or the dialog and all it covers.
     pub fn part_at(&self, (x, y): (f64, f64), size: (u32, u32)) -> Part {
         let layout = self.layout((size.0 as f32, size.1 as f32));
         let (x, y) = (x as f32, y as f32);
+        let within = |[left, top, width, height]: &[f32; 4]| {
+            (*left..left + width).contains(&x) && (*top..top + height).contains(&y)
+        };
+        if let Some(index) = layout.swatches.iter().position(within) {
+            return Part::Swatch(index);
+        }
         layout
             .buttons
             .iter()
-            .position(|[left, top, width, height]| {
-                (*left..left + width).contains(&x) && (*top..top + height).contains(&y)
-            })
+            .position(within)
             .map_or(Part::Dialog, Part::Response)
     }
 }
@@ -258,9 +283,59 @@ impl Painter<'_> {
             let color = colors.foreground;
             self.field(quads, field, [x, y, width, height], ("", color), true, draw);
         }
+        for (index, rect) in layout.swatches.iter().enumerate() {
+            self.swatch(quads, dialog, index, place(*rect));
+        }
         for index in 0..dialog.responses.len() {
             let button = place(layout.buttons[index]);
             self.response(quads, dialog, index, button, draw);
+        }
+    }
+
+    /// The dialog's colour at `index`, at `[x, y, size, size]` in device pixels, ringed
+    /// when picked.
+    fn swatch(
+        &self,
+        quads: &mut Vec<Quad>,
+        dialog: &Dialog,
+        index: usize,
+        [x, y, size, _]: [f32; 4],
+    ) {
+        let (chrome, scale) = (self.chrome, self.scale);
+        let colors = chrome.colors();
+        if dialog.picked == Some(index) {
+            let ring = FOCUS * scale;
+            let gap = SWATCH_GAP * scale;
+            let outer = size / 2.0 + gap + ring;
+            quads.push(rounded(
+                x - gap - ring,
+                y - gap - ring,
+                size + 2.0 * (gap + ring),
+                size + 2.0 * (gap + ring),
+                outer,
+                colors.focus,
+            ));
+            quads.push(rounded(
+                x - gap,
+                y - gap,
+                size + 2.0 * gap,
+                size + 2.0 * gap,
+                size / 2.0 + gap,
+                colors.dialog,
+            ));
+        }
+        quads.push(rounded(
+            x,
+            y,
+            size,
+            size,
+            size / 2.0,
+            dialog.swatches[index],
+        ));
+        let part = Part::Swatch(index);
+        if chrome.over(part, false) {
+            let shade = WARNING_SHADES[usize::from(chrome.over(part, true))];
+            quads.push(rounded(x, y, size, size, size / 2.0, shade));
         }
     }
 
@@ -358,5 +433,20 @@ mod tests {
         );
         assert_eq!(dialog.part_at((5.0, 5.0), size), Part::Dialog);
         assert!(layout.card[2] <= WIDTH);
+    }
+
+    #[test]
+    fn colours_sit_in_a_row_between_the_field_and_the_buttons() {
+        let mut dialog = Dialog::asking("Rename Session", "", ["Cancel", "Rename"], "");
+        dialog.swatches = vec![0xff; 9];
+        let size = (800, 600);
+        let layout = dialog.layout((800.0, 600.0));
+        let [x, y, width, height] = layout.swatches[8];
+        let centre = (f64::from(x + width / 2.0), f64::from(y + height / 2.0));
+        assert_eq!(dialog.part_at(centre, size), Part::Swatch(8));
+        assert!(y > layout.field[1] + layout.field[3]);
+        assert!(y + height < layout.buttons[0][1]);
+        let [field_x, _, field_width, _] = layout.field;
+        assert!((x + width - (field_x + field_width)).abs() < 0.01);
     }
 }

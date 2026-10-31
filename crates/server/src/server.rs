@@ -52,6 +52,7 @@ struct Session {
     clients: BTreeSet<ClientId>,
     /// The name the user gave it.
     name: Option<String>,
+    color: Option<u8>,
 }
 
 struct TabState {
@@ -444,6 +445,15 @@ impl Server {
                     })
                 });
             }
+            Request::ColorSession { session, color } => {
+                let Some(state) = self.sessions.get_mut(&session) else {
+                    return;
+                };
+                state.color = color;
+                self.broadcast_versions(session, None, |version| {
+                    (version >= PANES).then_some(Message::SessionColored { session, color })
+                });
+            }
             Request::MoveTab {
                 terminal,
                 session,
@@ -538,6 +548,7 @@ impl Server {
                 .map(|(&session, state)| SessionEntry {
                     session,
                     name: state.name.clone(),
+                    color: state.color,
                     tabs: state.tabs.iter().map(|tab| self.tab(tab, PANES)).collect(),
                     panes: state
                         .tabs
@@ -709,6 +720,20 @@ impl Server {
                 &Message::SessionNamed {
                     session: session_id,
                     name: Some(name),
+                },
+            );
+        }
+        if let Some(color) = self
+            .sessions
+            .get(&session_id)
+            .and_then(|session| session.color)
+            .filter(|_| version >= PANES)
+        {
+            self.send(
+                client,
+                &Message::SessionColored {
+                    session: session_id,
+                    color: Some(color),
                 },
             );
         }
@@ -1820,7 +1845,7 @@ mod tests {
     }
 
     #[test]
-    fn a_named_session_is_listed_and_attached_by_its_name() {
+    fn a_named_session_is_listed_and_attached_with_its_name_and_colour() {
         let mut harness = harness();
         let session = harness.new_session();
         harness.request(Request::Attach { session });
@@ -1828,6 +1853,10 @@ mod tests {
         harness.request(Request::NameSession {
             session,
             name: Some("build".to_owned()),
+        });
+        harness.request(Request::ColorSession {
+            session,
+            color: Some(3),
         });
         harness.request(Request::Ask {
             id: 4,
@@ -1840,6 +1869,7 @@ mod tests {
             } => {
                 assert_eq!(sessions.len(), 1);
                 assert_eq!(sessions[0].name.as_deref(), Some("build"));
+                assert_eq!(sessions[0].color, Some(3));
                 assert_eq!((sessions[0].tabs.len(), sessions[0].panes), (1, 1));
             }
             other => panic!("{other:?}"),
@@ -1850,6 +1880,10 @@ mod tests {
         harness.next(|message| matches!(message, Message::Attached { .. }));
         match harness.next(|message| matches!(message, Message::SessionNamed { .. })) {
             Message::SessionNamed { name, .. } => assert_eq!(name.as_deref(), Some("build")),
+            _ => unreachable!(),
+        }
+        match harness.next(|message| matches!(message, Message::SessionColored { .. })) {
+            Message::SessionColored { color, .. } => assert_eq!(color, Some(3)),
             _ => unreachable!(),
         }
         harness.request(Request::CloseSession { session });
