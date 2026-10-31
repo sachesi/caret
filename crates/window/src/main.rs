@@ -17,6 +17,7 @@ mod i18n;
 mod icon_theme;
 mod keys;
 mod notifications;
+mod paint;
 mod palette;
 mod panes;
 mod render;

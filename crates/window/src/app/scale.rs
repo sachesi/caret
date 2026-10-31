@@ -32,6 +32,8 @@ pub struct Fractional {
     scale: WpFractionalScaleV1,
     /// Fits the pixels drawn to the window's size.
     pub viewport: WpViewport,
+    /// Makes such viewports for the window's other surfaces.
+    pub viewporter: WpViewporter,
 }
 
 impl Fractional {
@@ -42,6 +44,7 @@ impl Fractional {
         Some(Self {
             scale: manager.get_fractional_scale(surface, qh, Objects),
             viewport: viewporter.get_viewport(surface, qh, Objects),
+            viewporter,
         })
     }
 }

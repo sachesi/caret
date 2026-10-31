@@ -706,20 +706,24 @@ impl PointerHandler for App {
         events: &[PointerEvent],
     ) {
         for event in events {
+            let position = self.in_window(&event.surface, event.position);
             match event.kind {
                 PointerEventKind::Enter { serial } => {
-                    self.pointer.position = event.position;
+                    self.pointer.position = position;
                     self.pointer.entered = serial;
                     self.pointer.shown = None;
                     self.chrome.hovered = self.part();
                     self.hover_cell();
                 }
                 PointerEventKind::Leave { .. } => self.leave(),
-                PointerEventKind::Motion { .. } => self.pointer_moved(event.position),
+                PointerEventKind::Motion { .. } => self.pointer_moved(position),
                 PointerEventKind::Press { button, serial, .. } => {
-                    self.pointer_pressed(event.position, button, serial);
+                    self.pointer_pressed(position, button, serial);
                 }
                 PointerEventKind::Release { button, .. } => self.let_go(button),
+                PointerEventKind::Axis { vertical, .. } if self.chrome.menu.is_some() => {
+                    self.scroll_menu(vertical.value120, vertical.discrete, vertical.absolute);
+                }
                 PointerEventKind::Axis { vertical, .. } if self.chrome.shortcut_list.is_some() => {
                     self.scroll_shortcut_list(vertical.value120, vertical.discrete);
                 }

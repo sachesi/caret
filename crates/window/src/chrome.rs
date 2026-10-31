@@ -65,6 +65,8 @@ const FIELD_PADDING: f32 = 9.0;
 const ICON: f32 = 16.0;
 const STROKE: f32 = 1.5;
 /// A toast's height, the room either side of its text and below it, and its colour.
+/// The room around a menu on its own surface for its shadow, in logical pixels.
+pub const MENU_SHADOW: f32 = 16.0;
 const TOAST: f32 = 42.0;
 const TOAST_PADDING: f32 = 18.0;
 const TOAST_MARGIN: f32 = 12.0;
@@ -650,6 +652,9 @@ impl Chrome {
     pub fn part_at(&self, (x, y): (f64, f64), size: (u32, u32)) -> Option<Part> {
         let margin = f64::from(self.margin());
         let (x, y) = (x - margin, y - margin);
+        if let Some(menu) = &self.menu {
+            return Some(menu.part_at((x, y)));
+        }
         let (width, height) = (f64::from(size.0), f64::from(size.1));
         if !((0.0..width).contains(&x) && (0.0..height).contains(&y)) {
             return if margin > 0.0 {
@@ -657,9 +662,6 @@ impl Chrome {
             } else {
                 None
             };
-        }
-        if let Some(menu) = &self.menu {
-            return Some(menu.part_at((x, y), size));
         }
         if let Some(dialog) = &self.dialog {
             return Some(dialog.part_at((x, y), size));
@@ -765,6 +767,29 @@ impl Chrome {
         (0..self.tabs.len()).map(move |index| (TAB_INSET + index as f32 * share, share))
     }
 
+    /// The open menu on a surface of its own at `scale`: its quads in the order they are
+    /// drawn, how many are its box, and where the rest stay.
+    pub fn menu_quads(
+        &self,
+        scale: f32,
+        line: i32,
+        mut draw: impl FnMut(&Drawing) -> Option<(u32, GpuGlyph)>,
+    ) -> (Vec<Quad>, usize, [f32; 4]) {
+        let mut quads = Vec::new();
+        let Some(menu) = &self.menu else {
+            return (quads, 0, [0.0; 4]);
+        };
+        let painter = Painter {
+            chrome: self,
+            scale,
+            margin: MENU_SHADOW * scale,
+            width: menu.width * scale,
+            line,
+        };
+        let (boxed, clip) = painter.menu(&mut quads, menu, &mut draw);
+        (quads, boxed, clip)
+    }
+
     /// The frame of a window `size` big at `scale`, in the order it is drawn, and how
     /// many of its quads go under the terminal's cells; the rest go over them. `draw`
     /// gives the atlas entry of a drawing and the glyph it indexes, and `line` is the
@@ -854,9 +879,6 @@ impl Chrome {
         }
         if let Some(dialog) = &self.dialog {
             painter.dialog(&mut quads, dialog, size.1 as f32 * scale, &mut draw);
-        }
-        if let Some(menu) = &self.menu {
-            painter.menu(&mut quads, menu, size.1 as f32 * scale, &mut draw);
         }
         (quads, under)
     }

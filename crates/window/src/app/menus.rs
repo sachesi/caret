@@ -592,6 +592,25 @@ impl App {
         self.show_menu(sections, at, false);
     }
 
+    /// Scrolls a menu taller than the screen by what the wheel or touchpad turned.
+    pub(super) fn scroll_menu(&mut self, value120: i32, discrete: i32, absolute: f64) {
+        let Some(menu) = &mut self.chrome.menu else {
+            return;
+        };
+        let turned = if value120 != 0 {
+            value120
+        } else {
+            discrete * 120
+        };
+        menu.scroll_by(match turned {
+            0 => absolute as f32,
+            turned => turned as f32 / 120.0 * 3.0 * Menu::ITEM,
+        });
+        self.hover();
+        self.dirty = true;
+        self.draw();
+    }
+
     /// Says how many sessions are detached, if any, with a button that lists them.
     pub(super) fn hint_detached(&mut self, sessions: &[SessionInfo]) {
         let count = sessions

@@ -441,12 +441,12 @@ impl App {
 
     /// Moves the listed tab `key` to the place of the listed tab under the pointer.
     fn drag_row(&mut self, key: TerminalId) {
-        let (Some(size), Some(menu)) = (self.size, self.chrome.menu.as_ref()) else {
+        let Some(menu) = self.chrome.menu.as_ref() else {
             return;
         };
         let margin = f64::from(self.chrome.margin());
         let (x, y) = self.pointer.position;
-        let Part::MenuItem(index) = menu.part_at((x - margin, y - margin), size) else {
+        let Part::MenuItem(index) = menu.part_at((x - margin, y - margin)) else {
             return;
         };
         let Some(&Choice::ShowTab(other)) = self.choices.get(index) else {

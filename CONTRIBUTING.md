@@ -89,7 +89,9 @@ viewporter maps it onto the window, so a texel lands on each pixel. The cells of
 shown are kept on the GPU as a buffer of rows, of which a frame copies only those that
 changed; shaders turn them into backgrounds, glyphs from the atlas, the cursor, the
 selection and lines for underlines and strikeout. The frame, the bars, menus and dialogs
-are instanced quads over them: rounded rectangles, shadows, outlines and glyphs.
+are instanced quads over them: rounded rectangles, shadows, outlines and glyphs. An open
+menu is an xdg_popup, so the compositor can keep it on the screen; it changes seldom, and
+its quads are painted on the CPU into shared memory rather than given a swapchain.
 
 Fonts are found by scanning the font folders (fontdb), runs are shaped with harfrust,
 and glyphs are rasterised by swash at the screen's scale into an atlas texture that grows

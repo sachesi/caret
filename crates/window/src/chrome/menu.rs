@@ -1,7 +1,6 @@
-//! A menu over the window: the main one under its button in the header bar, the
-//! terminal's where it was clicked, or a session's list of tabs under its tab. It stays
-//! within the window, turning to the other side of the point it opens at where it would
-//! not fit.
+//! A menu on a surface of its own: the main one under its button in the header bar, the
+//! terminal's where it was clicked, or a session's list of tabs under its tab. The
+//! compositor keeps it on the screen, and it scrolls where it is given too little height.
 
 use super::{
     BUTTON, Drawing, GpuGlyph, Icon, OUTLINE, Painter, Part, Quad, SHADOW, centred, circle, entry,
@@ -16,6 +15,8 @@ const ITEM_PADDING: f32 = 12.0;
 const SHORTCUT_GAP: f32 = 24.0;
 const SEPARATOR: f32 = 13.0;
 const MIN_WIDTH: f32 = 160.0;
+/// Past this a label is cut, as a long title would otherwise pass the screen's width.
+const MAX_WIDTH: f32 = 560.0;
 const RADIUS: f32 = 12.0;
 const ITEM_RADIUS: f32 = 6.0;
 /// The heading's height, the dot before a label and the room it takes, and the height
@@ -64,6 +65,12 @@ pub struct Menu {
     pub sections: Vec<Vec<Item>>,
     /// The point it opens at, in logical pixels from the window's corner.
     pub at: (f32, f32),
+    /// Where the compositor put its corner, once it has.
+    pub placed: Option<(f32, f32)>,
+    /// How high it may be, where the compositor gave it less than it asked for.
+    limit: Option<f32>,
+    /// How far its items are scrolled up, in logical pixels.
+    scroll: f32,
     /// The item the keys move to and choose, counted across sections.
     pub focused: Option<usize>,
     /// Its width, which its widest item sets, in logical pixels.
@@ -78,6 +85,9 @@ pub struct Menu {
 }
 
 impl Menu {
+    /// An item's height, the step a wheel's notch scrolls by.
+    pub const ITEM: f32 = ITEM;
+
     pub fn new(sections: Vec<Vec<Item>>, at: (f32, f32), main: bool) -> Self {
         Self {
             sections: sections
@@ -85,6 +95,9 @@ impl Menu {
                 .filter(|items| !items.is_empty())
                 .collect(),
             at,
+            placed: None,
+            limit: None,
+            scroll: 0.0,
             focused: None,
             width: MIN_WIDTH,
             main,
@@ -151,7 +164,8 @@ impl Menu {
             )
             .fold(0.0, f32::max);
         // Whole pixels to spare, as the room for each label is cut to whole pixels.
-        self.width = (widest.ceil() + 1.0 + 2.0 * (ITEM_PADDING + PADDING)).max(MIN_WIDTH);
+        self.width =
+            (widest.ceil() + 1.0 + 2.0 * (ITEM_PADDING + PADDING)).clamp(MIN_WIDTH, MAX_WIDTH);
     }
 
     /// The room before each label for the check any item in the menu has.
@@ -187,6 +201,7 @@ impl Menu {
             None => 0,
         };
         self.focused = Some(enabled[next.unsigned_abs()]);
+        self.show_focused();
     }
 
     fn height(&self) -> f32 {
@@ -199,21 +214,54 @@ impl Menu {
         if self.heading.is_some() { HEADING } else { 0.0 }
     }
 
-    /// Its rectangle in a window `size` big, in logical pixels.
-    fn bounds(&self, (width, height): (f32, f32)) -> [f32; 4] {
-        let (menu_width, menu_height) = (self.width.min(width), self.height().min(height));
-        let (x, y) = self.at;
-        let x = if x + menu_width <= width && !self.main {
-            x
-        } else {
-            (x - menu_width).max(0.0)
+    /// How big it would like to be, in logical pixels.
+    pub fn size(&self) -> (f32, f32) {
+        (self.width, self.height())
+    }
+
+    /// How big it is shown, in logical pixels.
+    pub fn shown_size(&self) -> (f32, f32) {
+        let height = self.height();
+        (
+            self.width,
+            self.limit.map_or(height, |limit| limit.min(height)),
+        )
+    }
+
+    /// Keeps it within `height`, as high as the compositor gives it.
+    pub fn limit_height(&mut self, height: f32) {
+        self.limit = (height > 0.0).then_some(height);
+        self.scroll_by(0.0);
+    }
+
+    /// Scrolls its items by `pixels`, down for positive ones.
+    pub fn scroll_by(&mut self, pixels: f32) {
+        let most = (self.height() - self.shown_size().1).max(0.0);
+        self.scroll = (self.scroll + pixels).clamp(0.0, most);
+    }
+
+    /// Scrolls so that the focused item shows.
+    fn show_focused(&mut self) {
+        let Some((top, item)) = self
+            .focused
+            .and_then(|focused| Some((self.tops().nth(focused)?, self.items().nth(focused)?)))
+        else {
+            return;
         };
-        let y = if y + menu_height <= height {
-            y
-        } else {
-            (y - menu_height).max(0.0)
-        };
-        [x, y, menu_width, menu_height]
+        let height = item_height(item);
+        let shown = self.shown_size().1;
+        if top - PADDING < self.scroll {
+            self.scroll = (top - PADDING - self.heading_height()).max(0.0);
+        } else if top + height + PADDING > self.scroll + shown {
+            self.scroll = top + height + PADDING - shown;
+        }
+    }
+
+    /// Its rectangle, in logical pixels from the window's corner.
+    fn bounds(&self) -> [f32; 4] {
+        let (x, y) = self.placed.unwrap_or(self.at);
+        let (width, height) = self.shown_size();
+        [x, y, width, height]
     }
 
     /// Each item's top, in logical pixels from the menu's.
@@ -236,10 +284,10 @@ impl Menu {
             )
     }
 
-    /// The part at `(x, y)` from the corner of a window `size` big: an item, the menu
-    /// between them, or all the window outside it.
-    pub fn part_at(&self, (x, y): (f64, f64), size: (u32, u32)) -> Part {
-        let [left, top, width, height] = self.bounds((size.0 as f32, size.1 as f32));
+    /// The part at `(x, y)` from the window's corner: an item, the menu between them, or
+    /// all outside it.
+    pub fn part_at(&self, (x, y): (f64, f64)) -> Part {
+        let [left, top, width, height] = self.bounds();
         let (x, y) = (x as f32, y as f32);
         if !((left..left + width).contains(&x) && (top..top + height).contains(&y)) {
             return Part::OffMenu;
@@ -250,7 +298,8 @@ impl Menu {
             .zip(self.items())
             .enumerate()
             .find(|(_, (item_top, item))| {
-                inside && (*item_top..item_top + item_height(item)).contains(&(y - top))
+                let y = y - top + self.scroll;
+                inside && (*item_top..item_top + item_height(item)).contains(&y)
             })
             .map(|(index, (item_top, _))| (index, item_top))
         else {
@@ -261,7 +310,7 @@ impl Menu {
         let reach = BUTTON / 2.0;
         if closes
             && (x - left - close).abs() < reach
-            && (y - top - item_top - ITEM / 2.0).abs() < reach
+            && (y - top + self.scroll - item_top - ITEM / 2.0).abs() < reach
         {
             Part::MenuClose(index)
         } else {
@@ -279,19 +328,19 @@ fn item_height(item: &Item) -> f32 {
 }
 
 impl Painter<'_> {
-    /// `menu` over all else in a window `height` high.
+    /// `menu` on its own surface, its corner at the margin. Gives how many of the quads
+    /// are its box, and where the rest stay.
     pub(super) fn menu(
         &self,
         quads: &mut Vec<Quad>,
         menu: &Menu,
-        height: f32,
         draw: &mut impl FnMut(&Drawing) -> Option<(u32, GpuGlyph)>,
-    ) {
+    ) -> (usize, [f32; 4]) {
         let (chrome, scale, margin) = (self.chrome, self.scale, self.margin);
         let colors = chrome.colors();
-        let bounds = menu.bounds((self.width / scale, height / scale));
-        let [x, y, width, menu_height] = bounds.map(|value| (value * scale).round());
-        let (x, y) = (x + margin, y + margin);
+        let (shown_width, shown_height) = menu.shown_size();
+        let [width, menu_height] = [shown_width, shown_height].map(|value| (value * scale).round());
+        let (x, y) = (margin, margin);
         quads.push(Quad {
             blur: 8.0 * scale,
             ..rounded(x, y + scale, width, menu_height, RADIUS * scale, SHADOW)
@@ -312,6 +361,8 @@ impl Painter<'_> {
             RADIUS * scale,
             colors.dialog,
         ));
+        let boxed = quads.len();
+        let y = y - menu.scroll * scale;
         let (inset, padding) = (PADDING * scale, ITEM_PADDING * scale);
         if let Some(heading) = menu.heading_text() {
             let middle = y + (PADDING + HEADING / 2.0) * scale;
@@ -355,6 +406,7 @@ impl Painter<'_> {
                 index += 1;
             }
         }
+        (boxed, [x, margin, width, menu_height])
     }
 
     /// The menu's item at `index`, its top left at `[x, top]` of a menu `width` wide.
@@ -558,29 +610,47 @@ mod tests {
     #[test]
     fn items_are_found_by_where_they_are_and_the_rest_closes_the_menu() {
         let menu = menu();
-        let size = (800, 600);
         let item = |index: f32, gap: f32| 100.0 + f64::from(PADDING + index * ITEM + gap) + 5.0;
+        assert_eq!(menu.part_at((110.0, item(0.0, 0.0))), Part::MenuItem(0));
+        assert_eq!(menu.part_at((110.0, item(1.0, 0.0))), Part::MenuItem(1));
         assert_eq!(
-            menu.part_at((110.0, item(0.0, 0.0)), size),
-            Part::MenuItem(0)
-        );
-        assert_eq!(
-            menu.part_at((110.0, item(1.0, 0.0)), size),
-            Part::MenuItem(1)
-        );
-        assert_eq!(
-            menu.part_at((110.0, item(2.0, SEPARATOR)), size),
+            menu.part_at((110.0, item(2.0, SEPARATOR))),
             Part::MenuItem(2)
         );
-        assert_eq!(menu.part_at((110.0, 102.0), size), Part::Menu);
-        assert_eq!(menu.part_at((50.0, 50.0), size), Part::OffMenu);
+        assert_eq!(menu.part_at((110.0, 102.0)), Part::Menu);
+        assert_eq!(menu.part_at((50.0, 50.0)), Part::OffMenu);
     }
 
     #[test]
-    fn near_the_window_s_corner_it_opens_the_other_way() {
-        let menu = Menu::new(menu().sections, (790.0, 590.0), false);
-        let [x, y, width, height] = menu.bounds((800.0, 600.0));
-        assert!(x + width <= 790.0 && y + height <= 590.0);
+    fn a_long_title_does_not_widen_a_menu_past_its_limit() {
+        let mut menu = menu();
+        menu.fit(|_| 10_000.0);
+        assert!((menu.width - MAX_WIDTH).abs() < 0.1);
+    }
+
+    #[test]
+    fn items_are_found_where_the_compositor_put_the_menu() {
+        let mut menu = menu();
+        menu.placed = Some((10.0, 20.0));
+        let y = 20.0 + f64::from(PADDING) + 5.0;
+        assert_eq!(menu.part_at((20.0, y)), Part::MenuItem(0));
+        assert_eq!(menu.part_at((500.0, 500.0)), Part::OffMenu);
+    }
+
+    #[test]
+    fn a_menu_given_too_little_height_scrolls_to_its_focus() {
+        let mut menu = menu();
+        let whole = menu.size().1;
+        menu.limit_height(ITEM + 2.0 * PADDING);
+        assert!((menu.shown_size().1 - (ITEM + 2.0 * PADDING)).abs() < 0.1);
+        menu.step(1);
+        menu.step(1);
+        assert_eq!(menu.focused, Some(2));
+        assert!(menu.scroll > 0.0);
+        menu.scroll_by(10_000.0);
+        assert!((menu.scroll - (whole - menu.shown_size().1)).abs() < 0.1);
+        menu.scroll_by(-10_000.0);
+        assert!(menu.scroll.abs() < 0.1);
     }
 
     #[test]

@@ -40,6 +40,8 @@ use smithay_client_toolkit::shell::xdg::window::{
     DecorationMode, Window, WindowConfigure, WindowDecorations, WindowHandler,
 };
 use smithay_client_toolkit::shell::xdg::{XdgShell, XdgSurface};
+use smithay_client_toolkit::shm::Shm;
+use smithay_client_toolkit::shm::slot::SlotPool;
 use smithay_client_toolkit::{delegate_dispatch2, delegate_registry, registry_handlers};
 
 use smithay_client_toolkit::data_device_manager::DataDeviceManagerState;
@@ -47,7 +49,7 @@ use smithay_client_toolkit::primary_selection::PrimarySelectionManagerState;
 use smithay_client_toolkit::seat::pointer::cursor_shape::CursorShapeManager;
 
 use crate::atlas::Atlas;
-use crate::chrome::{self, Chrome, Dialog, Drawing, WindowButtons};
+use crate::chrome::{self, Chrome, Dialog, WindowButtons};
 use crate::cli::{Attach, Start};
 use crate::config::{self, Config, FontChoice};
 use crate::connection::{self, Received};
@@ -104,6 +106,7 @@ mod confirm;
 mod control;
 mod menus;
 mod pointer;
+mod popup;
 mod scale;
 mod screen_reader;
 mod search;
@@ -170,6 +173,11 @@ struct App {
     connection: Connection,
     registry: RegistryState,
     compositor: CompositorState,
+    shell: XdgShell,
+    shm: Option<Shm>,
+    /// The open menu's surface, and the memory it is painted in.
+    menu_popup: Option<popup::MenuPopup>,
+    popup_pool: Option<SlotPool>,
     seats: SeatState,
     /// The seat whose pointer moves and resizes the window.
     seat: Option<wl_seat::WlSeat>,
@@ -385,6 +393,10 @@ pub fn run(start: Start) -> Result<(), AppError> {
     let mut app = App {
         registry: RegistryState::new(&globals),
         compositor,
+        shm: Shm::bind(&globals, &qh).ok(),
+        shell,
+        menu_popup: None,
+        popup_pool: None,
         seats: SeatState::new(&globals, &qh),
         seat: None,
         outputs: OutputState::new(&globals, &qh),
@@ -1105,6 +1117,7 @@ impl App {
 
     /// Hands the render thread a frame if one is due.
     fn draw(&mut self) {
+        self.sync_popup();
         let Some((width, height)) = self.size else {
             return;
         };
@@ -1201,10 +1214,6 @@ impl App {
         if let Some(search) = &mut self.chrome.search {
             search.field.measure(&self.fonts);
         }
-        if let Some(menu) = &mut self.chrome.menu {
-            let fonts = &self.fonts;
-            menu.fit(|text| fonts.label_advance(text, false) / scale);
-        }
         if let Some(field) = self
             .chrome
             .dialog
@@ -1232,13 +1241,8 @@ impl App {
             (packed(self.grid.background) << 8) | (self.config.opacity * 255.0).round() as u32,
             line,
             |drawing| {
-                let index = atlas.drawing(drawing, || match drawing {
-                    Drawing::Label { text, width, bold } => fonts.label(text, *width, *bold),
-                    Drawing::Heading { text, width } => fonts.heading(text, *width),
-                    Drawing::Icon(icon) => icon_theme
-                        .and_then(|theme| chrome::themed_icon(*icon, scale, theme))
-                        .or_else(|| Some(chrome::icon(*icon, scale))),
-                });
+                let index =
+                    atlas.drawing(drawing, || popup::drawn(fonts, drawing, scale, icon_theme));
                 Some((index, atlas.entry(index)?))
             },
         )
@@ -1623,10 +1627,13 @@ impl KeyboardHandler for App {
         _: &Connection,
         _: &QueueHandle<Self>,
         _: &wl_keyboard::WlKeyboard,
-        _: &wl_surface::WlSurface,
+        surface: &wl_surface::WlSurface,
         _: u32,
     ) {
-        self.set_focus(false);
+        // The window keeps looking focused while a menu it opened has the keys.
+        if self.menu_popup.is_none() || self.is_popup(surface) {
+            self.set_focus(false);
+        }
     }
 
     fn update_keymap(

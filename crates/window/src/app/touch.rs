@@ -20,6 +20,8 @@ const LONG_PRESS: Duration = Duration::from_millis(500);
 pub struct Touch {
     pub proxy: Option<WlTouch>,
     finger: Option<Finger>,
+    /// The menu's surface the finger went down on.
+    on_popup: Option<WlSurface>,
     /// Counts the long presses begun, so that a timer knows its finger still holds.
     presses: u32,
 }
@@ -81,10 +83,12 @@ impl TouchHandler for App {
         _: &WlTouch,
         serial: u32,
         _: u32,
-        _: WlSurface,
+        surface: WlSurface,
         id: i32,
         position: (f64, f64),
     ) {
+        let position = self.in_window(&surface, position);
+        self.touch.on_popup = self.is_popup(&surface).then_some(surface);
         if self.touch.finger.is_some() {
             return;
         }
@@ -140,6 +144,10 @@ impl TouchHandler for App {
         id: i32,
         position: (f64, f64),
     ) {
+        let position = match &self.touch.on_popup {
+            Some(surface) => self.in_window(surface, position),
+            None => position,
+        };
         let height = f64::from(self.fonts.cell().height) / self.factor();
         let Some(finger) = self.touch.finger.as_mut().filter(|finger| finger.id == id) else {
             return;
