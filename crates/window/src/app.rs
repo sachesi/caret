@@ -187,8 +187,6 @@ struct App {
     popup: Option<SessionId>,
     tabs: Vec<tabs::Tab>,
     selected: usize,
-    /// A tab has been asked for and not yet opened.
-    opening: bool,
     /// The tab the window opened, to show when the server tells of it.
     opened: Option<TerminalId>,
     /// The pane the window split off, to focus when the server tells of it.
@@ -200,8 +198,8 @@ struct App {
     control: bool,
     /// The tab about to close once its panes say whether programs run in them.
     closing_tab: Option<confirm::TabClosing>,
-    /// What the window's first tab runs, from the command line.
-    first: Command,
+    /// What the window's first tab runs, from the command line, until that is asked for.
+    first: Option<Command>,
     /// The profile whose settings the window has over the others.
     profile: Option<String>,
     /// Counts searches, so that answers to ones the window moved past are dropped.
@@ -399,13 +397,12 @@ pub fn run(start: Start) -> Result<(), AppError> {
         popup: None,
         tabs: Vec::new(),
         selected: 0,
-        opening: false,
         opened: None,
         opened_pane: None,
         moved_pane: None,
         control: false,
         closing_tab: None,
-        first,
+        first: Some(first),
         profile,
         searches: 0,
         confirming: None,
@@ -792,7 +789,6 @@ impl App {
                 }
             }
             (Some(Asked::Tab(size)), Answer::Opened { terminal }) => {
-                self.opening = false;
                 self.opened = Some(terminal);
                 // The window may have changed size while the tab was opening.
                 if let Some(now) = self.grid_size.filter(|&now| now != size) {
@@ -932,12 +928,12 @@ impl App {
         if self.sessions.is_empty() || self.grid_size.is_none() {
             return;
         }
-        if self.opening || !self.tabs.is_empty() {
+        if !self.tabs.is_empty() {
             return;
         }
-        let first = std::mem::take(&mut self.first);
-        self.open_tab(first);
-        self.opening = true;
+        if let Some(first) = self.first.take() {
+            self.open_tab(first);
+        }
     }
 
     /// Fits the panes to the window, telling the server of those whose size changes.
