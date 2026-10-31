@@ -2,7 +2,7 @@
 //! programs run in it and pasting lines a program will run one by one, asking for a
 //! tab's name, and saying what Caret is.
 
-use caret_protocol::{Answer, Bytes, Question, Request, SessionId, TerminalId, encode};
+use caret_protocol::{Answer, Question, Request, SessionId, TerminalId, encode};
 use gettextrs::gettext;
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
@@ -89,11 +89,8 @@ impl App {
             Some(Confirm::ClosePane(terminal)) if accepted => self.end_pane(terminal),
             Some(Confirm::CloseWindow) if accepted => self.end(false),
             Some(Confirm::Paste { terminal, text }) if accepted => {
-                self.server.send(&Request::Input {
-                    terminal,
-                    bytes: Bytes(encode::paste(&text, false)),
-                    bottom: true,
-                });
+                self.server
+                    .input(terminal, &encode::paste(&text, false), true);
             }
             Some(Confirm::About) if accepted => pointer::open(WEBSITE, &self.toaster),
             Some(Confirm::Rename(terminal)) if accepted => {
@@ -490,11 +487,8 @@ impl App {
             self.confirm(dialog, Confirm::Paste { terminal, text });
             return;
         }
-        self.server.send(&Request::Input {
-            terminal,
-            bytes: Bytes(encode::paste(text, bracketed)),
-            bottom: true,
-        });
+        self.server
+            .input(terminal, &encode::paste(text, bracketed), true);
     }
 }
 

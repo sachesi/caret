@@ -29,6 +29,9 @@ use smithay_client_toolkit::reexports::protocols::wp::primary_selection::zv1::cl
 
 use super::App;
 
+/// The most of another program's text taken in at once.
+const LONGEST_PASTE: u64 = 256 << 20;
+
 /// What a drop of files comes as.
 const URI_LIST: &str = "text/uri-list";
 
@@ -147,14 +150,11 @@ impl App {
         // The other program writes at its own pace, so the pipe is read off the loop.
         let spawned = std::thread::Builder::new()
             .name("paste".to_owned())
-            .spawn(move || {
-                let mut bytes = Vec::new();
-                match pipe.read_to_end(&mut bytes) {
-                    Ok(_) => {
-                        let _ = pastes.send(bytes);
-                    }
-                    Err(error) => tracing::warn!("reading the pasted text: {error}"),
+            .spawn(move || match read_whole(&mut pipe) {
+                Ok(bytes) => {
+                    let _ = pastes.send(bytes);
                 }
+                Err(error) => tracing::warn!("reading the pasted text: {error}"),
             });
         if let Err(error) = spawned {
             tracing::warn!("starting to read a paste: {error}");
@@ -181,6 +181,20 @@ fn one_line(bytes: &[u8]) -> String {
         .chars()
         .map(|letter| if letter.is_control() { ' ' } else { letter })
         .collect()
+}
+
+/// All of what another program offers, unless it runs past [`LONGEST_PASTE`]: half a paste
+/// could run half of what was meant, and one without end would fill the window's memory.
+fn read_whole(pipe: &mut impl Read) -> std::io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    pipe.take(LONGEST_PASTE + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > LONGEST_PASTE {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::FileTooLarge,
+            format!("longer than {LONGEST_PASTE} bytes"),
+        ));
+    }
+    Ok(bytes)
 }
 
 /// The first of the text types an offer has, as Caret prefers them.
@@ -306,15 +320,14 @@ impl DataDeviceHandler for App {
         let spawned = std::thread::Builder::new()
             .name("drop".to_owned())
             .spawn(move || {
-                let mut bytes = Vec::new();
-                let read = pipe.read_to_end(&mut bytes);
+                let read = read_whole(&mut pipe);
                 offer.finish();
                 offer.destroy();
                 match read {
-                    Ok(_) if mime == URI_LIST => {
+                    Ok(bytes) if mime == URI_LIST => {
                         let _ = pastes.send(paths(&bytes));
                     }
-                    Ok(_) => {
+                    Ok(bytes) => {
                         let _ = pastes.send(bytes);
                     }
                     Err(error) => tracing::warn!("reading what was dropped: {error}"),
@@ -431,6 +444,14 @@ impl PrimarySelectionSourceHandler for App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_paste_is_taken_whole_up_to_its_limit() {
+        let mut short: &[u8] = b"text";
+        assert_eq!(read_whole(&mut short).unwrap(), b"text");
+        let mut endless = std::io::repeat(b'x');
+        assert!(read_whole(&mut endless).is_err());
+    }
 
     #[test]
     fn a_paste_into_a_field_stays_on_one_line() {
