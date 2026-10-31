@@ -1,12 +1,14 @@
 //! Fonts found, shaped and rasterised in Rust: the faces of the terminal's family, the
 //! size of a cell, and each glyph's pixels.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use caret_protocol::{BOLD, Glyph, GlyphText, ITALIC};
-use rustybuzz::Feature;
+use rustybuzz::{Direction, Feature, Script, ShapePlan, UnicodeBuffer};
 use swash::FontRef;
 use swash::scale::image::{Content, Image};
 use swash::scale::{Render, ScaleContext, Source, StrikeWith};
@@ -57,6 +59,9 @@ const LONGEST_LIGATURE: usize = 12;
 /// Runs remembered before the table is emptied.
 const LIGATURE_RUNS: usize = 4096;
 
+/// Label advances kept, before they are measured anew.
+const LABEL_ADVANCES: usize = 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum FontError {
     #[error("no monospaced font is installed")]
@@ -104,6 +109,9 @@ struct Shaped {
 struct Face {
     data: Arc<dyn AsRef<[u8]> + Send + Sync>,
     index: u32,
+    /// Names the face to the scaler's cache of hinting, which otherwise takes each
+    /// [`FontRef`] made for a glyph for a face it has not seen and sets hinting up again.
+    key: u64,
     /// Drawn heavier, standing in for a bold face the family lacks.
     embolden: bool,
     /// The weight a variable face is drawn at, from its own axis.
@@ -153,11 +161,22 @@ pub struct Fonts {
     cell: CellMetrics,
     context: ScaleContext,
     fallbacks: HashMap<char, Option<Face>>,
+    /// The faces of the families tried first for a missing character, in their order,
+    /// once looked up; then the faces found among all others before, tried before all
+    /// are searched again; and the faces mapped for missing characters.
+    preferred: Option<Vec<fontdb::ID>>,
+    found: Vec<fontdb::ID>,
+    mapped: HashMap<fontdb::ID, Face>,
     /// The OpenType features the terminal's text is shaped with.
     features: Vec<Feature>,
     ligatures: bool,
     /// How runs of symbols divide into ligatures, by style.
     divided: HashMap<(Box<str>, u8), Rc<[u8]>>,
+    /// Plans for shaping text, which take longer to make than shaping a line with.
+    plans: RefCell<HashMap<PlanKey, ShapePlan>>,
+    /// How far texts move the pen in the window's own face, regular and bold, as the
+    /// window measures its menus and dialogs again for every frame.
+    advances: RefCell<[HashMap<Box<str>, f32>; 2]>,
     /// The sans-serif faces of the window's own text, regular and bold, their size in
     /// pixels to the em, and their line's ascent and height.
     labels: [Option<Face>; 2],
@@ -166,16 +185,26 @@ pub struct Fonts {
     label_height: i32,
 }
 
+/// The fonts installed, found by reading every font file's names.
+pub fn installed() -> fontdb::Database {
+    let mut database = fontdb::Database::new();
+    database.load_system_fonts();
+    database
+}
+
 impl Fonts {
-    /// The faces of the family `choice` names, or of the first installed family of those
-    /// Caret prefers, on a screen of `scale` device pixels to the logical one.
+    /// The faces of the family `choice` names among `database`'s, or of the first
+    /// installed family of those Caret prefers, on a screen of `scale` device pixels to
+    /// the logical one.
     ///
     /// # Errors
     ///
     /// When no monospaced font is installed.
-    pub fn new(choice: &FontChoice, scale: f32) -> Result<Self, FontError> {
-        let mut database = fontdb::Database::new();
-        database.load_system_fonts();
+    pub fn new(
+        mut database: fontdb::Database,
+        choice: &FontChoice,
+        scale: f32,
+    ) -> Result<Self, FontError> {
         let family = choose_family(&database, choice.family.as_deref()).ok_or(FontError::NoFont)?;
         let mut face = |weight, style| face(&mut database, &family, weight, style);
         let styles = [
@@ -210,14 +239,28 @@ impl Fonts {
             cell,
             context: ScaleContext::new(),
             fallbacks: HashMap::new(),
+            preferred: None,
+            found: Vec::new(),
+            mapped: HashMap::new(),
             features: choice.features.clone(),
             ligatures: choice.ligatures,
             divided: HashMap::new(),
+            plans: RefCell::default(),
+            advances: RefCell::default(),
             labels,
             label_size,
             label_ascent,
             label_height,
         })
+    }
+
+    /// The faces `choice` names at `scale`, among the fonts these were found among.
+    ///
+    /// # Errors
+    ///
+    /// When no monospaced font is installed.
+    pub fn at(&self, choice: &FontChoice, scale: f32) -> Result<Self, FontError> {
+        Self::new(self.database.clone(), choice, scale)
     }
 
     pub fn cell(&self) -> CellMetrics {
@@ -231,10 +274,20 @@ impl Fonts {
 
     /// How far `text` moves the pen in the window's own face, bold or not, in pixels.
     pub fn label_advance(&self, text: &str, bold: bool) -> f32 {
-        self.labels[usize::from(bold)]
+        let known = self.advances.borrow()[usize::from(bold)].get(text).copied();
+        if let Some(advance) = known {
+            return advance;
+        }
+        let advance = self.labels[usize::from(bold)]
             .as_ref()
-            .and_then(|face| shape(face, text, self.label_size, &[]))
-            .map_or(0.0, |(_, advance)| advance)
+            .and_then(|face| self.shape(face, text, self.label_size, false))
+            .map_or(0.0, |(_, advance)| advance);
+        let advances = &mut self.advances.borrow_mut()[usize::from(bold)];
+        if advances.len() >= LABEL_ADVANCES {
+            advances.clear();
+        }
+        advances.insert(text.into(), advance);
+        advance
     }
 
     /// `text` in the window's own face, bold or not, from the top of its line, cut short
@@ -259,9 +312,9 @@ impl Fonts {
         size: f32,
         ascent: i32,
     ) -> Option<Raster> {
-        let (mut glyphs, advance) = shape(face, text, size, &[])?;
+        let (mut glyphs, advance) = self.shape(face, text, size, false)?;
         if advance > width as f32 {
-            let (dots, dots_advance) = shape(face, "\u{2026}", size, &[])?;
+            let (dots, dots_advance) = self.shape(face, "\u{2026}", size, false)?;
             let room = width as f32 - dots_advance;
             let kept = glyphs
                 .iter()
@@ -345,7 +398,7 @@ impl Fonts {
 
     /// Each glyph `text` shapes to in `face`, rendered and placed against the baseline.
     fn shape_and_render(&mut self, face: &Face, text: &str) -> Option<Vec<(i32, i32, Image)>> {
-        let (glyphs, _) = shape(face, text, self.size, &self.features)?;
+        let (glyphs, _) = self.shape(face, text, self.size, true)?;
         Some(self.render(face, self.size, &glyphs, self.cell.baseline))
     }
 
@@ -362,8 +415,11 @@ impl Fonts {
             return Some(parts.clone());
         }
         let face = &self.styles[usize::from(style)];
+        let shaper = shaper(face);
         let glyphs = |text: &str| {
-            shape(face, text, self.size, &self.features)
+            shaper
+                .as_ref()
+                .and_then(|shaper| self.shape_with(shaper, face, text, self.size, true))
                 .map(|(glyphs, _)| glyphs)
                 .unwrap_or_default()
         };
@@ -393,7 +449,7 @@ impl Fonts {
         };
         let mut scaler = self
             .context
-            .builder(font)
+            .builder_with_id(font, [face.key, 0])
             .size(size)
             .hint(true)
             // The context keeps the last face's coordinates, which a face drawn at its
@@ -438,35 +494,70 @@ impl Fonts {
         if let Some(found) = self.fallbacks.get(&c) {
             return found.clone();
         }
-        let regular = |info: &fontdb::FaceInfo| {
-            info.style == fontdb::Style::Normal && info.weight == fontdb::Weight::NORMAL
-        };
-        let named = FALLBACKS.iter().find_map(|family| {
-            self.database.faces().find(|info| {
-                regular(info)
-                    && info
-                        .families
-                        .iter()
-                        .any(|(name, _)| name.eq_ignore_ascii_case(family))
-                    && face_has(&self.database, info.id, c)
-            })
+        let preferred = self
+            .preferred
+            .take()
+            .unwrap_or_else(|| preferred_faces(&self.database));
+        let found = std::mem::take(&mut self.found);
+        let known = preferred
+            .iter()
+            .chain(&found)
+            .find_map(|&id| self.mapped(id).filter(|face| face.has(c)));
+        self.preferred = Some(preferred);
+        self.found = found;
+        let found = known.or_else(|| {
+            let id = self
+                .database
+                .faces()
+                .find(|info| regular(info) && face_has(&self.database, info.id, c))?
+                .id;
+            self.found.push(id);
+            self.mapped(id)
         });
-        let id = named
-            .or_else(|| {
-                self.database
-                    .faces()
-                    .find(|info| regular(info) && face_has(&self.database, info.id, c))
-            })
-            .map(|info| info.id);
-        let found = id.and_then(|id| shared(&mut self.database, id));
         self.fallbacks.insert(c, found.clone());
         found
     }
+
+    /// The face `id`, mapped the first time it is asked for.
+    fn mapped(&mut self, id: fontdb::ID) -> Option<Face> {
+        if let Some(face) = self.mapped.get(&id) {
+            return Some(face.clone());
+        }
+        let face = shared(&mut self.database, id)?;
+        self.mapped.insert(id, face.clone());
+        Some(face)
+    }
 }
 
-/// `text` shaped in `face` at `size` pixels to the em with `features`, and how far it
-/// moves the pen.
-fn shape(face: &Face, text: &str, size: f32, features: &[Feature]) -> Option<(Vec<Shaped>, f32)> {
+fn regular(info: &fontdb::FaceInfo) -> bool {
+    info.style == fontdb::Style::Normal && info.weight == fontdb::Weight::NORMAL
+}
+
+/// The regular faces of the families tried first for a missing character, in order.
+fn preferred_faces(database: &fontdb::Database) -> Vec<fontdb::ID> {
+    FALLBACKS
+        .iter()
+        .flat_map(|family| {
+            database
+                .faces()
+                .filter(move |info| {
+                    regular(info)
+                        && info
+                            .families
+                            .iter()
+                            .any(|(name, _)| name.eq_ignore_ascii_case(family))
+                })
+                .map(|info| info.id)
+        })
+        .collect()
+}
+
+/// What a plan for shaping is made for: a face, at a weight, with the terminal's
+/// features or none, for text of a direction and script.
+type PlanKey = (u64, Option<u32>, bool, Direction, Option<Script>);
+
+/// `face` ready to shape text in.
+fn shaper(face: &Face) -> Option<rustybuzz::Face<'_>> {
     let mut shaper = rustybuzz::Face::from_slice(face.bytes(), face.index)?;
     if let Some(weight) = face.weight {
         shaper.set_variations(&[rustybuzz::Variation {
@@ -474,28 +565,71 @@ fn shape(face: &Face, text: &str, size: f32, features: &[Feature]) -> Option<(Ve
             value: weight,
         }]);
     }
-    let units = f32::from(u16::try_from(shaper.units_per_em()).ok()?);
-    let to_pixels = size / units;
-    let mut buffer = rustybuzz::UnicodeBuffer::new();
-    buffer.push_str(text);
-    let shaped = rustybuzz::shape(&shaper, features, buffer);
-    let mut pen = 0.0f32;
-    let mut glyphs = Vec::new();
-    for (info, position) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {
-        let advance = position.x_advance as f32 * to_pixels;
-        if let Ok(id) = u16::try_from(info.glyph_id) {
-            glyphs.push(Shaped {
-                id,
-                cluster: info.cluster as usize,
-                x: pen + position.x_offset as f32 * to_pixels,
-                y: position.y_offset as f32 * to_pixels,
-                pen,
-                advance,
-            });
-        }
-        pen += advance;
+    Some(shaper)
+}
+
+impl Fonts {
+    /// `text` shaped in `face` at `size` pixels to the em, with the terminal's features
+    /// or none, and how far it moves the pen.
+    fn shape(
+        &self,
+        face: &Face,
+        text: &str,
+        size: f32,
+        terminal: bool,
+    ) -> Option<(Vec<Shaped>, f32)> {
+        self.shape_with(&shaper(face)?, face, text, size, terminal)
     }
-    Some((glyphs, pen))
+
+    /// As [`Self::shape`], in `face` made ready as `shaper`.
+    fn shape_with(
+        &self,
+        shaper: &rustybuzz::Face<'_>,
+        face: &Face,
+        text: &str,
+        size: f32,
+        terminal: bool,
+    ) -> Option<(Vec<Shaped>, f32)> {
+        let features: &[Feature] = if terminal { &self.features } else { &[] };
+        let units = f32::from(u16::try_from(shaper.units_per_em()).ok()?);
+        let to_pixels = size / units;
+        let mut buffer = UnicodeBuffer::new();
+        buffer.push_str(text);
+        buffer.guess_segment_properties();
+        // Text of no script of its own, such as symbols, has none, which the plan must
+        // be made for as well.
+        let script = Some(buffer.script()).filter(|&script| script != rustybuzz::script::UNKNOWN);
+        let direction = buffer.direction();
+        let key = (
+            face.key,
+            face.weight.map(f32::to_bits),
+            terminal,
+            direction,
+            script,
+        );
+        let mut plans = self.plans.borrow_mut();
+        let plan = plans
+            .entry(key)
+            .or_insert_with(|| ShapePlan::new(shaper, direction, script, None, features));
+        let shaped = rustybuzz::shape_with_plan(shaper, plan, buffer);
+        let mut pen = 0.0f32;
+        let mut glyphs = Vec::new();
+        for (info, position) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {
+            let advance = position.x_advance as f32 * to_pixels;
+            if let Ok(id) = u16::try_from(info.glyph_id) {
+                glyphs.push(Shaped {
+                    id,
+                    cluster: info.cluster as usize,
+                    x: pen + position.x_offset as f32 * to_pixels,
+                    y: position.y_offset as f32 * to_pixels,
+                    pen,
+                    advance,
+                });
+            }
+            pen += advance;
+        }
+        Some((glyphs, pen))
+    }
 }
 
 /// For each character of a run, whether the font draws it differently `together` with
@@ -614,12 +748,14 @@ fn face(
 /// The face `id`, its file mapped and shared with the other faces in it.
 #[expect(unsafe_code, reason = "fonts are mapped from their files")]
 fn shared(database: &mut fontdb::Database, id: fontdb::ID) -> Option<Face> {
+    static KEYS: AtomicU64 = AtomicU64::new(1);
     // SAFETY: a font file rewritten while it is mapped can crash the program reading
     // it, a risk every program that maps fonts takes; nothing here writes to it.
     let (data, index) = unsafe { database.make_shared_face_data(id) }?;
     Some(Face {
         data,
         index,
+        key: KEYS.fetch_add(1, Ordering::Relaxed),
         embolden: false,
         weight: None,
         slant: false,
@@ -814,16 +950,18 @@ mod tests {
 
     #[test]
     fn a_font_with_ligatures_joins_an_arrow_while_they_are_on() {
-        let mut database = fontdb::Database::new();
-        database.load_system_fonts();
-        let installed = ["Fira Code", "JetBrains Mono", "Cascadia Code"]
+        let database = installed();
+        let families = ["Fira Code", "JetBrains Mono", "Cascadia Code"]
             .into_iter()
             .filter(|&family| choose_family(&database, Some(family)).as_deref() == Some(family));
-        for family in installed {
-            let mut fonts = Fonts::new(&choice(Some(family), true), 1.0).expect("it is installed");
+        for family in families {
+            let mut fonts = Fonts::new(database.clone(), &choice(Some(family), true), 1.0)
+                .expect("it is installed");
             assert_eq!(fonts.ligatures("->", 0).as_deref(), Some(&[2][..]));
             assert_eq!(fonts.ligatures("()", 0).as_deref(), Some(&[1, 1][..]));
-            let mut off = Fonts::new(&choice(Some(family), false), 1.0).expect("it loaded on");
+            let mut off = fonts
+                .at(&choice(Some(family), false), 1.0)
+                .expect("it loaded on");
             assert_eq!(off.ligatures("->", 0), None);
         }
     }
@@ -861,7 +999,7 @@ mod tests {
 
     #[test]
     fn a_cell_holds_its_letters_where_a_monospaced_font_is_installed() {
-        let Ok(mut fonts) = Fonts::new(&choice(None, true), 1.0) else {
+        let Ok(mut fonts) = Fonts::new(installed(), &choice(None, true), 1.0) else {
             return;
         };
         let cell = fonts.cell();

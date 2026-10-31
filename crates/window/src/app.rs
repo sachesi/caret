@@ -52,7 +52,7 @@ use crate::cli::{Attach, Start};
 use crate::config::{self, Config, FontChoice};
 use crate::connection::{self, Received};
 use crate::desktop::{self, Desktop};
-use crate::fonts::{FontError, Fonts};
+use crate::fonts::{self, FontError, Fonts};
 use crate::gpu::{Gpu, GpuError};
 use crate::grid::{Grid, packed};
 use crate::notifications::Notifier;
@@ -322,6 +322,10 @@ pub fn run(start: Start) -> Result<(), AppError> {
     let fractional = scale::Fractional::new(&globals, &qh, window.wl_surface());
     window.commit();
 
+    // Vulkan takes long to start, long enough to find the fonts meanwhile.
+    let finding = std::thread::Builder::new()
+        .name("fonts".to_owned())
+        .spawn(fonts::installed);
     let display = connection.backend().display_ptr().cast();
     let surface = window.wl_surface().id().as_ptr().cast();
     // SAFETY: `App` holds the device, the window and the connection, and drops them in
@@ -337,7 +341,15 @@ pub fn run(start: Start) -> Result<(), AppError> {
     .map_err(AppError::Render)?;
 
     let desktop = first_desktop.recv_timeout(DESKTOP_WAIT).unwrap_or_default();
-    let fonts = Fonts::new(&config.font_for(desktop.monospace.as_deref()), 1.0)?;
+    let installed = finding
+        .ok()
+        .and_then(|finding| finding.join().ok())
+        .unwrap_or_else(fonts::installed);
+    let fonts = Fonts::new(
+        installed,
+        &config.font_for(desktop.monospace.as_deref()),
+        1.0,
+    )?;
     let palette = palette(&config, &desktop);
     server.send(&look(&config, &palette));
     let (asked, first) = begin(&mut server, start);
@@ -803,7 +815,8 @@ impl App {
     /// Applies what changed of the window's style since it was `before`.
     fn restyle(&mut self, before: &(FontChoice, Request)) {
         if self.config.font_for(self.desktop.monospace.as_deref()) != before.0 {
-            self.load_fonts();
+            // A font named in the settings may have been installed since.
+            self.load_fonts(Some(fonts::installed()));
         }
         // Read again, as a scheme's file may have changed without the settings.
         let palette = palette(&self.config, &self.desktop);
@@ -818,12 +831,17 @@ impl App {
         self.draw();
     }
 
-    /// Loads the font the settings or the desktop name at the window's scale, drawing every glyph
-    /// again.
-    fn load_fonts(&mut self) {
+    /// Loads the font the settings or the desktop name at the window's scale, among the
+    /// fonts `installed` or those found before, drawing every glyph again.
+    fn load_fonts(&mut self, installed: Option<fontdb::Database>) {
         let mut choice = self.config.font_for(self.desktop.monospace.as_deref());
         choice.points *= ZOOM.powi(self.zoom);
-        match Fonts::new(&choice, self.factor() as f32) {
+        let scale = self.factor() as f32;
+        let loaded = match installed {
+            Some(installed) => Fonts::new(installed, &choice, scale),
+            None => self.fonts.at(&choice, scale),
+        };
+        match loaded {
             Ok(fonts) => {
                 self.fonts = fonts;
                 self.atlas = self.atlas.next();
@@ -928,7 +946,7 @@ impl App {
             return;
         }
         self.scale = scale;
-        self.load_fonts();
+        self.load_fonts(None);
         self.fit();
         self.dirty = true;
         self.draw();
@@ -1346,7 +1364,7 @@ impl App {
         self.zoom = steps.map_or(0, |steps| {
             (self.zoom + steps).clamp(-ZOOM_STEPS, ZOOM_STEPS)
         });
-        self.load_fonts();
+        self.load_fonts(None);
         self.fit();
         self.dirty = true;
         self.draw();
