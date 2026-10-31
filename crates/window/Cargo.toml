@@ -24,6 +24,8 @@ rustix = { version = "1", features = ["event", "fs", "termios"] }
 shlex = "1"
 skrifa = { version = "0.44", default-features = false, features = ["std"] }
 smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop", "system", "xkbcommon"] }
+# Without its text and raster features: symbolic icons are shapes.
+resvg = { version = "0.49", default-features = false }
 swash = "0.2"
 thiserror.workspace = true
 toml_edit = { version = "0.25", default-features = false, features = ["display", "parse"] }

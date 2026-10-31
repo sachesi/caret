@@ -116,6 +116,12 @@ impl Atlas {
         Lookup { atlas: self, fonts }
     }
 
+    /// Has every icon drawn again the next time it is asked for.
+    pub fn forget_icons(&mut self) {
+        self.drawings
+            .retain(|drawing, _| !matches!(drawing, Drawing::Icon(_)));
+    }
+
     /// The number quads refer to `drawing` by, made with `raster` the first time.
     pub fn drawing(&mut self, drawing: &Drawing, raster: impl FnOnce() -> Option<Raster>) -> u32 {
         if let Some(&index) = self.drawings.get(drawing) {

@@ -14,6 +14,7 @@ mod fonts;
 mod gpu;
 mod grid;
 mod i18n;
+mod icon_theme;
 mod keys;
 mod notifications;
 mod palette;

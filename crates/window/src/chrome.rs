@@ -40,7 +40,7 @@ const BUTTON_HIT: f32 = 34.0;
 /// From the window's right edge to the close button's centre.
 const BUTTON_END: f32 = 23.0;
 /// From one window button's centre to the next.
-const BUTTON_STEP: f32 = 40.0;
+const BUTTON_STEP: f32 = 37.0;
 /// From the window's right edge to the main menu button's centre.
 const MAIN_MENU_END: f32 = 63.0;
 /// The new tab button's square, from the window's left edge, and its corners' radius.
@@ -1490,6 +1490,19 @@ fn halves(packed: u32) -> (u32, u32) {
 fn offset(glyph: GpuGlyph) -> (i32, i32) {
     let half = |bits: u32| i32::from(bits as u16 as i16);
     (half(glyph.offset), half(glyph.offset >> 16))
+}
+
+/// `icon`'s pixels at `scale` as `theme` draws it, where it is a window button's and the
+/// theme has it.
+pub fn themed_icon(icon: Icon, scale: f32, theme: &str) -> Option<Raster> {
+    let name = match icon {
+        Icon::Close => "window-close-symbolic",
+        Icon::Minimize => "window-minimize-symbolic",
+        Icon::Maximize => "window-maximize-symbolic",
+        Icon::Restore => "window-restore-symbolic",
+        Icon::NewTab | Icon::Up | Icon::Down | Icon::Menu => return None,
+    };
+    crate::icon_theme::symbolic(theme, name, (ICON * scale).round() as u32)
 }
 
 /// `icon`'s pixels at `scale`.

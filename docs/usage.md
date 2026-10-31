@@ -39,7 +39,9 @@ dragged along the strip to reorder them.
 
 Where Caret draws the title bar itself, its window buttons are the ones the desktop's
 `button-layout` in `org.gnome.desktop.wm.preferences` names, on the sides it puts them; with
-no such setting there is a close button at the right.
+no such setting there is a close button at the right. They show the `window-close-symbolic`
+icons and the like of the desktop's icon theme, in the theme's own shapes, and plain ones
+where the theme has none.
 
 Ctrl+Shift+H, or `title-bar` in the settings, hides the title bar, and so does full
 screen (F11, or Full Screen in the main menu). The context menu then has what the title

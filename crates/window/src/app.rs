@@ -622,6 +622,9 @@ fn listen(
         .insert_source(desktop_changed, |event, (), app| {
             if let calloop::channel::Event::Msg(desktop) = event {
                 let before = app.style();
+                if desktop.icon_theme != app.desktop.icon_theme {
+                    app.atlas.forget_icons();
+                }
                 app.desktop = desktop;
                 app.restyle(&before);
                 app.restart_blink();
@@ -1198,6 +1201,7 @@ impl App {
             list.line = self.fonts.label_height() as f32 / scale;
         }
         let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
+        let icon_theme = self.desktop.icon_theme.as_deref();
         let line = fonts.label_height();
         self.chrome.quads(
             size,
@@ -1208,7 +1212,9 @@ impl App {
                 let index = atlas.drawing(drawing, || match drawing {
                     Drawing::Label { text, width, bold } => fonts.label(text, *width, *bold),
                     Drawing::Heading { text, width } => fonts.heading(text, *width),
-                    Drawing::Icon(icon) => Some(chrome::icon(*icon, scale)),
+                    Drawing::Icon(icon) => icon_theme
+                        .and_then(|theme| chrome::themed_icon(*icon, scale, theme))
+                        .or_else(|| Some(chrome::icon(*icon, scale))),
                 });
                 Some((index, atlas.entry(index)?))
             },
