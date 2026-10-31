@@ -389,26 +389,38 @@ impl App {
         self.retitle();
     }
 
-    /// Moves `terminal`'s tab to where `x` is in the strip, as it is dragged there, among
-    /// its session's tabs.
+    /// Moves `terminal`'s tab to where `x` is in the strip, as it is dragged there: among
+    /// its session's tabs, or into another session's.
     pub(super) fn drag_tab(&mut self, terminal: TerminalId, x: f64) {
         let (Some(from), Some((width, _))) = (self.tab_of(terminal), self.size) else {
             return;
         };
-        let session = self.tabs[from].session;
-        if let Some(target) = self.chrome.tab_at(x, width)
-            && target != from
-            && self
-                .tabs
-                .get(target)
-                .is_some_and(|tab| tab.session == session)
-        {
-            let (start, _) = self.group(session);
-            self.server.send(&Request::MoveTab {
-                terminal,
-                session,
-                index: u32::try_from(target - start).unwrap_or(u32::MAX),
-            });
+        let Some(target) = self
+            .chrome
+            .tab_at(x, width)
+            .filter(|&target| target != from && target < self.tabs.len())
+        else {
+            return;
+        };
+        let session = self.tabs[target].session;
+        let (start, _) = self.group(session);
+        let index = target - start;
+        self.server.send(&Request::MoveTab {
+            terminal,
+            session,
+            index: u32::try_from(index).unwrap_or(u32::MAX),
+        });
+        if self.tabs[from].session != session {
+            // The server tells only the other clients of a tab moved between sessions.
+            let shown = self.tabs.get(self.selected).map(|tab| tab.key);
+            let mut tab = self.tabs.remove(from);
+            tab.session = session;
+            let (start, count) = self.group(session);
+            self.tabs.insert(start + index.min(count), tab);
+            if let Some(index) = shown.and_then(|shown| self.tab_of(shown)) {
+                self.selected = index;
+            }
+            self.retitle();
         }
     }
 
