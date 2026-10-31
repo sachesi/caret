@@ -87,7 +87,9 @@ windows show them, to open one in a window of its own or in this one, rename it 
 it. Right-clicking the + button lists them too, and offers a new session in this window.
 `caret sessions` prints the same list, and `caret attach` with a session's number or
 name shows it: in a Caret window when run in one, or else in the terminal it runs in,
-drawn with escape sequences, where control mode's D detaches back to the shell.
+drawn with escape sequences, where control mode's D detaches back to the shell. On a
+Linux console it uses the console's sixteen colours, so a colour between them shows as
+the nearest one.
 
 A window that shows several sessions has one tab for each in the strip, with its name
 or number, the title of the tab it shows and how many tabs it has. A click on another

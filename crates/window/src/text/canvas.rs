@@ -3,38 +3,179 @@
 
 use std::fmt::Write as _;
 
-use caret_protocol::{Cell, GlyphText, Rgb};
+use caret_protocol::{Cell, CellFlags, GlyphText, Rgb};
 
+pub const UNDERLINE: u8 = 1 << 4;
+pub const STRIKEOUT: u8 = 1 << 5;
 pub const DIM: u8 = 1 << 6;
 pub const REVERSE: u8 = 1 << 7;
+
+/// The colours of a Linux console until a program changes them, in their ANSI order. It
+/// takes a 24-bit colour by its strongest components alone, which turns most colours into
+/// another, so it is given its own by number.
+pub const CONSOLE_COLORS: [Rgb; 16] = [
+    Rgb {
+        r: 0x00,
+        g: 0x00,
+        b: 0x00,
+    },
+    Rgb {
+        r: 0xaa,
+        g: 0x00,
+        b: 0x00,
+    },
+    Rgb {
+        r: 0x00,
+        g: 0xaa,
+        b: 0x00,
+    },
+    Rgb {
+        r: 0xaa,
+        g: 0x55,
+        b: 0x00,
+    },
+    Rgb {
+        r: 0x00,
+        g: 0x00,
+        b: 0xaa,
+    },
+    Rgb {
+        r: 0xaa,
+        g: 0x00,
+        b: 0xaa,
+    },
+    Rgb {
+        r: 0x00,
+        g: 0xaa,
+        b: 0xaa,
+    },
+    Rgb {
+        r: 0xaa,
+        g: 0xaa,
+        b: 0xaa,
+    },
+    Rgb {
+        r: 0x55,
+        g: 0x55,
+        b: 0x55,
+    },
+    Rgb {
+        r: 0xff,
+        g: 0x55,
+        b: 0x55,
+    },
+    Rgb {
+        r: 0x55,
+        g: 0xff,
+        b: 0x55,
+    },
+    Rgb {
+        r: 0xff,
+        g: 0xff,
+        b: 0x55,
+    },
+    Rgb {
+        r: 0x55,
+        g: 0x55,
+        b: 0xff,
+    },
+    Rgb {
+        r: 0xff,
+        g: 0x55,
+        b: 0xff,
+    },
+    Rgb {
+        r: 0x55,
+        g: 0xff,
+        b: 0xff,
+    },
+    Rgb {
+        r: 0xff,
+        g: 0xff,
+        b: 0xff,
+    },
+];
+
+/// What colours the terminal draws.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Colors {
+    True,
+    /// A Linux console: sixteen for text, the first eight for backgrounds.
+    Console,
+}
+
+/// The nearest of `colors` to `color`, by its place among them.
+fn nearest(color: Rgb, colors: &[Rgb]) -> usize {
+    let distance = |other: &Rgb| {
+        let part = |a: u8, b: u8| (i32::from(a) - i32::from(b)).pow(2);
+        part(color.r, other.r) + part(color.g, other.g) + part(color.b, other.b)
+    };
+    colors
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, other)| distance(other))
+        .map_or(0, |(index, _)| index)
+}
+
+/// The numbers of the console's text and background colours for `fg` and `bg`. Text in
+/// two colours the console has one for stays readable.
+fn console_pair(fg: Option<Rgb>, bg: Option<Rgb>) -> (Option<usize>, Option<usize>) {
+    let back = bg.map(|bg| nearest(bg, &CONSOLE_COLORS[..8]));
+    let text = fg.map(|fg| {
+        let index = nearest(fg, &CONSOLE_COLORS);
+        if Some(index) == back && Some(fg) != bg {
+            if index == 0 { 7 } else { 0 }
+        } else {
+            index
+        }
+    });
+    (text, back)
+}
 
 /// How a cell is written: its colours, none for the terminal's own, and its attributes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Pen {
     pub fg: Option<Rgb>,
     pub bg: Option<Rgb>,
-    /// `caret_protocol::BOLD`, `caret_protocol::ITALIC`, [`DIM`], [`REVERSE`].
+    /// `caret_protocol::BOLD`, `caret_protocol::ITALIC`, [`UNDERLINE`], [`STRIKEOUT`],
+    /// [`DIM`], [`REVERSE`].
     pub style: u8,
 }
 
 impl Pen {
-    fn write(self, out: &mut String) {
+    fn write(self, out: &mut String, colors: Colors) {
         out.push_str("\x1b[0");
         for (bit, code) in [
             (caret_protocol::BOLD, ";1"),
             (DIM, ";2"),
             (caret_protocol::ITALIC, ";3"),
+            (UNDERLINE, ";4"),
             (REVERSE, ";7"),
+            (STRIKEOUT, ";9"),
         ] {
             if self.style & bit != 0 {
                 out.push_str(code);
             }
         }
-        if let Some(Rgb { r, g, b }) = self.fg {
-            let _ = write!(out, ";38;2;{r};{g};{b}");
-        }
-        if let Some(Rgb { r, g, b }) = self.bg {
-            let _ = write!(out, ";48;2;{r};{g};{b}");
+        match colors {
+            Colors::True => {
+                if let Some(Rgb { r, g, b }) = self.fg {
+                    let _ = write!(out, ";38;2;{r};{g};{b}");
+                }
+                if let Some(Rgb { r, g, b }) = self.bg {
+                    let _ = write!(out, ";48;2;{r};{g};{b}");
+                }
+            }
+            Colors::Console => {
+                let (text, back) = console_pair(self.fg, self.bg);
+                if let Some(text) = text {
+                    let code = if text < 8 { 30 + text } else { 90 + text - 8 };
+                    let _ = write!(out, ";{code}");
+                }
+                if let Some(back) = back {
+                    let _ = write!(out, ";{}", 40 + back);
+                }
+            }
         }
         out.push('m');
     }
@@ -119,11 +260,18 @@ impl Canvas {
             if column + i32::from(wide) >= width {
                 continue;
             }
+            let mut style = cell.glyph.as_ref().map_or(0, |glyph| glyph.style)
+                & (caret_protocol::BOLD | caret_protocol::ITALIC);
+            if cell.flags.intersects(CellFlags::ALL_UNDERLINES) {
+                style |= UNDERLINE;
+            }
+            if cell.flags.contains(CellFlags::STRIKEOUT) {
+                style |= STRIKEOUT;
+            }
             let pen = Pen {
                 fg: Some(cell.fg),
                 bg: Some(cell.bg),
-                style: cell.glyph.as_ref().map_or(0, |glyph| glyph.style)
-                    & (caret_protocol::BOLD | caret_protocol::ITALIC),
+                style,
             };
             let text = cell.glyph.as_ref().map(|glyph| glyph.text.clone());
             self.put(x + column, y, text, pen, wide);
@@ -131,7 +279,7 @@ impl Canvas {
     }
 
     /// Writes what differs from `old`, a canvas of the same size that is on the screen.
-    pub fn write_changes(&self, old: &Self, out: &mut String) {
+    pub fn write_changes(&self, old: &Self, colors: Colors, out: &mut String) {
         let mut pen = None;
         // Where the terminal's cursor is known to be. A wide character or a cluster may
         // take another width there than here, and the last column leaves it pending.
@@ -145,7 +293,7 @@ impl Canvas {
                 let _ = write!(out, "\x1b[{};{}H", y + 1, x + 1);
             }
             if pen != Some(spot.pen) {
-                spot.pen.write(out);
+                spot.pen.write(out, colors);
                 pen = Some(spot.pen);
             }
             let simple = match &spot.text {
@@ -186,8 +334,47 @@ mod tests {
 
     fn changes(new: &Canvas, old: &Canvas) -> String {
         let mut out = String::new();
-        new.write_changes(old, &mut out);
+        new.write_changes(old, Colors::True, &mut out);
         out
+    }
+
+    fn on_console(fg: Rgb, bg: Rgb) -> String {
+        let pen = Pen {
+            fg: Some(fg),
+            bg: Some(bg),
+            style: 0,
+        };
+        let mut out = String::new();
+        pen.write(&mut out, Colors::Console);
+        out
+    }
+
+    #[test]
+    fn the_console_gets_its_own_colours_by_number() {
+        let green = Rgb {
+            r: 0x20,
+            g: 0xb0,
+            b: 0x20,
+        };
+        let black = CONSOLE_COLORS[0];
+        assert_eq!(on_console(green, black), "\x1b[0;32;40m");
+        assert_eq!(on_console(CONSOLE_COLORS[12], black), "\x1b[0;94;40m");
+        assert_eq!(on_console(black, CONSOLE_COLORS[15]), "\x1b[0;30;47m");
+    }
+
+    #[test]
+    fn text_the_console_would_draw_in_its_background_stays_readable() {
+        let dark = Rgb {
+            r: 0x10,
+            g: 0x10,
+            b: 0x10,
+        };
+        let darker = Rgb {
+            r: 0x08,
+            g: 0x08,
+            b: 0x08,
+        };
+        assert_eq!(on_console(dark, darker), "\x1b[0;37;40m");
     }
 
     #[test]

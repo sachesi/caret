@@ -23,6 +23,8 @@ pub struct Host {
     pub ansi: [Option<Rgb>; 16],
     /// What was typed while it answered.
     pub typed: Vec<u8>,
+    /// A Linux console, which has no other screen and sixteen colours.
+    pub console: bool,
 }
 
 /// Asks the terminal for its colours and whether it can write keys apart, and waits a
@@ -188,6 +190,8 @@ pub fn next(bytes: &[u8], enhanced: bool) -> (Input<'_>, usize) {
         Input::Bytes(&[])
     } else if let Some(input) = enhanced.then(|| key(sequence)).flatten() {
         input
+    } else if let Some((key, modifiers)) = named_key(sequence) {
+        Input::Key(key, modifiers)
     } else {
         Input::Bytes(sequence)
     };
@@ -198,6 +202,8 @@ pub fn next(bytes: &[u8], enhanced: bool) -> (Input<'_>, usize) {
 fn sequence_length(bytes: &[u8]) -> usize {
     match bytes.get(1) {
         None => 1,
+        // The Linux console's first function keys.
+        Some(b'[') if bytes.get(2) == Some(&b'[') => bytes.len().min(4),
         Some(b'[') => bytes
             .iter()
             .skip(2)
@@ -287,9 +293,99 @@ fn key(sequence: &[u8]) -> Option<Input<'static>> {
     Some(Input::Key(key, modifiers))
 }
 
+/// A key with a name of its own, whichever way the terminal writes it. The program it goes
+/// to may want it written otherwise: arrows differ once it asks for application keys.
+fn named_key(sequence: &[u8]) -> Option<(Key, Modifiers)> {
+    let plain = |key| Some((key, Modifiers::default()));
+    if let Some(&[letter]) = sequence.strip_prefix(b"\x1b[[") {
+        return plain(Key::Function(
+            letter
+                .checked_sub(b'A')?
+                .checked_add(1)
+                .filter(|n| *n <= 5)?,
+        ));
+    }
+    if let Some(&[letter]) = sequence.strip_prefix(b"\x1bO") {
+        return plain(lettered_key(letter)?);
+    }
+    let body = sequence.strip_prefix(b"\x1b[")?;
+    let (&last, parameters) = body.split_last()?;
+    let parameters = std::str::from_utf8(parameters).ok()?;
+    let mut fields = parameters.split(';');
+    let first = fields.next()?;
+    let bits = fields.next().map_or(Some(0), |field| {
+        Some(field.parse::<u8>().ok()?.saturating_sub(1))
+    })?;
+    if fields.next().is_some() {
+        return None;
+    }
+    let modifiers = Modifiers {
+        shift: bits & 1 != 0,
+        alt: bits & 2 != 0,
+        ctrl: bits & 4 != 0,
+    };
+    let key = if last == b'~' {
+        match first.parse::<u8>().ok()? {
+            1 | 7 => Key::Home,
+            2 => Key::Insert,
+            3 => Key::Delete,
+            4 | 8 => Key::End,
+            5 => Key::PageUp,
+            6 => Key::PageDown,
+            number @ 11..=15 => Key::Function(number - 10),
+            number @ 17..=21 => Key::Function(number - 11),
+            number @ 23..=24 => Key::Function(number - 12),
+            _ => return None,
+        }
+    } else if first.is_empty() || first == "1" {
+        lettered_key(last)?
+    } else {
+        return None;
+    };
+    Some((key, modifiers))
+}
+
+fn lettered_key(letter: u8) -> Option<Key> {
+    Some(match letter {
+        b'A' => Key::Up,
+        b'B' => Key::Down,
+        b'C' => Key::Right,
+        b'D' => Key::Left,
+        b'H' => Key::Home,
+        b'F' => Key::End,
+        b'P' => Key::Function(1),
+        b'Q' => Key::Function(2),
+        b'R' => Key::Function(3),
+        b'S' => Key::Function(4),
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn named_keys_are_known_however_the_terminal_writes_them() {
+        fn key(sequence: &[u8]) -> Input<'_> {
+            next(sequence, false).0
+        }
+        let plain = |key| Input::Key(key, Modifiers::default());
+        assert_eq!(key(b"\x1b[A"), plain(Key::Up));
+        assert_eq!(key(b"\x1bOA"), plain(Key::Up));
+        assert_eq!(key(b"\x1b[[A"), plain(Key::Function(1)));
+        assert_eq!(key(b"\x1b[[E"), plain(Key::Function(5)));
+        assert_eq!(key(b"\x1b[1~"), plain(Key::Home));
+        assert_eq!(key(b"\x1b[4~"), plain(Key::End));
+        assert_eq!(key(b"\x1b[17~"), plain(Key::Function(6)));
+        assert_eq!(key(b"\x1b[24~"), plain(Key::Function(12)));
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::default()
+        };
+        assert_eq!(key(b"\x1b[3;2~"), Input::Key(Key::Delete, shift));
+        assert_eq!(key(b"\x1b[Z"), Input::Bytes(b"\x1b[Z"));
+    }
 
     #[test]
     fn answers_give_colours_and_keys_written_apart() {
@@ -309,7 +405,11 @@ mod tests {
     #[test]
     fn input_splits_into_text_keys_and_mouse_reports() {
         assert_eq!(next(b"ab\x1b[A", false), (Input::Bytes(b"ab"), 2));
-        assert_eq!(next(b"\x1b[1;5Ax", false), (Input::Bytes(b"\x1b[1;5A"), 6));
+        let ctrl = Modifiers {
+            ctrl: true,
+            ..Modifiers::default()
+        };
+        assert_eq!(next(b"\x1b[1;5Ax", false), (Input::Key(Key::Up, ctrl), 6));
         assert_eq!(next(b"\x1d", false), (Input::Control, 1));
         assert_eq!(next(b"\x1d", true), (Input::Bytes(b"\x1d"), 1));
         assert_eq!(next(b"\x1b[32;6u", true), (Input::Control, 7));

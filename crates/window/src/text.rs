@@ -18,8 +18,8 @@ use std::time::Duration;
 use caret_protocol::encode::{self, Key, Modifiers, MouseAction, MouseButton, Press};
 use caret_protocol::layout::Node;
 use caret_protocol::{
-    Answer, Bytes, Cell, Command, Frame, GlyphText, Message, Mode, Point, Question, Request, Rgb,
-    Scroll, SessionId, Size, Tab, TerminalId,
+    Answer, Bytes, Cell, Command, CursorShape, Frame, GlyphText, Message, Mode, Point, Question,
+    Request, Rgb, Scroll, SessionId, Size, Tab, TerminalId,
 };
 use rustix::termios::{self, OptionalActions};
 
@@ -28,7 +28,7 @@ use gettextrs::gettext;
 use crate::config::Config;
 use crate::i18n::gettext_f;
 use crate::panes::{self, Direction, Divider, Rect};
-use canvas::{Canvas, Pen};
+use canvas::{Canvas, Colors, Pen};
 use host::{Host, Input, Mouse};
 
 /// The most events taken in before a frame is drawn, so that a busy server cannot keep
@@ -50,7 +50,8 @@ pub fn run(session: SessionId) -> Result<(), String> {
     raw.make_raw();
     termios::tcsetattr(&stdin, OptionalActions::Now, &raw)
         .map_err(|error| format!("setting the terminal up: {error}"))?;
-    let host = host::probe();
+    let mut host = host::probe();
+    host.console = std::env::var("TERM").is_ok_and(|term| term.starts_with("linux"));
     // The other screen, the cursor hidden until a pane shows its own, mouse reports while
     // a button is held, and keys written apart where the terminal can.
     print!("\x1b[?1049h\x1b[?25l\x1b[?1002h\x1b[?1006h");
@@ -60,6 +61,12 @@ pub fn run(session: SessionId) -> Result<(), String> {
     let ended = show(&mut stream, session, &host);
     if host.enhanced {
         print!("\x1b[<u");
+    }
+    if host.console {
+        // It has no other screen to go back from.
+        print!("\x1b[?0c\x1b[0m\x1b[2J\x1b[H");
+    } else {
+        print!("\x1b[0 q");
     }
     print!("\x1b[?1006l\x1b[?1002l\x1b[0m\x1b[?25h\x1b[?1049l");
     let _ = io::stdout().flush();
@@ -79,6 +86,8 @@ struct Screen {
     rows: Vec<Vec<Cell>>,
     background: Rgb,
     cursor: Option<Point>,
+    cursor_shape: CursorShape,
+    cursor_blinks: bool,
     mode: Mode,
 }
 
@@ -96,6 +105,10 @@ impl Screen {
         }
         self.background = frame.background;
         self.cursor = frame.cursor.map(|cursor| cursor.point);
+        if let Some(cursor) = frame.cursor {
+            self.cursor_shape = cursor.shape;
+        }
+        self.cursor_blinks = frame.cursor_blinks;
         self.mode = frame.mode;
     }
 }
@@ -131,7 +144,41 @@ struct Client {
     /// What the terminal shows, and the frame being made from what is known now.
     shown: Canvas,
     next: Canvas,
-    shown_cursor: Option<(i32, i32)>,
+    shown_cursor: Option<TextCursor>,
+    colors: Colors,
+}
+
+/// The cursor of the focused pane: its line and column from one, and how it looks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TextCursor {
+    line: i32,
+    column: i32,
+    shape: CursorShape,
+    blinks: bool,
+}
+
+impl TextCursor {
+    /// Sets how it looks: a console has its own sequence and no blinking to choose.
+    fn write_look(self, colors: Colors, out: &mut String) {
+        let _ = match colors {
+            Colors::Console => {
+                let size = if self.shape == CursorShape::Underline {
+                    2
+                } else {
+                    6
+                };
+                write!(out, "\x1b[?{size}c")
+            }
+            Colors::True => {
+                let steady = match self.shape {
+                    CursorShape::Block | CursorShape::HollowBlock => 2,
+                    CursorShape::Underline => 4,
+                    CursorShape::Beam => 6,
+                };
+                write!(out, "\x1b[{} q", steady - i32::from(self.blinks))
+            }
+        };
+    }
 }
 
 /// What a held mouse button moves.
@@ -183,6 +230,11 @@ fn show(stream: &mut UnixStream, session: SessionId, host: &Host) -> Result<(), 
         shown: Canvas::default(),
         next: Canvas::default(),
         shown_cursor: None,
+        colors: if host.console {
+            Colors::Console
+        } else {
+            Colors::True
+        },
     };
     client.send(&look(host));
     client.send(&Request::Attach { session });
@@ -229,6 +281,11 @@ fn look(host: &Host) -> Request {
         &config.light_scheme
     };
     let mut palette = crate::palette::Palette::named(scheme, dark).colors();
+    if host.console {
+        palette.ansi = canvas::CONSOLE_COLORS.to_vec();
+        palette.foreground = canvas::CONSOLE_COLORS[7];
+        palette.background = canvas::CONSOLE_COLORS[0];
+    }
     palette.foreground = host.foreground.unwrap_or(palette.foreground);
     palette.background = host.background.unwrap_or(palette.background);
     for (color, told) in palette.ansi.iter_mut().zip(host.ansi) {
@@ -376,6 +433,8 @@ impl Client {
                     rows: Vec::new(),
                     background: Rgb::default(),
                     cursor: None,
+                    cursor_shape: CursorShape::default(),
+                    cursor_blinks: false,
                     mode: Mode::default(),
                 });
                 screen.apply(frame);
@@ -836,14 +895,17 @@ impl Client {
     }
 
     /// Where the focused pane has its cursor, if it shows one.
-    fn cursor(&self, placed: &panes::Placed) -> Option<(i32, i32)> {
+    fn cursor(&self, placed: &panes::Placed) -> Option<TextCursor> {
         let tab = self.tab()?;
         let rect = placed.rect(tab.focused)?;
-        let cursor = self.screens.get(&tab.focused)?.cursor?;
-        Some((
-            rect.y + i32::from(cursor.line) + 1,
-            rect.x + i32::from(cursor.column) + 1,
-        ))
+        let screen = self.screens.get(&tab.focused)?;
+        let cursor = screen.cursor?;
+        Some(TextCursor {
+            line: rect.y + i32::from(cursor.line) + 1,
+            column: rect.x + i32::from(cursor.column) + 1,
+            shape: screen.cursor_shape,
+            blinks: screen.cursor_blinks,
+        })
     }
 
     /// Writes what changed on the screen since the last time.
@@ -857,7 +919,7 @@ impl Client {
             self.shown.reset(columns, lines);
             out.push_str("\x1b[0m\x1b[2J");
         }
-        self.next.write_changes(&self.shown, &mut out);
+        self.next.write_changes(&self.shown, self.colors, &mut out);
         if out.is_empty() && cursor == self.shown_cursor {
             std::mem::swap(&mut self.next, &mut self.shown);
             return;
@@ -869,8 +931,12 @@ impl Client {
             frame.push_str(&out);
         }
         match cursor {
-            Some((line, column)) => {
-                let _ = write!(frame, "\x1b[{line};{column}H\x1b[?25h");
+            Some(cursor) => {
+                let looks = (cursor.shape, cursor.blinks);
+                if self.shown_cursor.map(|shown| (shown.shape, shown.blinks)) != Some(looks) {
+                    cursor.write_look(self.colors, &mut frame);
+                }
+                let _ = write!(frame, "\x1b[{};{}H\x1b[?25h", cursor.line, cursor.column);
             }
             None => frame.push_str("\x1b[?25l"),
         }
