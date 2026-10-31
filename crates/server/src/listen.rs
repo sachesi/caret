@@ -6,10 +6,10 @@
     reason = "the descriptor systemd passes and the peer's credentials are only reached through libc"
 )]
 
-use std::fs::{self, File};
+use std::fs::{self, DirBuilder, File};
 use std::io::{self, Write};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -124,15 +124,18 @@ pub unsafe fn activated() -> Option<UnixListener> {
     Some(unsafe { UnixListener::from_raw_fd(LISTEN_FDS_START) })
 }
 
-/// A socket at `path`, in a directory only the user can enter.
+/// A socket at `path`, in a directory made for only the user to enter unless it is there
+/// already: `--socket` may name one the user has other uses for.
 ///
 /// # Errors
 ///
 /// When the directory or the socket cannot be made, or another server listens there.
 pub fn bind(path: &Path) -> io::Result<UnixListener> {
     if let Some(directory) = path.parent() {
-        fs::create_dir_all(directory)?;
-        fs::set_permissions(directory, fs::Permissions::from_mode(0o700))?;
+        DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(directory)?;
     }
     // Two servers starting at once over a socket left behind would otherwise each remove
     // it, the second removing the one the first has just made and leaving it unreachable.
@@ -282,6 +285,29 @@ mod tests {
     use std::io::Read;
 
     use super::*;
+
+    #[test]
+    fn only_a_directory_it_makes_is_closed_to_others() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let there = std::env::temp_dir().join(format!("caret-socket-{}", std::process::id()));
+        fs::create_dir_all(&there).expect("a directory");
+        fs::set_permissions(&there, fs::Permissions::from_mode(0o755)).expect("its mode");
+        let mode = |path: &Path| {
+            fs::metadata(path)
+                .expect("the directory")
+                .permissions()
+                .mode()
+                & 0o777
+        };
+        let kept = bind(&there.join("server")).expect("a socket");
+        assert_eq!(mode(&there), 0o755);
+        drop(kept);
+        let made = there.join("made");
+        let kept = bind(&made.join("server")).expect("a socket");
+        assert_eq!(mode(&made), 0o700);
+        drop(kept);
+        fs::remove_dir_all(&there).expect("the directory");
+    }
 
     #[test]
     fn servers_starting_at_once_over_a_stale_socket_leave_one_listening() {
