@@ -435,9 +435,9 @@ pub struct SavedPane {
     pub keep: bool,
 }
 
-/// The `layout` line and the panes of `root`, as a preset saves them: `focused` is kept,
-/// and each other pane runs the program `programs` has for it. Panes have numbers for
-/// names, as their programs do not tell them apart.
+/// The `layout` line and the panes of `root`, as a preset saves them: each pane runs the
+/// program `programs` has for it, and `focused` is kept if it has none. Panes have numbers
+/// for names, as their programs do not tell them apart.
 pub fn saved(
     root: &Node,
     focused: TerminalId,
@@ -455,12 +455,9 @@ pub fn saved(
         .into_iter()
         .map(|terminal| SavedPane {
             name: names[&terminal].clone(),
-            command: programs
-                .get(&terminal)
-                .filter(|_| terminal != focused)
-                .cloned(),
+            command: programs.get(&terminal).cloned(),
             directory: directories.get(&terminal).cloned(),
-            keep: terminal == focused,
+            keep: terminal == focused && !programs.contains_key(&terminal),
         })
         .collect();
     (layout_line(root, &names), panes)
@@ -652,6 +649,22 @@ mod tests {
     }
 
     #[test]
+    fn a_focused_pane_running_a_program_saves_it_and_keeps_nothing() {
+        let (a, b) = (TerminalId(7), TerminalId(8));
+        let root = Node::Split {
+            vertical: true,
+            share: 5000,
+            first: Box::new(Node::Pane { terminal: a }),
+            second: Box::new(Node::Pane { terminal: b }),
+        };
+        let programs = HashMap::from([(a, "nvim".to_owned()), (b, "top".to_owned())]);
+        let (_, panes) = saved(&root, a, &programs, &HashMap::new());
+        assert_eq!(panes[0].command.as_deref(), Some("nvim"));
+        assert_eq!(panes[1].command.as_deref(), Some("top"));
+        assert!(panes.iter().all(|pane| !pane.keep));
+    }
+
+    #[test]
     fn a_layout_saved_reads_back_the_same() {
         let (a, b, c) = (TerminalId(7), TerminalId(8), TerminalId(9));
         let root = Node::Split {
@@ -667,10 +680,11 @@ mod tests {
         };
         let programs = HashMap::from([(a, "nvim".to_owned()), (c, "top".to_owned())]);
         let directories = HashMap::from([(b, "/tmp".to_owned())]);
-        let (layout, panes) = saved(&root, a, &programs, &directories);
+        let (layout, panes) = saved(&root, b, &programs, &directories);
         assert_eq!(layout, "pane1 70% | (pane2 25% / pane3 75%) 30%");
-        assert!(panes[0].keep);
-        assert_eq!(panes[0].command, None);
+        assert!(panes[1].keep);
+        assert_eq!(panes[0].command.as_deref(), Some("nvim"));
+        assert_eq!(panes[1].command, None);
         assert_eq!(panes[1].directory.as_deref(), Some("/tmp"));
         assert_eq!(panes[2].command.as_deref(), Some("top"));
 
