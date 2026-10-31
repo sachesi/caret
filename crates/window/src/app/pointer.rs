@@ -76,6 +76,8 @@ pub struct Pointer {
     scrolled: f64,
     /// Part of a notch of the wheel turned with Ctrl held, in 120ths, not yet zoomed by.
     zoomed: i32,
+    /// Part of a notch turned over the list of shortcuts, in 120ths, not yet scrolled by.
+    pub turned_list: i32,
 }
 
 impl App {
@@ -265,7 +267,8 @@ impl App {
                 self.open_main_menu(None);
                 return;
             }
-            (Part::Menu | Part::Dialog, _) => return,
+            (Part::Menu | Part::Dialog | Part::ShortcutList, _) => return,
+            (Part::OffShortcutList, _) => return self.close_shortcut_list(),
             (
                 Part::Close
                 | Part::NewTab
@@ -680,6 +683,9 @@ impl PointerHandler for App {
                     }
                 }
                 PointerEventKind::Release { button, .. } => self.let_go(button),
+                PointerEventKind::Axis { vertical, .. } if self.chrome.shortcut_list.is_some() => {
+                    self.scroll_shortcut_list(vertical.value120, vertical.discrete);
+                }
                 PointerEventKind::Axis { .. } if self.chrome.hovered.is_some() => {}
                 // Only a wheel zooms: a touchpad's scrolling would zoom by the pixel.
                 PointerEventKind::Axis { vertical, .. } if self.modifiers.ctrl => {
@@ -769,7 +775,9 @@ fn cursor(part: Part) -> Shape {
         | Part::MenuItem(_)
         | Part::MenuClose(_)
         | Part::Menu
-        | Part::OffMenu => Shape::Default,
+        | Part::OffMenu
+        | Part::ShortcutList
+        | Part::OffShortcutList => Shape::Default,
         Part::Edge(edge) => match edge {
             ResizeEdge::Top => Shape::NResize,
             ResizeEdge::Bottom => Shape::SResize,

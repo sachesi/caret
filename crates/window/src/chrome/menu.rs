@@ -428,7 +428,13 @@ impl Painter<'_> {
     }
 
     /// A line of text from `x`, centred on `middle` by its line.
-    fn left_label(&self, x: f32, middle: f32, (index, glyph): (u32, GpuGlyph), color: u32) -> Quad {
+    pub(super) fn left_label(
+        &self,
+        x: f32,
+        middle: f32,
+        (index, glyph): (u32, GpuGlyph),
+        color: u32,
+    ) -> Quad {
         let (_, top) = offset(glyph);
         let y = (middle - self.line as f32 / 2.0).floor() + top as f32;
         entry(x.round(), y, index, glyph, color)

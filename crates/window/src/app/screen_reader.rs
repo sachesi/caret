@@ -115,13 +115,27 @@ impl App {
                 .collect(),
             focused: menu.focused,
         });
-        let dialog = self.chrome.dialog.as_ref().map(|dialog| access::Dialog {
-            heading: dialog.heading.clone(),
-            body: dialog.body.clone(),
-            field: dialog.field.as_ref().map(|field| field.text.clone()),
-            buttons: dialog.responses.to_vec(),
-            focused: dialog.focused,
-        });
+        let list = self
+            .chrome
+            .shortcut_list
+            .as_ref()
+            .map(|list| access::Dialog {
+                heading: list.heading.clone(),
+                body: list.text(),
+                ..access::Dialog::default()
+            });
+        let dialog = self
+            .chrome
+            .dialog
+            .as_ref()
+            .map(|dialog| access::Dialog {
+                heading: dialog.heading.clone(),
+                body: dialog.body.clone(),
+                field: dialog.field.as_ref().map(|field| field.text.clone()),
+                buttons: dialog.responses.to_vec(),
+                focused: dialog.focused,
+            })
+            .or(list);
         Scene {
             title: self.chrome.title.clone(),
             tabs: self

@@ -44,6 +44,8 @@ pub enum Action {
     PreviousSession,
     /// Shows the window's session of this number, counted from one.
     ShowSession(u8),
+    /// Lists the actions and their keys.
+    ShortcutList,
 }
 
 /// Each action, its name in `config.toml`, and the keys it has unless bound to others.
@@ -114,6 +116,7 @@ const ACTIONS: &[(Action, &str, &[&str])] = &[
     (Action::ShowSession(7), "session-7", &["Ctrl+Alt+7"]),
     (Action::ShowSession(8), "session-8", &["Ctrl+Alt+8"]),
     (Action::ShowSession(9), "session-9", &["Ctrl+Alt+9"]),
+    (Action::ShortcutList, "shortcuts", &["Ctrl+question"]),
 ];
 
 /// Each action's name in `config.toml` and the keys it has unless bound to others.
@@ -317,6 +320,14 @@ mod tests {
             Some("Ctrl+Page Down")
         );
         assert_eq!(shortcuts.label(Action::Fullscreen).as_deref(), Some("F11"));
+        assert_eq!(
+            shortcuts.label(Action::ShortcutList).as_deref(),
+            Some("Ctrl+?")
+        );
+        assert_eq!(
+            shortcuts.action(Keysym::question, CTRL_SHIFT),
+            Some(Action::ShortcutList)
+        );
     }
 
     #[test]

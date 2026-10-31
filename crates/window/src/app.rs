@@ -107,6 +107,7 @@ mod scale;
 mod screen_reader;
 mod search;
 mod sessions;
+mod shortcut_list;
 mod tabs;
 mod text_input;
 mod toast;
@@ -1153,6 +1154,9 @@ impl App {
                 chrome::wrap(&dialog.body, width, |text| fonts.label_advance(text, false));
             dialog.line = fonts.label_height() as f32 / scale;
         }
+        if let Some(list) = &mut self.chrome.shortcut_list {
+            list.line = self.fonts.label_height() as f32 / scale;
+        }
         let (atlas, fonts) = (&mut self.atlas, &mut self.fonts);
         let line = fonts.label_height();
         self.chrome.quads(
@@ -1263,7 +1267,7 @@ impl App {
 
     fn key(&mut self, event: &KeyEvent, press: Press) {
         if press != Press::Up {
-            if self.dialog_key(event) || self.menu_key(event) {
+            if self.dialog_key(event) || self.menu_key(event) || self.shortcut_list_key(event) {
                 return;
             }
             if self.control {
@@ -1372,6 +1376,7 @@ impl App {
             Action::NextSession => self.step_session(1),
             Action::PreviousSession => self.step_session(-1),
             Action::ShowSession(number) => self.nth_session(usize::from(number)),
+            Action::ShortcutList => self.open_shortcut_list(),
         }
         true
     }

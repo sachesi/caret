@@ -119,6 +119,7 @@ impl App {
             vec![self.act_item(&gettext("Full Screen"), Action::Fullscreen)],
             vec![
                 self.item(&gettext("Preferences"), Choice::Preferences, true),
+                self.act_item(&gettext("Keyboard Shortcuts"), Action::ShortcutList),
                 self.item(&gettext("About Caret"), Choice::About, true),
             ],
         ]);

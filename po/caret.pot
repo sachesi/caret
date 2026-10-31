@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret 0.2.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-31 12:09+0200\n"
+"POT-Creation-Date: 2026-10-31 12:31+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -114,8 +114,8 @@ msgid ""
 "and entered."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:385 crates/window/src/app/menus.rs:148
-#: ui/shortcuts_dialog.ui:99
+#: crates/window/src/app/confirm.rs:385 crates/window/src/app/menus.rs:149
+#: crates/window/src/app/shortcut_list.rs:65 ui/shortcuts_dialog.ui:99
 msgid "Paste"
 msgstr ""
 
@@ -147,13 +147,15 @@ msgstr ""
 msgid "Moving panes needs a newer terminal server"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:97 crates/window/src/app/menus.rs:166
+#: crates/window/src/app/menus.rs:97 crates/window/src/app/menus.rs:167
+#: crates/window/src/app/shortcut_list.rs:27
 #: data/io.github.sachesi.caret.desktop:17 ui/shortcuts_dialog.ui:15
 msgid "New Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:98 crates/window/src/app/menus.rs:168
-#: crates/window/src/app/sessions.rs:221 ui/shortcuts_dialog.ui:21
+#: crates/window/src/app/menus.rs:98 crates/window/src/app/menus.rs:169
+#: crates/window/src/app/sessions.rs:221
+#: crates/window/src/app/shortcut_list.rs:29 ui/shortcuts_dialog.ui:21
 #: ui/window.ui:87
 msgid "New Tab"
 msgstr ""
@@ -163,7 +165,7 @@ msgstr ""
 msgid "New “{profile}” Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:110
+#: crates/window/src/app/menus.rs:110 crates/window/src/app/shortcut_list.rs:54
 msgid "Sessions…"
 msgstr ""
 
@@ -179,8 +181,8 @@ msgstr ""
 msgid "Reattach Windows"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:119 crates/window/src/app/menus.rs:186
-#: ui/shortcuts_dialog.ui:82
+#: crates/window/src/app/menus.rs:119 crates/window/src/app/menus.rs:187
+#: crates/window/src/app/shortcut_list.rs:34 ui/shortcuts_dialog.ui:82
 msgid "Full Screen"
 msgstr ""
 
@@ -189,156 +191,166 @@ msgstr ""
 msgid "Preferences"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:122
+#: crates/window/src/app/menus.rs:122 crates/window/src/app/shortcut_list.rs:76
+#: crates/window/src/app/shortcut_list.rs:81 ui/shortcuts_dialog.ui:176
+msgid "Keyboard Shortcuts"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:123
 msgid "About Caret"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:147 ui/shortcuts_dialog.ui:93
+#: crates/window/src/app/menus.rs:148 crates/window/src/app/shortcut_list.rs:64
+#: ui/shortcuts_dialog.ui:93
 msgid "Copy"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:149 ui/shortcuts_dialog.ui:105
+#: crates/window/src/app/menus.rs:150 crates/window/src/app/shortcut_list.rs:66
+#: ui/shortcuts_dialog.ui:105
 msgid "Select All"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:151 ui/shortcuts_dialog.ui:111
+#: crates/window/src/app/menus.rs:152 crates/window/src/app/shortcut_list.rs:67
+#: ui/shortcuts_dialog.ui:111
 msgid "Deselect"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:158
+#: crates/window/src/app/menus.rs:159
 msgid "Open Link"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:159
+#: crates/window/src/app/menus.rs:160
 msgid "Copy Link Address"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:169
+#: crates/window/src/app/menus.rs:170
 msgid "Find…"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:172
+#: crates/window/src/app/menus.rs:173 crates/window/src/app/shortcut_list.rs:41
 msgid "Split Right"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:173
+#: crates/window/src/app/menus.rs:174 crates/window/src/app/shortcut_list.rs:42
 msgid "Split Down"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:180
+#: crates/window/src/app/menus.rs:181 crates/window/src/app/shortcut_list.rs:43
 msgid "Close Pane"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:185 src/preferences.rs:178
+#: crates/window/src/app/menus.rs:186 src/preferences.rs:178
 msgid "Title Bar"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:189 ui/shortcuts_dialog.ui:33
+#: crates/window/src/app/menus.rs:190 crates/window/src/app/shortcut_list.rs:28
+#: ui/shortcuts_dialog.ui:33
 msgid "Close Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:190 ui/window.ui:101
+#: crates/window/src/app/menus.rs:191 ui/window.ui:101
 msgid "Main Menu"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:202
+#: crates/window/src/app/menus.rs:203
 msgid "Rename Tab…"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:203 ui/shortcuts_dialog.ui:27
+#: crates/window/src/app/menus.rs:204 crates/window/src/app/shortcut_list.rs:30
+#: ui/shortcuts_dialog.ui:27
 msgid "Close Tab"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:270
+#: crates/window/src/app/menus.rs:271
 msgid "Could not make the settings file"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:287
+#: crates/window/src/app/menus.rs:288
 msgid "Listing sessions needs a newer terminal server"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:314
+#: crates/window/src/app/menus.rs:315
 msgid "here"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:316
+#: crates/window/src/app/menus.rs:317
 msgid "shown"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:318
+#: crates/window/src/app/menus.rs:319
 msgid "detached"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:322
+#: crates/window/src/app/menus.rs:323
 #, rust-format
 msgid "{count} tab"
 msgid_plural "{count} tabs"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/window/src/app/menus.rs:328
+#: crates/window/src/app/menus.rs:329
 #, rust-format
 msgid "{count} pane"
 msgid_plural "{count} panes"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/window/src/app/menus.rs:334
+#: crates/window/src/app/menus.rs:335
 #, rust-format
 msgid "{session} · {title} — {tabs}, {panes}, {place}"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:390
+#: crates/window/src/app/menus.rs:391
 #, rust-format
 msgid "Show {session} · {title}"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:402
+#: crates/window/src/app/menus.rs:403
 msgid "New Session"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:414
+#: crates/window/src/app/menus.rs:415
 msgid "Show Here"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:416
+#: crates/window/src/app/menus.rs:417
 msgid "Open in New Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:421
+#: crates/window/src/app/menus.rs:422
 msgid "Rename…"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:423
+#: crates/window/src/app/menus.rs:424
 msgid "Detach"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:424
+#: crates/window/src/app/menus.rs:425
 msgid "Close…"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:438 src/application.rs:234
+#: crates/window/src/app/menus.rs:439 src/application.rs:234
 msgid "No windows were detached"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:717 src/terminal_view/input.rs:627
+#: crates/window/src/app/pointer.rs:723 src/terminal_view/input.rs:627
 #, rust-format
 msgid "Could not open the link: {reason}"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:726
+#: crates/window/src/app/pointer.rs:732
 msgid "no program opens links"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:739
+#: crates/window/src/app/pointer.rs:745
 msgid "it does not exist"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:740
+#: crates/window/src/app/pointer.rs:746
 msgid "no program opens it"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:741
+#: crates/window/src/app/pointer.rs:747
 msgid "the program that opens it failed"
 msgstr ""
 
@@ -348,6 +360,97 @@ msgstr ""
 
 #: crates/window/src/app/sessions.rs:238
 msgid "Close Session…"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:25 ui/shortcuts_dialog.ui:12
+msgid "Windows and Tabs"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:31 ui/shortcuts_dialog.ui:39
+msgid "Next Tab"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:32 ui/shortcuts_dialog.ui:45
+msgid "Previous Tab"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:33 ui/shortcuts_dialog.ui:63
+msgid "Switch to a Tab"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:35 ui/shortcuts_dialog.ui:76
+msgid "Show or Hide the Title Bar"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:39
+msgid "Panes"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:44
+msgid "Focus the Pane to the Left"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:45
+msgid "Focus the Pane to the Right"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:46
+msgid "Focus the Pane Above"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:47
+msgid "Focus the Pane Below"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:48
+msgid "Move and Resize Panes"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:52
+msgid "Sessions"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:55
+msgid "Tabs of the Session"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:56
+msgid "Next Session"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:57
+msgid "Previous Session"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:58
+msgid "Switch to a Session"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:62
+#: data/io.github.sachesi.caret.desktop:3 ui/shortcuts_dialog.ui:90
+msgid "Terminal"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:68 ui/shortcuts_dialog.ui:117
+#: ui/window.ui:113
+msgid "Find"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:69 ui/shortcuts_dialog.ui:147
+msgid "Zoom In"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:70 ui/shortcuts_dialog.ui:153
+msgid "Zoom Out"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:71 ui/shortcuts_dialog.ui:159
+msgid "Original Size"
+msgstr ""
+
+#: crates/window/src/app/shortcut_list.rs:75 src/preferences.rs:23
+#: ui/shortcuts_dialog.ui:167
+msgid "General"
 msgstr ""
 
 #: crates/window/src/app/tabs.rs:220
@@ -363,7 +466,7 @@ msgstr ""
 msgid "Splitting needs a newer terminal server"
 msgstr ""
 
-#: crates/window/src/chrome.rs:944 ui/window.ui:137
+#: crates/window/src/chrome.rs:959 ui/window.ui:137
 msgid "Find in the history"
 msgstr ""
 
@@ -386,10 +489,6 @@ msgstr ""
 #: data/io.github.sachesi.caret.metainfo.xml:6 src/window.rs:741
 #: ui/window.ui:68 ui/window.ui:93
 msgid "Caret"
-msgstr ""
-
-#: data/io.github.sachesi.caret.desktop:3 ui/shortcuts_dialog.ui:90
-msgid "Terminal"
 msgstr ""
 
 #: data/io.github.sachesi.caret.desktop:4
@@ -659,10 +758,6 @@ msgstr ""
 msgid "translator-credits"
 msgstr ""
 
-#: src/preferences.rs:23 ui/shortcuts_dialog.ui:167
-msgid "General"
-msgstr ""
-
 #: src/preferences.rs:28
 msgid "Text"
 msgstr ""
@@ -916,18 +1011,6 @@ msgid_plural "Programs are still running in {count} tabs and will be stopped."
 msgstr[0] ""
 msgstr[1] ""
 
-#: ui/shortcuts_dialog.ui:12
-msgid "Windows and Tabs"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:39
-msgid "Next Tab"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:45
-msgid "Previous Tab"
-msgstr ""
-
 #: ui/shortcuts_dialog.ui:51
 msgid "Move Tab Right"
 msgstr ""
@@ -936,24 +1019,12 @@ msgstr ""
 msgid "Move Tab Left"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:63
-msgid "Switch to a Tab"
-msgstr ""
-
 #: ui/shortcuts_dialog.ui:64
 msgid "Alt and the number of the tab"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:70
 msgid "Show All Tabs"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:76
-msgid "Show or Hide the Title Bar"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:117 ui/window.ui:113
-msgid "Find"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:123
@@ -970,22 +1041,6 @@ msgstr ""
 
 #: ui/shortcuts_dialog.ui:141
 msgid "Scroll to the Next Prompt"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:147
-msgid "Zoom In"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:153
-msgid "Zoom Out"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:159
-msgid "Original Size"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:176
-msgid "Keyboard Shortcuts"
 msgstr ""
 
 #: ui/window.ui:22

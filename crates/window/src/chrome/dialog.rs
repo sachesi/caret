@@ -386,7 +386,7 @@ impl Painter<'_> {
 }
 
 /// A line of text centred on `x` whose line starts at `top`.
-fn centred_line(x: f32, top: f32, (index, glyph): (u32, GpuGlyph), color: u32) -> Quad {
+pub(super) fn centred_line(x: f32, top: f32, (index, glyph): (u32, GpuGlyph), color: u32) -> Quad {
     let (width, _) = halves(glyph.size);
     let (_, y) = offset(glyph);
     entry(

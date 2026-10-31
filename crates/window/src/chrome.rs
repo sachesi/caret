@@ -13,9 +13,11 @@ use crate::fonts::Raster;
 
 mod dialog;
 mod menu;
+mod shortcut_list;
 
 pub use dialog::{Appearance, Dialog, wrap};
 pub use menu::{Item, Menu, Preview};
+pub use shortcut_list::ShortcutList;
 
 /// The header bar's height, in logical pixels as all sizes here are.
 pub const HEADER: u32 = 47;
@@ -325,6 +327,9 @@ pub enum Part {
     MenuClose(usize),
     Menu,
     OffMenu,
+    /// The list of shortcuts, and the window around it.
+    ShortcutList,
+    OffShortcutList,
 }
 
 impl Part {
@@ -338,6 +343,8 @@ impl Part {
                 | Self::Dialog
                 | Self::Menu
                 | Self::OffMenu
+                | Self::ShortcutList
+                | Self::OffShortcutList
         )
     }
 }
@@ -375,6 +382,8 @@ pub struct Chrome {
     pub dialog: Option<Dialog>,
     /// A menu over the window, which takes all input while it is open.
     pub menu: Option<Menu>,
+    /// The list of shortcuts over the window, which takes all input while it is open.
+    pub shortcut_list: Option<ShortcutList>,
     /// A short message over the bottom of the window.
     pub toast: Option<String>,
     /// The keys of a mode the window is in, under the toast.
@@ -444,6 +453,9 @@ impl Chrome {
         }
         if let Some(dialog) = &self.dialog {
             return Some(dialog.part_at((x, y), size));
+        }
+        if let Some(list) = &self.shortcut_list {
+            return Some(list.part_at((x, y), size));
         }
         let header = f64::from(self.header());
         if y < header {
@@ -617,6 +629,9 @@ impl Chrome {
         }
         if let Some(toast) = &self.toast {
             painter.toast(&mut quads, toast, bottom, &mut draw);
+        }
+        if let Some(list) = &self.shortcut_list {
+            painter.shortcut_list(&mut quads, list, size.1 as f32 * scale, &mut draw);
         }
         if let Some(dialog) = &self.dialog {
             painter.dialog(&mut quads, dialog, size.1 as f32 * scale, &mut draw);
