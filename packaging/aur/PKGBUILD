@@ -4,14 +4,14 @@
 pkgname=caret
 pkgver=0.2.0
 pkgrel=1
-pkgdesc='GPU-rendered terminal for GTK 4 and libadwaita'
+pkgdesc='GPU-rendered terminal for Wayland'
 arch=('x86_64' 'aarch64')
 url='https://github.com/sachesi/caret'
 license=('GPL-3.0-or-later')
-# libglvnd: libEGL is loaded at run time, so nothing links against it.
-depends=('gtk4>=1:4.22' 'libadwaita>=1:1.9' 'glib2' 'cairo' 'pango' 'graphene' 'libglvnd'
+# vulkan-icd-loader: libvulkan is loaded at run time, so nothing links against it.
+depends=('wayland' 'libxkbcommon' 'vulkan-icd-loader' 'vulkan-driver'
          'hicolor-icon-theme' 'libgcc' 'glibc')
-makedepends=('cargo' 'blueprint-compiler' 'just' 'gettext')
+makedepends=('cargo' 'shaderc' 'just' 'gettext')
 optdepends=('xdg-terminal-exec: open Caret from launchers that ask for a terminal')
 conflicts=('caret-git' 'tangent')
 replaces=('tangent')

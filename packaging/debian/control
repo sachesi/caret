@@ -7,11 +7,10 @@ Build-Depends: debhelper-compat (= 13),
                rustc (>= 1.92),
                pkg-config,
                just,
-               blueprint-compiler,
+               glslc,
                gettext,
-               libgtk-4-dev (>= 4.22),
-               libadwaita-1-dev (>= 1.9),
-               libglib2.0-dev (>= 2.80)
+               libwayland-dev,
+               libxkbcommon-dev
 Standards-Version: 4.7.2
 Homepage: https://github.com/sachesi/caret
 Rules-Requires-Root: no
@@ -20,16 +19,16 @@ Package: caret
 Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
-         libgtk-4-1 (>= 4.22),
-         libadwaita-1-0 (>= 1.9),
          hicolor-icon-theme,
-         libegl1
+         libvulkan1
+Recommends: mesa-vulkan-drivers
 Suggests: xdg-terminal-exec
 Conflicts: tangent
 Replaces: tangent
-Description: GPU-rendered terminal for GTK 4 and libadwaita
- Caret is a terminal built with GTK 4 and libadwaita. Programs' output is
- parsed by a terminal emulator of Caret's own, and Caret draws the text with OpenGL,
- one texel to each pixel of the screen, so it stays sharp at fractional scales.
- It has tabs, search through the history, links opened with Ctrl and a click,
- and follows the desktop's font and style.
+Description: GPU-rendered terminal for Wayland
+ Caret is a terminal for Wayland. Programs' output is parsed by a terminal
+ emulator of Caret's own, and Caret draws its window and text with Vulkan, one
+ texel to each pixel of the screen, so it stays sharp at fractional scales.
+ It has tabs, split panes, sessions whose programs go on running when their
+ window is detached, search through the history, links opened with Ctrl and a
+ click, and follows the desktop's font and style.

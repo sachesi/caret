@@ -7,7 +7,7 @@ Name:           caret
 # The OBS workflow sets Version to the tag it builds; OBS counts the Release.
 Version:        0.2.0
 Release:        0
-Summary:        GPU-rendered terminal for GTK 4 and libadwaita
+Summary:        GPU-rendered terminal for Wayland
 
 License:        GPL-3.0-or-later
 URL:            https://github.com/sachesi/caret
@@ -20,30 +20,28 @@ BuildRequires:  cargo
 BuildRequires:  rust >= 1.92
 BuildRequires:  gcc
 BuildRequires:  systemd-rpm-macros
-BuildRequires:  blueprint-compiler
+BuildRequires:  shaderc
 BuildRequires:  desktop-file-utils
 BuildRequires:  gettext-tools
 BuildRequires:  AppStream
-BuildRequires:  pkgconfig(gtk4) >= 4.22
-BuildRequires:  pkgconfig(libadwaita-1) >= 1.9
-BuildRequires:  pkgconfig(glib-2.0) >= 2.80
+BuildRequires:  pkgconfig(wayland-client)
+BuildRequires:  pkgconfig(xkbcommon)
 
-Requires:       libgtk-4-1 >= 4.22
-Requires:       libadwaita-1-0 >= 1.9
 Requires:       hicolor-icon-theme
-# The renderer opens libEGL.so.1 itself, which the automatic dependencies do not see.
-Requires:       libEGL1
+# The renderer opens libvulkan.so.1 itself, which the automatic dependencies do not see.
+Requires:       libvulkan1
 Suggests:       xdg-terminal-exec
 # The name before 0.2.0.
 Obsoletes:      tangent < 0.2.0
 Provides:       tangent = %{version}-%{release}
 
 %description
-Caret is a terminal built with GTK 4 and libadwaita. Programs' output is
-parsed by a terminal emulator of Caret's own, and Caret draws the text with OpenGL,
-one texel to each pixel of the screen, so it stays sharp at fractional scales.
-It has tabs, search through the history, links opened with Ctrl and a click,
-and follows the desktop's font and style.
+Caret is a terminal for Wayland. Programs' output is parsed by a terminal
+emulator of Caret's own, and Caret draws its window and text with Vulkan, one
+texel to each pixel of the screen, so it stays sharp at fractional scales.
+It has tabs, split panes, sessions whose programs go on running when their
+window is detached, search through the history, links opened with Ctrl and a
+click, and follows the desktop's font and style.
 
 %prep
 %autosetup -n %{name}-%{version} -b 1
@@ -64,9 +62,6 @@ target="%{_cargo_target_dir}/release"
 target="target/release"
 %endif
 install -Dpm 0755 "$target/caret" %{buildroot}%{_bindir}/caret
-%{_bindir}/caret-server
-%{_userunitdir}/caret-server.socket
-%{_userunitdir}/caret-server.service
 install -Dpm 0755 "$target/caret-server" %{buildroot}%{_bindir}/caret-server
 install -Dpm 0644 data/caret-server.socket %{buildroot}%{_userunitdir}/caret-server.socket
 sed 's|@bindir@|%{_bindir}|' data/caret-server.service.in > caret-server.service
@@ -94,9 +89,6 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{app_id}.desktop
 appstreamcli validate --no-net %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
 test -x %{buildroot}%{_bindir}/caret
 test -x %{buildroot}%{_bindir}/caret-server
-%{_bindir}/caret-server
-%{_userunitdir}/caret-server.socket
-%{_userunitdir}/caret-server.service
 
 %files -f %{name}.lang
 %license LICENSE
