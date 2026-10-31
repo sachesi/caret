@@ -365,11 +365,19 @@ impl History {
             self.open = row.wrapped;
             return;
         }
-        if self.open
-            && let (Some(last), Some(&start)) = (self.lines.back_mut(), self.starts.back())
-        {
+        // A line that never ends, from a program that writes no newlines, is cut where
+        // it fills the history, so that its older rows can go as other lines' do.
+        let open = self.open
+            && self
+                .starts
+                .back()
+                .is_some_and(|&start| self.end - start < self.limit);
+        if open && let Some(last) = self.lines.back_mut() {
+            // The row follows a full one wrapped as wide, so what it brings starts a row
+            // of its own: counted without laying out the whole line again.
+            let before = last.width();
             last.append(row);
-            self.end = start + last.rows(self.columns);
+            self.end += usize::from(last.width() > before);
         } else {
             let mut line = Line::default();
             line.append(row);
@@ -546,6 +554,29 @@ mod tests {
         assert_eq!(history.serial(0), 1);
         assert_eq!(history.index_of(0), None);
         assert_eq!(history.index_of(3), Some(2));
+    }
+
+    #[test]
+    fn a_line_that_never_ends_keeps_to_the_limit() {
+        let mut history = History::new(4, 3);
+        for _ in 0..10 {
+            history.push(&row("abcd", 4, true));
+            assert!(history.rows() <= 3, "{} rows", history.rows());
+        }
+        assert_eq!(history.line(history.len() - 1).width(), 4);
+    }
+
+    #[test]
+    fn rows_joined_to_a_line_are_counted_as_its_wrapping_makes_them() {
+        let output = "日a日日日日bc日日日日日日日日日日d\r\n\
+                      abcdefghijklmnopqrstuvwxyz\x1b[K\r\nabc\x1b[2K\r\n日日日日日\r\n";
+        for columns in 2..9 {
+            let mut term = crate::Term::new(columns, 2, crate::Options::default());
+            term.advance(output.repeat(3).as_bytes());
+            let history = term.history();
+            let laid_out: usize = history.lines().map(|line| line.rows(columns)).sum();
+            assert_eq!(history.rows(), laid_out, "at {columns} columns");
+        }
     }
 
     #[test]
