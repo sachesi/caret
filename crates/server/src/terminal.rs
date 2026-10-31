@@ -82,9 +82,10 @@ pub enum Event {
     Report(Report),
     /// The program exited, and what it wrote before has been read.
     Exited(ExitStatus),
-    /// The program could not be started, or the terminal's thread gave up and hung up on
-    /// it, and why.
-    Failed(String),
+    /// The program could not be started, and why. The terminal stays, saying so.
+    NotStarted(String),
+    /// The terminal's thread gave up and hung up on the program, and why.
+    Crashed(String),
 }
 
 /// How a client shows terminals: its colours, and whether output brings its view down.
@@ -139,30 +140,17 @@ struct Started {
     controller: File,
 }
 
-/// A terminal's thread until its program runs. Starting one looks for it and enters its
-/// directory, which on a mount that has stopped answering takes as long as that does, so
-/// it stays off the server's loop and every other terminal.
-struct Start {
+/// What a terminal's thread makes its emulator from.
+struct Emulator {
     id: TerminalId,
-    command: Command,
     size: Size,
     options: caret_term::Options,
     palette: Palette,
-    started: Arc<OnceLock<Started>>,
     events: mpsc::Sender<Input>,
 }
 
-impl Start {
-    fn run(self, orders: mpsc::Receiver<Order>, woken: UnixStream) {
-        let pty = self.program();
-        let pty = match pty {
-            Ok(pty) => pty,
-            Err(error) => {
-                let failed = Event::Failed(error.to_string());
-                let _ = self.events.send(Input::Terminal(self.id, failed));
-                return;
-            }
-        };
+impl Emulator {
+    fn worker(self, pty: Option<Pty>, orders: mpsc::Receiver<Order>, woken: UnixStream) -> Worker {
         let (columns, lines) = (usize::from(self.size.columns), usize::from(self.size.lines));
         let mut term = Term::new(columns, lines, self.options);
         term.set_palette_base(palette::base(&self.palette));
@@ -170,8 +158,8 @@ impl Start {
         Worker {
             id: self.id,
             term,
-            pty: Some(pty),
-            reading: true,
+            reading: pty.is_some(),
+            pty,
             unwritten: Unwritten::default(),
             buffer: vec![0; 64 * 1024],
             orders,
@@ -181,14 +169,44 @@ impl Start {
             synchronized: None,
             focused: true,
         }
-        .run();
+    }
+}
+
+/// A terminal's thread until its program runs. Starting one looks for it and enters its
+/// directory, which on a mount that has stopped answering takes as long as that does, so
+/// it stays off the server's loop and every other terminal.
+struct Start {
+    command: Command,
+    emulator: Emulator,
+    started: Arc<OnceLock<Started>>,
+}
+
+impl Start {
+    fn run(self, orders: mpsc::Receiver<Order>, woken: UnixStream) {
+        match self.program() {
+            Ok(pty) => self.emulator.worker(Some(pty), orders, woken).run(),
+            Err(error) => {
+                // The system's words, without the number Rust adds to them.
+                let error = error.to_string();
+                let reason = error.split(" (os error").next().unwrap_or(&error);
+                let told = format!("{}: {reason}", Launch(&self.command).program());
+                let failed = Event::NotStarted(reason.to_owned());
+                let _ = self
+                    .emulator
+                    .events
+                    .send(Input::Terminal(self.emulator.id, failed));
+                let mut worker = self.emulator.worker(None, orders, woken);
+                worker.note(&told);
+                worker.run();
+            }
+        }
     }
 
     fn program(&self) -> io::Result<Pty> {
         let launch = Launch(&self.command);
         let mut env = launch.environment();
         // How `caret attach` run in the terminal finds the window it is in.
-        env.insert("CARET_TERMINAL".to_owned(), self.id.0.to_string());
+        env.insert("CARET_TERMINAL".to_owned(), self.emulator.id.0.to_string());
         let program = launch.program();
         launch.check(&program, &env)?;
         let mut process = std::process::Command::new(&program);
@@ -199,7 +217,7 @@ impl Start {
         if let Some(directory) = launch.directory() {
             process.current_dir(directory);
         }
-        let pty = Pty::spawn(process, self.size)?;
+        let pty = Pty::spawn(process, self.emulator.size)?;
         let controller = match pty.controller.try_clone() {
             Ok(controller) => controller,
             Err(error) => {
@@ -402,31 +420,75 @@ impl Terminal {
         palette: &Palette,
         events: &mpsc::Sender<Input>,
     ) -> io::Result<Self> {
+        let started = Arc::new(OnceLock::new());
+        let start = Start {
+            command: command.clone(),
+            emulator: Emulator {
+                id,
+                size: fitted(size),
+                options,
+                palette: palette.clone(),
+                events: events.clone(),
+            },
+            started: started.clone(),
+        };
+        Self::on_a_thread(
+            id,
+            events,
+            started,
+            !command.argv.is_empty(),
+            |orders, woken| {
+                start.run(orders, woken);
+            },
+        )
+    }
+
+    /// A terminal with no program that shows `text`, in place of one that crashed.
+    pub fn showing(
+        id: TerminalId,
+        text: String,
+        size: Size,
+        options: caret_term::Options,
+        palette: &Palette,
+        events: &mpsc::Sender<Input>,
+    ) -> io::Result<Self> {
+        let emulator = Emulator {
+            id,
+            size: fitted(size),
+            options,
+            palette: palette.clone(),
+            events: events.clone(),
+        };
+        let started = Arc::new(OnceLock::new());
+        Self::on_a_thread(id, events, started, false, move |orders, woken| {
+            let mut worker = emulator.worker(None, orders, woken);
+            worker.note(&text);
+            worker.run();
+        })
+    }
+
+    fn on_a_thread(
+        id: TerminalId,
+        events: &mpsc::Sender<Input>,
+        started: Arc<OnceLock<Started>>,
+        named_program: bool,
+        run: impl FnOnce(mpsc::Receiver<Order>, UnixStream) + Send + 'static,
+    ) -> io::Result<Self> {
         let (wake, woken) = UnixStream::pair()?;
         woken.set_nonblocking(true)?;
         // A thread busy for long leaves the socket full of wakes it has yet to see. More of
         // them say nothing new, and must not hold up the server's loop.
         wake.set_nonblocking(true)?;
         let (orders, received) = mpsc::channel();
-        let started = Arc::new(OnceLock::new());
-        let start = Start {
-            id,
-            command: command.clone(),
-            size: fitted(size),
-            options,
-            palette: palette.clone(),
-            started: started.clone(),
-            events: events.clone(),
-        };
         let told = events.clone();
         std::thread::Builder::new()
             .name(format!("terminal {}", id.0))
-            .spawn(move || guarded(id, &told, || start.run(received, woken)))?;
+            .spawn(move || guarded(id, &told, || run(received, woken)))?;
         Ok(Self {
             orders,
             wake,
             started,
-            named_program: !command.argv.is_empty(),
+            named_program,
         })
     }
 
@@ -550,8 +612,8 @@ impl Terminal {
 fn guarded(id: TerminalId, events: &mpsc::Sender<Input>, run: impl FnOnce()) {
     if panic::catch_unwind(AssertUnwindSafe(run)).is_err() {
         tracing::error!("terminal {} crashed", id.0);
-        let failed = Event::Failed("The terminal crashed".to_owned());
-        let _ = events.send(Input::Terminal(id, failed));
+        let crashed = Event::Crashed("The terminal crashed".to_owned());
+        let _ = events.send(Input::Terminal(id, crashed));
     }
 }
 
@@ -728,6 +790,23 @@ impl Worker {
         }
     }
 
+    /// Writes `text` under what the terminal shows.
+    fn note(&mut self, text: &str) {
+        let newline = if self.term.cursor_at().1 > 0 {
+            "\r\n"
+        } else {
+            ""
+        };
+        let text: String = text.chars().filter(|c| !c.is_control()).collect();
+        // Bold, then the cursor hidden: nothing is left to type into.
+        let text = format!("{newline}\x1b[1m{text}\x1b[0m\x1b[?25l");
+        self.term.advance(text.as_bytes());
+        for viewer in self.viewers.values_mut() {
+            viewer.view.scroll_to_bottom();
+        }
+        self.touch_all();
+    }
+
     /// Carries out every order waiting; false once the server let go of the terminal.
     fn take_orders(&mut self) -> bool {
         let mut wakes = [0; 64];
@@ -746,7 +825,6 @@ impl Worker {
         }
     }
 
-    #[expect(clippy::too_many_lines, reason = "one arm for each order")]
     fn order(&mut self, order: Order) {
         match order {
             Order::Input(bytes) => {
@@ -839,21 +917,7 @@ impl Worker {
                     }
                 }
             }
-            Order::Annotate(text) => {
-                let newline = if self.term.cursor_at().1 > 0 {
-                    "\r\n"
-                } else {
-                    ""
-                };
-                let text: String = text.chars().filter(|c| !c.is_control()).collect();
-                // Bold, then the cursor hidden: nothing is left to type into.
-                let text = format!("{newline}\x1b[1m{text}\x1b[0m\x1b[?25l");
-                self.term.advance(text.as_bytes());
-                for viewer in self.viewers.values_mut() {
-                    viewer.view.scroll_to_bottom();
-                }
-                self.touch_all();
-            }
+            Order::Annotate(text) => self.note(&text),
             Order::Ask {
                 client,
                 id,
@@ -1235,7 +1299,7 @@ mod tests {
             .expect("the panic stays in the guard");
         assert!(matches!(
             inputs.try_recv(),
-            Ok(Input::Terminal(TerminalId(5), Event::Failed(_)))
+            Ok(Input::Terminal(TerminalId(5), Event::Crashed(_)))
         ));
     }
 

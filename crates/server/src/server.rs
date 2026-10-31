@@ -1562,11 +1562,56 @@ impl Server {
                 entry.exit_status = Some(status);
                 self.program_ended(terminal);
             }
-            Event::Failed(reason) => {
-                entry.terminal = None;
+            Event::NotStarted(reason) => {
                 entry.failure = Some(reason.clone());
                 self.broadcast_for(terminal, &Message::Failed { terminal, reason });
             }
+            Event::Crashed(reason) => {
+                entry.terminal = None;
+                // Should what replaces it crash as well, nothing replaces that.
+                if entry.failure.replace(reason.clone()).is_none() {
+                    self.replace_crashed(terminal, reason.clone());
+                }
+                self.broadcast_for(terminal, &Message::Failed { terminal, reason });
+            }
+        }
+    }
+
+    /// Puts a terminal that says why in place of one that crashed, for its pane to show.
+    fn replace_crashed(&mut self, terminal: TerminalId, reason: String) {
+        let Some(entry) = self.terminals.get(&terminal) else {
+            return;
+        };
+        let viewers: Vec<ClientId> = entry.views.keys().copied().collect();
+        let client = entry.active.or_else(|| viewers.first().copied());
+        let (options, palette) = client
+            .and_then(|client| self.clients.get(&client))
+            .map_or_else(
+                || (default_options(), palette::fallback()),
+                |state| (state.options.clone(), state.palette.clone()),
+            );
+        let showing = Terminal::showing(
+            terminal,
+            reason,
+            entry.size,
+            terminal::options(&options),
+            &palette,
+            &self.events,
+        );
+        let showing = match showing {
+            Ok(showing) => showing,
+            Err(error) => {
+                tracing::error!("replacing terminal {}: {error}", terminal.0);
+                return;
+            }
+        };
+        for &viewer in &viewers {
+            self.show(&showing, viewer);
+            // What it had asked of the one that crashed will not come.
+            showing.want_frame(viewer);
+        }
+        if let Some(entry) = self.terminals.get_mut(&terminal) {
+            entry.terminal = Some(showing);
         }
     }
 
@@ -2008,11 +2053,44 @@ mod tests {
         let mut harness = harness();
         let session = harness.new_session();
         harness.request(Request::Attach { session });
-        harness.open(session, &["/nonexistent/program"]);
+        let terminal = harness.open(session, &["/nonexistent/program"]);
         assert!(matches!(
             harness.next(|message| matches!(message, Message::Failed { .. })),
             Message::Failed { .. }
         ));
+        harness.frame_with(terminal, "/nonexistent/program:Nosuch");
+        harness.request(Request::CloseTab { terminal });
+        harness.next(|message| matches!(message, Message::SessionClosed { .. }));
+    }
+
+    #[test]
+    fn a_terminal_that_crashes_is_replaced_by_one_saying_so() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        let terminal = harness.open(session, &["cat"]);
+        let crashed = Event::Crashed("The terminal crashed".to_owned());
+        harness.server.handle(Input::Terminal(terminal, crashed));
+        assert!(matches!(
+            harness.next(|message| matches!(message, Message::Failed { .. })),
+            Message::Failed { .. }
+        ));
+        harness.frame_with(terminal, "Theterminalcrashed");
+        harness.request(Request::CloseTab { terminal });
+        harness.next(|message| matches!(message, Message::SessionClosed { .. }));
+    }
+
+    #[test]
+    fn a_terminal_that_crashes_again_is_not_replaced_again() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        let terminal = harness.open(session, &["cat"]);
+        for _ in 0..2 {
+            let crashed = Event::Crashed("The terminal crashed".to_owned());
+            harness.server.handle(Input::Terminal(terminal, crashed));
+        }
+        assert!(harness.server.running(terminal).is_none());
     }
 
     #[test]

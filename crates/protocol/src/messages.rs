@@ -567,7 +567,8 @@ pub enum Message {
         seconds: u64,
         status: Option<i32>,
     },
-    /// The program could not be started.
+    /// The program could not be started, or its terminal crashed. The pane says why, unless
+    /// the server has run out of what it takes to show it.
     Failed {
         terminal: TerminalId,
         reason: String,

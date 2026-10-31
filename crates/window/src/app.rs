@@ -13,6 +13,7 @@ use caret_protocol::{
     Answer, Bytes, Command, Message, Options, Question, Request, Scroll, Select, SessionId,
     Size, TerminalId,
 };
+use gettextrs::gettext;
 use smithay_client_toolkit::compositor::{
     CompositorHandler, CompositorState, Region,
 };
@@ -655,7 +656,7 @@ pub(crate) fn options(config: &Config) -> Options {
 fn listen(
     events: &LoopHandle<'static, App>,
     received: calloop::channel::Channel<Received>,
-    pasted: calloop::channel::Channel<Vec<u8>>,
+    pasted: calloop::channel::Channel<Option<Vec<u8>>>,
     desktop_changed: calloop::channel::Channel<Desktop>,
     toasts: calloop::channel::Channel<String>,
 ) -> Result<(), AppError> {
@@ -689,8 +690,11 @@ fn listen(
         .map_err(|error| AppError::Loop(error.error))?;
     events
         .insert_source(pasted, |event, (), app| {
-            if let calloop::channel::Event::Msg(bytes) = event {
-                app.pasted(&bytes);
+            if let calloop::channel::Event::Msg(pasted) = event {
+                match pasted {
+                    Some(bytes) => app.pasted(&bytes),
+                    None => app.toast(gettext("The text is too long to paste")),
+                }
             }
         })
         .map_err(|error| AppError::Loop(error.error))?;
@@ -731,6 +735,10 @@ impl App {
             } if self.tab_of(terminal).is_some() => self.copy(text, primary),
             Message::Title { terminal, title } => self.tab_titled(terminal, title),
             Message::Bell { terminal } => self.bell(terminal),
+            Message::Failed { terminal, reason } => {
+                tracing::warn!("terminal {terminal:?} failed: {reason}");
+                self.toast(gettext("This terminal could not run its program"));
+            }
             Message::Notification {
                 terminal,
                 title,

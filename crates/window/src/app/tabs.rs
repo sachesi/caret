@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::os::unix::ffi::OsStrExt;
 use std::time::Duration;
 
-use caret_protocol::layout::Node;
+use caret_protocol::layout::{MOST_PANES, Node};
 use caret_protocol::{Bytes, Command, Frame, Question, Request, SessionId, Size, TerminalId};
 
 use gettextrs::gettext;
@@ -803,6 +803,14 @@ impl App {
     pub(super) fn split(&mut self, vertical: bool) {
         if self.server.version < PANES {
             self.toast(gettext("Splitting needs a newer terminal server"));
+            return;
+        }
+        let panes = self
+            .tabs
+            .get(self.selected)
+            .map_or(0, |tab| tab.root.panes().len());
+        if panes >= MOST_PANES {
+            self.toast(gettext("This tab cannot be split any further"));
             return;
         }
         if let Some(terminal) = self.terminal() {

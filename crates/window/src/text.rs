@@ -173,6 +173,8 @@ struct Client {
     selected: usize,
     screens: HashMap<TerminalId, Screen>,
     titles: HashMap<TerminalId, String>,
+    /// Why terminals failed, to say in a pane that never shows anything else.
+    failures: HashMap<TerminalId, String>,
     /// Its size in cells, and in pixels where the terminal says.
     size: (u16, u16, u16, u16),
     sizes: HashMap<TerminalId, Size>,
@@ -264,6 +266,7 @@ fn show(stream: &mut UnixStream, session: SessionId, host: &Host) -> Result<(), 
         selected: 0,
         screens: HashMap::new(),
         titles: HashMap::new(),
+        failures: HashMap::new(),
         size: window_size(),
         sizes: HashMap::new(),
         enhanced: host.enhanced,
@@ -487,6 +490,9 @@ impl Client {
                 if self.placed().rect(terminal).is_some() {
                     self.send(&Request::Frame { terminal });
                 }
+            }
+            Message::Failed { terminal, reason } => {
+                self.failures.insert(terminal, reason);
             }
             Message::Answer {
                 answer: Answer::Opened { terminal },
@@ -888,6 +894,11 @@ impl Client {
         next.reset(usize::from(columns), usize::from(lines));
         for &(terminal, rect) in &placed.panes {
             let Some(screen) = self.screens.get(&terminal) else {
+                let reason = self.failures.get(&terminal).map_or("", String::as_str);
+                for (column, c) in (0..rect.width).zip(reason.chars()) {
+                    let text = Some(GlyphText::Char(c));
+                    next.put(rect.x + column, rect.y, text, Pen::default(), false);
+                }
                 continue;
             };
             for line in 0..rect.height {

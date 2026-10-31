@@ -1,7 +1,7 @@
 //! The clipboard and the primary selection: what the window offers others, and what
 //! it pastes from them; and what is dropped on it, typed as a paste is.
 
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 
 use caret_protocol::{Mode, encode};
 use smithay_client_toolkit::data_device_manager::data_device::{DataDevice, DataDeviceHandler};
@@ -54,14 +54,15 @@ pub struct Clipboard {
     text: String,
     primary_text: String,
     /// Where text read from another program's selection goes.
-    pastes: Sender<Vec<u8>>,
+    /// What was read of pastes and drops; none for one past [`LONGEST_PASTE`].
+    pastes: Sender<Option<Vec<u8>>>,
 }
 
 impl Clipboard {
     pub fn new(
         manager: Option<DataDeviceManagerState>,
         primary_manager: Option<PrimarySelectionManagerState>,
-        pastes: Sender<Vec<u8>>,
+        pastes: Sender<Option<Vec<u8>>>,
     ) -> Self {
         Self {
             manager,
@@ -152,7 +153,10 @@ impl App {
             .name("paste".to_owned())
             .spawn(move || match read_whole(&mut pipe) {
                 Ok(bytes) => {
-                    let _ = pastes.send(bytes);
+                    let _ = pastes.send(Some(bytes));
+                }
+                Err(error) if error.kind() == ErrorKind::FileTooLarge => {
+                    let _ = pastes.send(None);
                 }
                 Err(error) => tracing::warn!("reading the pasted text: {error}"),
             });
@@ -190,7 +194,7 @@ fn read_whole(pipe: &mut impl Read) -> std::io::Result<Vec<u8>> {
     pipe.take(LONGEST_PASTE + 1).read_to_end(&mut bytes)?;
     if bytes.len() as u64 > LONGEST_PASTE {
         return Err(std::io::Error::new(
-            std::io::ErrorKind::FileTooLarge,
+            ErrorKind::FileTooLarge,
             format!("longer than {LONGEST_PASTE} bytes"),
         ));
     }
@@ -325,10 +329,13 @@ impl DataDeviceHandler for App {
                 offer.destroy();
                 match read {
                     Ok(bytes) if mime == URI_LIST => {
-                        let _ = pastes.send(paths(&bytes));
+                        let _ = pastes.send(Some(paths(&bytes)));
                     }
                     Ok(bytes) => {
-                        let _ = pastes.send(bytes);
+                        let _ = pastes.send(Some(bytes));
+                    }
+                    Err(error) if error.kind() == ErrorKind::FileTooLarge => {
+                        let _ = pastes.send(None);
                     }
                     Err(error) => tracing::warn!("reading what was dropped: {error}"),
                 }
