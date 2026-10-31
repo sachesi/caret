@@ -1,7 +1,7 @@
 //! What a cell holds: its character, colours, attributes and link.
 
 /// A colour as a program gave it, resolved to red, green and blue by whoever draws it.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, Eq)]
 pub enum Color {
     /// The default foreground or background, whichever the colour is used as.
     #[default]
@@ -9,6 +9,30 @@ pub enum Color {
     /// One of the 256 colours of the palette.
     Indexed(u8),
     Rgb(u8, u8, u8),
+}
+
+impl Color {
+    /// The colour in one number, which compares in one step where the variants would
+    /// take several: every cell's style is compared as history is kept.
+    fn packed(self) -> u32 {
+        match self {
+            Self::Default => 0,
+            Self::Indexed(index) => 1 << 24 | u32::from(index),
+            Self::Rgb(r, g, b) => 2 << 24 | u32::from(r) << 16 | u32::from(g) << 8 | u32::from(b),
+        }
+    }
+}
+
+impl PartialEq for Color {
+    fn eq(&self, other: &Self) -> bool {
+        self.packed() == other.packed()
+    }
+}
+
+impl std::hash::Hash for Color {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.packed().hash(state);
+    }
 }
 
 /// A cell's attributes, a bit each but for the kind of underline.
