@@ -810,10 +810,22 @@ impl Worker {
             self.unwritten.extend_from_slice(&replies);
             self.write();
         }
-        for event in self.term.take_events() {
+        let events = self.term.take_events();
+        // Of what was read at once, only the last title and one bell reach the clients: a
+        // program setting its title in a loop would otherwise send them more than they
+        // can take in.
+        let last_title = events
+            .iter()
+            .rposition(|event| matches!(event, caret_term::Event::Title(_)));
+        let mut rung = false;
+        for (index, event) in events.into_iter().enumerate() {
             let event = match event {
-                caret_term::Event::Title(title) => Event::Title(title),
-                caret_term::Event::Bell => Event::Bell,
+                caret_term::Event::Title(title) if Some(index) == last_title => Event::Title(title),
+                caret_term::Event::Bell if !rung => {
+                    rung = true;
+                    Event::Bell
+                }
+                caret_term::Event::Title(_) | caret_term::Event::Bell => continue,
                 caret_term::Event::Clipboard { primary, text } => {
                     Event::Clipboard { primary, text }
                 }

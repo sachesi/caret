@@ -1661,6 +1661,26 @@ mod tests {
     }
 
     #[test]
+    fn of_the_titles_a_program_sets_at_once_only_the_last_is_sent() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        harness.open(
+            session,
+            &[
+                "sh",
+                "-c",
+                "printf '\\033]0;one\\007\\033]0;two\\007'; sleep 30",
+            ],
+        );
+        let set = |message: &Message| matches!(message, Message::Title { title, .. } if title == "one" || title == "two");
+        match harness.next(set) {
+            Message::Title { title, .. } => assert_eq!(title, "two"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
     fn a_detached_session_keeps_running_and_shows_again_when_attached() {
         let mut harness = harness();
         let session = harness.new_session();
