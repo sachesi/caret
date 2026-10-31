@@ -850,7 +850,14 @@ impl App {
             (Some(Asked::CloseDetached(sessions)), Answer::Programs { count }) => {
                 self.confirm_close_detached(sessions, Some(count));
             }
-            (Some(Asked::Copy { .. } | Asked::Find(_) | Asked::Link | Asked::Pane) | None, _) => {}
+            // The session may have closed before the server took the question up.
+            (
+                Some(
+                    Asked::Copy { .. } | Asked::Find(_) | Asked::Link | Asked::Pane | Asked::Tab(_),
+                )
+                | None,
+                _,
+            ) => {}
             (Some(_), answer) => {
                 tracing::error!("the server answered {answer:?}");
                 self.exit = true;
