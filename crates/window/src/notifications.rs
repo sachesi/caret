@@ -6,6 +6,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use caret_protocol::TerminalId;
+use gettextrs::gettext;
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
 use zbus::blocking::{Connection, Proxy};
 use zbus::zvariant::Value;
@@ -85,7 +86,7 @@ fn send(notices: &mpsc::Receiver<Notice>, clicked: Sender<Clicked>) -> zbus::Res
                 crate::APP_ID,
                 &notice.title,
                 &notice.body,
-                ["default", "Show"].as_slice(),
+                ["default", gettext("Show").as_str()].as_slice(),
                 &hints,
                 -1i32,
             ),

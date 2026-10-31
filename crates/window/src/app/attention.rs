@@ -5,6 +5,7 @@
 use std::time::Duration;
 
 use caret_protocol::TerminalId;
+use gettextrs::gettext;
 use smithay_client_toolkit::reexports::calloop;
 use smithay_client_toolkit::dispatch2::Dispatch2;
 use smithay_client_toolkit::reexports::client::globals::GlobalList;
@@ -70,12 +71,12 @@ impl App {
             return;
         }
         let title = match status {
-            Some(0) | None => "Command Finished",
-            Some(_) => "Command Failed",
+            Some(0) | None => gettext("Command Finished"),
+            Some(_) => gettext("Command Failed"),
         };
         self.notify(Notice {
             terminal,
-            title: title.to_owned(),
+            title,
             body: self.tab_title(terminal),
         });
     }

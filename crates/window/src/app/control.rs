@@ -4,19 +4,19 @@
 use caret_protocol::encode::Modifiers;
 use caret_protocol::layout::Side;
 use caret_protocol::{Request, TerminalId};
+use gettextrs::gettext;
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
 use super::App;
 use crate::chrome::{self, Quad};
 use crate::panes::{self, Direction, Placed, Rect};
 
-const HINTS: &str =
-    "Arrows focus · Shift swap · Ctrl resize · V S split · X close · Z zoom · T tab · D detach";
-
 impl App {
     pub(super) fn enter_control(&mut self) {
         self.control = true;
-        self.chrome.hints = Some(HINTS.to_owned());
+        self.chrome.hints = Some(gettext(
+            "Arrows focus · Shift swap · Ctrl resize · V S split · X close · Z zoom · T tab · D detach",
+        ));
         self.dirty = true;
         self.draw();
     }
@@ -100,7 +100,7 @@ impl App {
     fn moves_panes(&mut self) -> bool {
         let moves = self.server.version >= 2;
         if !moves {
-            self.toast("Moving panes needs a newer terminal server".to_owned());
+            self.toast(gettext("Moving panes needs a newer terminal server"));
         }
         moves
     }

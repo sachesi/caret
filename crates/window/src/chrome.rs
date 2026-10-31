@@ -6,6 +6,8 @@ use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_toplev
 use smithay_client_toolkit::seat::keyboard::Keysym;
 use swash::zeno::{Cap, Mask, PathBuilder, Stroke};
 
+use gettextrs::gettext;
+
 use crate::atlas::GpuGlyph;
 use crate::fonts::Raster;
 
@@ -939,7 +941,7 @@ impl Painter<'_> {
             quads,
             &search.field,
             [field, field_top, buttons - inset - field, side],
-            ("Find in the history", color),
+            (&gettext("Find in the history"), color),
             search.focused,
             draw,
         );

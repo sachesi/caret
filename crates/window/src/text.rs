@@ -22,12 +22,12 @@ use caret_protocol::{
 };
 use rustix::termios::{self, OptionalActions};
 
+use gettextrs::gettext;
+
 use crate::config::Config;
+use crate::i18n::gettext_f;
 use crate::panes::{self, Direction, Divider, Rect};
 use host::{Host, Input, Mouse};
-
-const HINTS: &str = "arrows focus · shift swap · ctrl resize · n p tab · v s split · x close \
-                     · z zoom · t to tab · d detach · Esc";
 
 /// Shows `session` in this terminal until it is detached or ends.
 ///
@@ -796,14 +796,20 @@ impl Client {
         }
         let _ = write!(out, "\x1b[0m\x1b[{lines};1H\x1b[7m");
         let status = if self.control {
-            format!(" {HINTS} ")
+            format!(
+                " {} ",
+                gettext(
+                    "arrows focus · shift swap · ctrl resize · n p tab · v s split · x close · z zoom · t to tab · d detach · Esc"
+                )
+            )
         } else {
             let key = if self.enhanced {
                 "Ctrl+Shift+Space"
             } else {
                 "Ctrl+]"
             };
-            format!("{}  {key} control", self.tab_labels().concat())
+            let control = gettext_f("{key} control", &[("key", key)]);
+            format!("{}  {control}", self.tab_labels().concat())
         };
         let status: String = status.chars().take(usize::from(columns)).collect();
         let _ = write!(out, "{status:<width$}\x1b[0m", width = usize::from(columns));

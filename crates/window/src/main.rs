@@ -11,6 +11,7 @@ mod desktop;
 mod fonts;
 mod gpu;
 mod grid;
+mod i18n;
 mod keys;
 mod notifications;
 mod palette;
@@ -43,6 +44,11 @@ fn main() -> ExitCode {
         )
         .with_writer(std::io::stderr)
         .init();
+    // SAFETY: no thread has started yet.
+    #[expect(unsafe_code, reason = "the locale is set before any thread starts")]
+    unsafe {
+        i18n::init();
+    }
     let mut start = match cli::parse(std::env::args_os().skip(1)) {
         Ok(cli::Parsed::Start(start)) => start,
         Ok(cli::Parsed::Help) => {

@@ -3,10 +3,12 @@
 //! tab's name, and saying what Caret is.
 
 use caret_protocol::{Answer, Bytes, Question, Request, SessionId, TerminalId, encode};
+use gettextrs::gettext;
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
 use super::{App, Asked, pointer, sessions};
 use crate::chrome::{Appearance, Dialog};
+use crate::i18n::{gettext_f, ngettext_f};
 
 /// Where Caret is made, which About offers to open.
 const WEBSITE: &str = "https://github.com/sachesi/caret";
@@ -100,9 +102,9 @@ impl App {
     /// Asks for a name for `terminal`'s tab, starting from the one it shows.
     pub(super) fn rename_tab(&mut self, terminal: TerminalId) {
         let dialog = Dialog::asking(
-            "Rename Tab",
-            "Without a name, the tab shows the program’s title.",
-            ["Cancel", "Rename"],
+            &gettext("Rename Tab"),
+            &gettext("Without a name, the tab shows the program’s title."),
+            [&gettext("Cancel"), &gettext("Rename")],
             &self.tab_title(terminal),
         );
         self.confirm(dialog, Confirm::Rename(terminal));
@@ -110,7 +112,7 @@ impl App {
 
     pub(super) fn rename_session(&mut self, session: SessionId) {
         if self.server.version < 2 {
-            self.toast("Naming sessions needs a newer terminal server".to_owned());
+            self.toast(gettext("Naming sessions needs a newer terminal server"));
             return;
         }
         let name = self
@@ -119,9 +121,9 @@ impl App {
             .cloned()
             .unwrap_or_default();
         let mut dialog = Dialog::asking(
-            "Rename Session",
-            "Without a name, the session is known by its number.",
-            ["Cancel", "Rename"],
+            &gettext("Rename Session"),
+            &gettext("Without a name, the session is known by its number."),
+            [&gettext("Cancel"), &gettext("Rename")],
             &name,
         );
         if self.config.session_colors {
@@ -142,24 +144,27 @@ impl App {
 
     /// Closes `session`'s tabs and ends their programs, asking first.
     pub(super) fn close_session(&mut self, session: SessionId) {
-        let body = format!(
-            "The programs in the tabs of “{}” will be stopped.",
-            self.session_label(session)
+        let body = gettext_f(
+            "The programs in the tabs of “{session}” will be stopped.",
+            &[("session", &self.session_label(session))],
         );
-        let dialog = Dialog::new("Close Session?", &body, ["Cancel", "Close"]);
+        let dialog = Dialog::new(
+            &gettext("Close Session?"),
+            &body,
+            [&gettext("Cancel"), &gettext("Close")],
+        );
         self.confirm(dialog, Confirm::CloseSession(session));
     }
 
     /// Says what Caret is, which version, and under which licence, offering its website.
     pub(super) fn about(&mut self) {
-        let body = format!(
-            "A terminal drawn by the GPU. Version {}, by sachesi, free software under the \
-             GNU General Public License, version 3 or later.",
-            env!("CARGO_PKG_VERSION")
+        let body = gettext_f(
+            "A terminal drawn by the GPU. Version {version}, by sachesi, free software under the GNU General Public License, version 3 or later.",
+            &[("version", env!("CARGO_PKG_VERSION"))],
         );
         let dialog = Dialog {
             appearance: Appearance::Suggested,
-            ..Dialog::new("Caret", &body, ["Close", "Website"])
+            ..Dialog::new("Caret", &body, [&gettext("Close"), &gettext("Website")])
         };
         self.confirm(dialog, Confirm::About);
     }
@@ -263,8 +268,11 @@ impl App {
         self.closing_tab = None;
         match program {
             Some(program) if self.tab_of(key).is_some() => {
-                let dialog =
-                    Dialog::new("Close Tab?", &stopped(&program, "tab"), ["Cancel", "Close"]);
+                let dialog = Dialog::new(
+                    &gettext("Close Tab?"),
+                    &stopped(&program, false),
+                    [&gettext("Cancel"), &gettext("Close")],
+                );
                 self.confirm(dialog, Confirm::CloseTab(key));
             }
             _ => self.server.send(&Request::CloseTab { terminal: key }),
@@ -285,12 +293,16 @@ impl App {
                 let alone = self
                     .tab_of(terminal)
                     .is_some_and(|index| self.tabs[index].panes.len() == 1);
-                let (title, place) = if alone {
-                    ("Close Tab?", "tab")
+                let title = if alone {
+                    gettext("Close Tab?")
                 } else {
-                    ("Close Pane?", "pane")
+                    gettext("Close Pane?")
                 };
-                let dialog = Dialog::new(title, &stopped(&program, place), ["Cancel", "Close"]);
+                let dialog = Dialog::new(
+                    &title,
+                    &stopped(&program, !alone),
+                    [&gettext("Cancel"), &gettext("Close")],
+                );
                 self.confirm(dialog, Confirm::ClosePane(terminal));
             }
             _ => self.end_pane(terminal),
@@ -347,12 +359,17 @@ impl App {
             self.end(false);
             return;
         }
-        let body = if busy == 1 {
-            "A program is still running in this window and will be stopped.".to_owned()
-        } else {
-            format!("{busy} programs are still running in this window and will be stopped.")
-        };
-        let dialog = Dialog::new("Close Window?", &body, ["Cancel", "Close"]);
+        let body = ngettext_f(
+            "A program is still running in this window and will be stopped.",
+            "{count} programs are still running in this window and will be stopped.",
+            busy,
+            &[("count", &busy.to_string())],
+        );
+        let dialog = Dialog::new(
+            &gettext("Close Window?"),
+            &body,
+            [&gettext("Cancel"), &gettext("Close")],
+        );
         self.confirm(dialog, Confirm::CloseWindow);
     }
 
@@ -361,9 +378,11 @@ impl App {
     pub(super) fn paste_into(&mut self, terminal: TerminalId, text: &[u8], bracketed: bool) {
         if !bracketed && text.iter().any(|&byte| byte == b'\n' || byte == b'\r') {
             let dialog = Dialog::new(
-                "Paste Several Lines?",
-                "The program here does not mark pasted text, so each line runs as if typed and entered.",
-                ["Cancel", "Paste"],
+                &gettext("Paste Several Lines?"),
+                &gettext(
+                    "The program here does not mark pasted text, so each line runs as if typed and entered.",
+                ),
+                [&gettext("Cancel"), &gettext("Paste")],
             );
             let text = text.to_vec();
             self.confirm(dialog, Confirm::Paste { terminal, text });
@@ -377,11 +396,19 @@ impl App {
     }
 }
 
-/// Says `program` runs in the `place` and will be stopped.
-fn stopped(program: &str, place: &str) -> String {
-    if program.is_empty() {
-        format!("A program is still running in this {place} and will be stopped.")
-    } else {
-        format!("“{program}” is still running in this {place} and will be stopped.")
+/// Says `program` runs in the tab, or the `pane`, and will be stopped.
+fn stopped(program: &str, pane: bool) -> String {
+    let named = [("program", program)];
+    match (program.is_empty(), pane) {
+        (true, false) => gettext("A program is still running in this tab and will be stopped."),
+        (true, true) => gettext("A program is still running in this pane and will be stopped."),
+        (false, false) => gettext_f(
+            "“{program}” is still running in this tab and will be stopped.",
+            &named,
+        ),
+        (false, true) => gettext_f(
+            "“{program}” is still running in this pane and will be stopped.",
+            &named,
+        ),
     }
 }

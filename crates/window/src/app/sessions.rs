@@ -2,6 +2,7 @@
 //! shows the session's last tab or lists its tabs, and the keys between sessions.
 
 use caret_protocol::{Question, SessionId, TerminalId};
+use gettextrs::gettext;
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
 use super::menus::Choice;
@@ -217,15 +218,27 @@ impl App {
                 (item, Choice::ShowTab(tab.key))
             })
             .collect();
-        let mut new_tab = self.item("New Tab", Choice::NewTabIn(session), true);
+        let mut new_tab = self.item(&gettext("New Tab"), Choice::NewTabIn(session), true);
         new_tab.0.shortcut = self.shortcuts.label(Action::NewTab);
         let sections = vec![
             tabs,
             vec![new_tab],
             vec![
-                self.item("Rename Session…", Choice::RenameSession(session), true),
-                self.item("Detach Session", Choice::DetachSession(session), true),
-                self.item("Close Session…", Choice::CloseSession(session), true),
+                self.item(
+                    &gettext("Rename Session…"),
+                    Choice::RenameSession(session),
+                    true,
+                ),
+                self.item(
+                    &gettext("Detach Session"),
+                    Choice::DetachSession(session),
+                    true,
+                ),
+                self.item(
+                    &gettext("Close Session…"),
+                    Choice::CloseSession(session),
+                    true,
+                ),
             ],
         ];
         let mut menu = self.menu(sections, at, false);

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret 0.2.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-29 22:34+0200\n"
+"POT-Creation-Date: 2026-10-31 12:09+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,6 +17,370 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+
+#: crates/window/src/app/attention.rs:74 src/window.rs:359
+msgid "Command Finished"
+msgstr ""
+
+#: crates/window/src/app/attention.rs:75 src/window.rs:360
+msgid "Command Failed"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:105 src/window.rs:653
+msgid "Rename Tab"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:106 src/window.rs:655
+msgid "Without a name, the tab shows the program’s title."
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:107 crates/window/src/app/confirm.rs:126
+#: crates/window/src/app/confirm.rs:154 crates/window/src/app/confirm.rs:274
+#: crates/window/src/app/confirm.rs:304 crates/window/src/app/confirm.rs:371
+#: crates/window/src/app/confirm.rs:385
+msgid "Cancel"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:107 crates/window/src/app/confirm.rs:126
+msgid "Rename"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:115
+msgid "Naming sessions needs a newer terminal server"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:124
+msgid "Rename Session"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:125
+msgid "Without a name, the session is known by its number."
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:148
+#, rust-format
+msgid "The programs in the tabs of “{session}” will be stopped."
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:152
+msgid "Close Session?"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:154 crates/window/src/app/confirm.rs:167
+#: crates/window/src/app/confirm.rs:274 crates/window/src/app/confirm.rs:304
+#: crates/window/src/app/confirm.rs:371
+msgid "Close"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:162
+#, rust-format
+msgid ""
+"A terminal drawn by the GPU. Version {version}, by sachesi, free software "
+"under the GNU General Public License, version 3 or later."
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:167
+msgid "Website"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:272 crates/window/src/app/confirm.rs:297
+#: src/window.rs:810
+msgid "Close Tab?"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:299
+msgid "Close Pane?"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:363
+#, rust-format
+msgid "A program is still running in this window and will be stopped."
+msgid_plural ""
+"{count} programs are still running in this window and will be stopped."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/window/src/app/confirm.rs:369 src/window.rs:842
+msgid "Close Window?"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:381 src/terminal_view.rs:1093
+msgid "Paste Several Lines?"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:383 src/terminal_view.rs:1095
+msgid ""
+"The program here does not mark pasted text, so each line runs as if typed "
+"and entered."
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:385 crates/window/src/app/menus.rs:148
+#: ui/shortcuts_dialog.ui:99
+msgid "Paste"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:403 src/window.rs:803
+msgid "A program is still running in this tab and will be stopped."
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:404
+msgid "A program is still running in this pane and will be stopped."
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:406 src/window.rs:806
+#, rust-format
+msgid "“{program}” is still running in this tab and will be stopped."
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:410
+#, rust-format
+msgid "“{program}” is still running in this pane and will be stopped."
+msgstr ""
+
+#: crates/window/src/app/control.rs:18
+msgid ""
+"Arrows focus · Shift swap · Ctrl resize · V S split · X close · Z zoom · T "
+"tab · D detach"
+msgstr ""
+
+#: crates/window/src/app/control.rs:103
+msgid "Moving panes needs a newer terminal server"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:97 crates/window/src/app/menus.rs:166
+#: data/io.github.sachesi.caret.desktop:17 ui/shortcuts_dialog.ui:15
+msgid "New Window"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:98 crates/window/src/app/menus.rs:168
+#: crates/window/src/app/sessions.rs:221 ui/shortcuts_dialog.ui:21
+#: ui/window.ui:87
+msgid "New Tab"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:102
+#, rust-format
+msgid "New “{profile}” Window"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:110
+msgid "Sessions…"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:112 crates/window/src/app/sessions.rs:228
+msgid "Rename Session…"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:116
+msgid "Detach Window"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:117
+msgid "Reattach Windows"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:119 crates/window/src/app/menus.rs:186
+#: ui/shortcuts_dialog.ui:82
+msgid "Full Screen"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:121 src/preferences.rs:18
+#: ui/shortcuts_dialog.ui:170
+msgid "Preferences"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:122
+msgid "About Caret"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:147 ui/shortcuts_dialog.ui:93
+msgid "Copy"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:149 ui/shortcuts_dialog.ui:105
+msgid "Select All"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:151 ui/shortcuts_dialog.ui:111
+msgid "Deselect"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:158
+msgid "Open Link"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:159
+msgid "Copy Link Address"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:169
+msgid "Find…"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:172
+msgid "Split Right"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:173
+msgid "Split Down"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:180
+msgid "Close Pane"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:185 src/preferences.rs:178
+msgid "Title Bar"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:189 ui/shortcuts_dialog.ui:33
+msgid "Close Window"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:190 ui/window.ui:101
+msgid "Main Menu"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:202
+msgid "Rename Tab…"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:203 ui/shortcuts_dialog.ui:27
+msgid "Close Tab"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:270
+msgid "Could not make the settings file"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:287
+msgid "Listing sessions needs a newer terminal server"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:314
+msgid "here"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:316
+msgid "shown"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:318
+msgid "detached"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:322
+#, rust-format
+msgid "{count} tab"
+msgid_plural "{count} tabs"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/window/src/app/menus.rs:328
+#, rust-format
+msgid "{count} pane"
+msgid_plural "{count} panes"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/window/src/app/menus.rs:334
+#, rust-format
+msgid "{session} · {title} — {tabs}, {panes}, {place}"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:390
+#, rust-format
+msgid "Show {session} · {title}"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:402
+msgid "New Session"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:414
+msgid "Show Here"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:416
+msgid "Open in New Window"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:421
+msgid "Rename…"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:423
+msgid "Detach"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:424
+msgid "Close…"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:438 src/application.rs:234
+msgid "No windows were detached"
+msgstr ""
+
+#: crates/window/src/app/pointer.rs:717 src/terminal_view/input.rs:627
+#, rust-format
+msgid "Could not open the link: {reason}"
+msgstr ""
+
+#: crates/window/src/app/pointer.rs:726
+msgid "no program opens links"
+msgstr ""
+
+#: crates/window/src/app/pointer.rs:739
+msgid "it does not exist"
+msgstr ""
+
+#: crates/window/src/app/pointer.rs:740
+msgid "no program opens it"
+msgstr ""
+
+#: crates/window/src/app/pointer.rs:741
+msgid "the program that opens it failed"
+msgstr ""
+
+#: crates/window/src/app/sessions.rs:233
+msgid "Detach Session"
+msgstr ""
+
+#: crates/window/src/app/sessions.rs:238
+msgid "Close Session…"
+msgstr ""
+
+#: crates/window/src/app/tabs.rs:220
+#, rust-format
+msgid "Session {number}"
+msgstr ""
+
+#: crates/window/src/app/tabs.rs:227
+msgid "Showing sessions together needs a newer terminal server"
+msgstr ""
+
+#: crates/window/src/app/tabs.rs:702
+msgid "Splitting needs a newer terminal server"
+msgstr ""
+
+#: crates/window/src/chrome.rs:944 ui/window.ui:137
+msgid "Find in the history"
+msgstr ""
+
+#: crates/window/src/notifications.rs:89
+msgid "Show"
+msgstr ""
+
+#: crates/window/src/text.rs:802
+msgid ""
+"arrows focus · shift swap · ctrl resize · n p tab · v s split · x close · z "
+"zoom · t to tab · d detach · Esc"
+msgstr ""
+
+#: crates/window/src/text.rs:811
+#, rust-format
+msgid "{key} control"
+msgstr ""
 
 #: data/io.github.sachesi.caret.desktop:2
 #: data/io.github.sachesi.caret.metainfo.xml:6 src/window.rs:741
@@ -35,10 +399,6 @@ msgstr ""
 
 #: data/io.github.sachesi.caret.desktop:11
 msgid "shell;prompt;command;commandline;console;"
-msgstr ""
-
-#: data/io.github.sachesi.caret.desktop:17 ui/shortcuts_dialog.ui:15
-msgid "New Window"
 msgstr ""
 
 #: data/io.github.sachesi.caret.gschema.xml:16 src/preferences.rs:55
@@ -290,10 +650,6 @@ msgstr ""
 msgid "[-e] [COMMAND [ARGUMENT…]]"
 msgstr ""
 
-#: src/application.rs:234
-msgid "No windows were detached"
-msgstr ""
-
 #: src/application.rs:328
 msgid "A terminal drawn by the GPU"
 msgstr ""
@@ -301,10 +657,6 @@ msgstr ""
 #. Translators: put your name here, one per line, optionally with an email address.
 #: src/application.rs:330
 msgid "translator-credits"
-msgstr ""
-
-#: src/preferences.rs:18 ui/shortcuts_dialog.ui:170
-msgid "Preferences"
 msgstr ""
 
 #: src/preferences.rs:23 ui/shortcuts_dialog.ui:167
@@ -365,10 +717,6 @@ msgstr ""
 
 #: src/preferences.rs:174
 msgid "Underline"
-msgstr ""
-
-#: src/preferences.rs:178
-msgid "Title Bar"
 msgstr ""
 
 #: src/preferences.rs:179
@@ -484,129 +832,81 @@ msgstr ""
 msgid "“{program}” ended"
 msgstr ""
 
-#: src/terminal_view.rs:1093
-msgid "Paste Several Lines?"
-msgstr ""
-
-#: src/terminal_view.rs:1095
-msgid ""
-"The program here does not mark pasted text, so each line runs as if typed "
-"and entered."
-msgstr ""
-
 #: src/terminal_view.rs:1099 src/window.rs:660 src/window.rs:812
 #: src/window.rs:851
 msgid "_Cancel"
 msgstr ""
 
-#: src/terminal_view.rs:1100 src/terminal_view/input.rs:651
+#: src/terminal_view.rs:1100 src/terminal_view/input.rs:655
 msgid "_Paste"
 msgstr ""
 
-#: src/terminal_view/input.rs:623
-#, rust-format
-msgid "Could not open the link: {reason}"
-msgstr ""
-
-#: src/terminal_view/input.rs:650
+#: src/terminal_view/input.rs:654
 msgid "_Copy"
 msgstr ""
 
-#: src/terminal_view/input.rs:653
+#: src/terminal_view/input.rs:657
 msgid "Select _All"
 msgstr ""
 
-#: src/terminal_view/input.rs:657
+#: src/terminal_view/input.rs:661
 msgid "_Deselect"
 msgstr ""
 
-#: src/terminal_view/input.rs:666
+#: src/terminal_view/input.rs:670
 msgid "_Open Link"
 msgstr ""
 
-#: src/terminal_view/input.rs:667
+#: src/terminal_view/input.rs:671
 msgid "Copy _Link Address"
 msgstr ""
 
-#: src/terminal_view/input.rs:676 ui/window.ui:12
+#: src/terminal_view/input.rs:680 ui/window.ui:12
 msgid "New _Window"
 msgstr ""
 
-#: src/terminal_view/input.rs:678 ui/window.ui:16
+#: src/terminal_view/input.rs:682 ui/window.ui:16
 msgid "New _Tab"
 msgstr ""
 
-#: src/terminal_view/input.rs:679
+#: src/terminal_view/input.rs:683
 msgid "_Find…"
 msgstr ""
 
-#: src/terminal_view/input.rs:682
+#: src/terminal_view/input.rs:686
 msgid "Show _All Tabs"
 msgstr ""
 
-#: src/terminal_view/input.rs:687
+#: src/terminal_view/input.rs:691
 msgid "Title _Bar"
 msgstr ""
 
-#: src/terminal_view/input.rs:688 ui/window.ui:32
+#: src/terminal_view/input.rs:692 ui/window.ui:32
 msgid "_Full Screen"
 msgstr ""
 
-#: src/terminal_view/input.rs:689 ui/window.ui:38
+#: src/terminal_view/input.rs:693 ui/window.ui:38
 msgid "_Preferences"
 msgstr ""
 
-#: src/terminal_view/input.rs:690 ui/window.ui:42
+#: src/terminal_view/input.rs:694 ui/window.ui:42
 msgid "_Keyboard Shortcuts"
 msgstr ""
 
-#: src/terminal_view/input.rs:691 ui/window.ui:46
+#: src/terminal_view/input.rs:695 ui/window.ui:46
 msgid "_About Caret"
 msgstr ""
 
-#: src/terminal_view/input.rs:694
+#: src/terminal_view/input.rs:698
 msgid "_Close Window"
-msgstr ""
-
-#: src/window.rs:359
-msgid "Command Finished"
-msgstr ""
-
-#: src/window.rs:360
-msgid "Command Failed"
-msgstr ""
-
-#: src/window.rs:653
-msgid "Rename Tab"
-msgstr ""
-
-#: src/window.rs:655
-msgid "Without a name, the tab shows the program’s title."
 msgstr ""
 
 #: src/window.rs:661
 msgid "_Rename"
 msgstr ""
 
-#: src/window.rs:803
-msgid "A program is still running in this tab and will be stopped."
-msgstr ""
-
-#: src/window.rs:806
-#, rust-format
-msgid "“{program}” is still running in this tab and will be stopped."
-msgstr ""
-
-#: src/window.rs:810
-msgid "Close Tab?"
-msgstr ""
-
 #: src/window.rs:813 src/window.rs:852
 msgid "C_lose"
-msgstr ""
-
-#: src/window.rs:842
-msgid "Close Window?"
 msgstr ""
 
 #: src/window.rs:844
@@ -618,18 +918,6 @@ msgstr[1] ""
 
 #: ui/shortcuts_dialog.ui:12
 msgid "Windows and Tabs"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:21 ui/window.ui:87
-msgid "New Tab"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:27
-msgid "Close Tab"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:33
-msgid "Close Window"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:39
@@ -662,26 +950,6 @@ msgstr ""
 
 #: ui/shortcuts_dialog.ui:76
 msgid "Show or Hide the Title Bar"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:82
-msgid "Full Screen"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:93
-msgid "Copy"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:99
-msgid "Paste"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:105
-msgid "Select All"
-msgstr ""
-
-#: ui/shortcuts_dialog.ui:111
-msgid "Deselect"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:117 ui/window.ui:113
@@ -734,14 +1002,6 @@ msgstr ""
 
 #: ui/window.ui:60
 msgid "_Close Tab"
-msgstr ""
-
-#: ui/window.ui:101
-msgid "Main Menu"
-msgstr ""
-
-#: ui/window.ui:137
-msgid "Find in the history"
 msgstr ""
 
 #: ui/window.ui:153

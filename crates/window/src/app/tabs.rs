@@ -7,9 +7,12 @@ use std::os::unix::ffi::OsStrExt;
 use caret_protocol::layout::Node;
 use caret_protocol::{Bytes, Command, Frame, Question, Request, SessionId, Size, TerminalId};
 
+use gettextrs::gettext;
+
 use super::{App, Asked};
 use crate::chrome::{Preview, TabLabel};
 use crate::grid::{self, Grid, Unresolved};
+use crate::i18n::gettext_f;
 use crate::panes::{self, Direction, Placed, Rect};
 
 /// The first protocol version with split panes.
@@ -214,13 +217,15 @@ impl App {
         self.session_names
             .get(&session)
             .cloned()
-            .unwrap_or_else(|| format!("Session {}", session.0))
+            .unwrap_or_else(|| gettext_f("Session {number}", &[("number", &session.0.to_string())]))
     }
 
     /// Shows `session`'s tabs in the window too, after the others.
     pub(super) fn show_session(&mut self, session: SessionId) {
         if self.server.version < PANES {
-            self.toast("Showing sessions together needs a newer terminal server".to_owned());
+            self.toast(gettext(
+                "Showing sessions together needs a newer terminal server",
+            ));
             return;
         }
         if !self.sessions.contains(&session) {
@@ -694,7 +699,7 @@ impl App {
     /// where the focused one's is.
     pub(super) fn split(&mut self, vertical: bool) {
         if self.server.version < PANES {
-            self.toast("Splitting needs a newer terminal server".to_owned());
+            self.toast(gettext("Splitting needs a newer terminal server"));
             return;
         }
         if let Some(terminal) = self.terminal() {

@@ -11,6 +11,7 @@ publish = false
 ash = "0.38"
 caret-protocol.workspace = true
 fontdb = { version = "0.24", default-features = false, features = ["std", "fs", "memmap"] }
+gettext-rs = { version = "0.8", features = ["gettext-system"] }
 rustix = { version = "1", features = ["event", "fs", "termios"] }
 rustybuzz = "0.20"
 shlex = "1"

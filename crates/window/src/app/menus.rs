@@ -2,11 +2,13 @@
 //! right click, with what it can do where it was clicked.
 
 use caret_protocol::{Question, SessionEntry, SessionId, SessionInfo, TerminalId};
+use gettextrs::gettext;
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
 use super::{App, Asked, pointer};
 use crate::chrome::{Item, Menu};
 use crate::config;
+use crate::i18n::{gettext_f, ngettext_f};
 use crate::shortcuts::Action;
 
 /// What a menu's item does.
@@ -92,12 +94,12 @@ impl App {
             return;
         };
         let mut sections = vec![vec![
-            self.act_item("New Window", Action::NewWindow),
-            self.act_item("New Tab", Action::NewTab),
+            self.act_item(&gettext("New Window"), Action::NewWindow),
+            self.act_item(&gettext("New Tab"), Action::NewTab),
         ]];
         if !self.config.profiles.is_empty() {
             let profiles = self.config.profiles.iter().map(|profile| {
-                let label = format!("New “{profile}” Window");
+                let label = gettext_f("New “{profile}” Window", &[("profile", profile)]);
                 self.item(&label, Choice::Profile(profile.clone()), true)
             });
             sections.push(profiles.collect());
@@ -105,19 +107,19 @@ impl App {
         let session = self.shown_session();
         sections.extend([
             vec![
-                self.act_item("Sessions…", Action::Sessions),
+                self.act_item(&gettext("Sessions…"), Action::Sessions),
                 self.item(
-                    "Rename Session…",
+                    &gettext("Rename Session…"),
                     Choice::RenameSession(session.unwrap_or(SessionId(0))),
                     session.is_some(),
                 ),
-                self.item("Detach Window", Choice::Detach, true),
-                self.item("Reattach Windows", Choice::Reattach, true),
+                self.item(&gettext("Detach Window"), Choice::Detach, true),
+                self.item(&gettext("Reattach Windows"), Choice::Reattach, true),
             ],
-            vec![self.act_item("Full Screen", Action::Fullscreen)],
+            vec![self.act_item(&gettext("Full Screen"), Action::Fullscreen)],
             vec![
-                self.item("Preferences", Choice::Preferences, true),
-                self.item("About Caret", Choice::About, true),
+                self.item(&gettext("Preferences"), Choice::Preferences, true),
+                self.item(&gettext("About Caret"), Choice::About, true),
             ],
         ]);
         match at {
@@ -142,46 +144,50 @@ impl App {
     pub(super) fn terminal_menu(&mut self, at: (f32, f32), link: Option<String>) {
         let selected = self.grid.has_selection();
         let mut sections = vec![vec![
-            self.item("Copy", Choice::Act(Action::Copy), selected),
-            self.act_item("Paste", Action::Paste),
-            self.act_item("Select All", Action::SelectAll),
-            self.item("Deselect", Choice::Act(Action::Deselect), selected),
+            self.item(&gettext("Copy"), Choice::Act(Action::Copy), selected),
+            self.act_item(&gettext("Paste"), Action::Paste),
+            self.act_item(&gettext("Select All"), Action::SelectAll),
+            self.item(
+                &gettext("Deselect"),
+                Choice::Act(Action::Deselect),
+                selected,
+            ),
         ]];
         if let Some(link) = link {
             sections.push(vec![
-                self.item("Open Link", Choice::OpenLink(link.clone()), true),
-                self.item("Copy Link Address", Choice::CopyLink(link), true),
+                self.item(&gettext("Open Link"), Choice::OpenLink(link.clone()), true),
+                self.item(&gettext("Copy Link Address"), Choice::CopyLink(link), true),
             ]);
         }
         // What the header bar holds, for when it is hidden.
         let bar = self.chrome.header() > 0;
         let mut window = Vec::new();
         if !bar {
-            window.push(self.act_item("New Window", Action::NewWindow));
+            window.push(self.act_item(&gettext("New Window"), Action::NewWindow));
         }
-        window.push(self.act_item("New Tab", Action::NewTab));
-        window.push(self.act_item("Find…", Action::Find));
+        window.push(self.act_item(&gettext("New Tab"), Action::NewTab));
+        window.push(self.act_item(&gettext("Find…"), Action::Find));
         sections.push(window);
         let mut panes = vec![
-            self.act_item("Split Right", Action::SplitRight),
-            self.act_item("Split Down", Action::SplitDown),
+            self.act_item(&gettext("Split Right"), Action::SplitRight),
+            self.act_item(&gettext("Split Down"), Action::SplitDown),
         ];
         if self
             .tabs
             .get(self.selected)
             .is_some_and(|tab| tab.panes.len() > 1)
         {
-            panes.push(self.act_item("Close Pane", Action::ClosePane));
+            panes.push(self.act_item(&gettext("Close Pane"), Action::ClosePane));
         }
         sections.push(panes);
         if !bar {
             sections.push(vec![
-                self.act_item("Title Bar", Action::TitleBar),
-                self.act_item("Full Screen", Action::Fullscreen),
+                self.act_item(&gettext("Title Bar"), Action::TitleBar),
+                self.act_item(&gettext("Full Screen"), Action::Fullscreen),
             ]);
             sections.push(vec![
-                self.act_item("Close Window", Action::CloseWindow),
-                self.item("Main Menu", Choice::MainMenu, true),
+                self.act_item(&gettext("Close Window"), Action::CloseWindow),
+                self.item(&gettext("Main Menu"), Choice::MainMenu, true),
             ]);
         }
         self.show_menu(sections, at, false);
@@ -193,8 +199,8 @@ impl App {
             return;
         };
         let sections = vec![
-            vec![self.item("Rename Tab…", Choice::RenameTab(terminal), true)],
-            vec![self.item("Close Tab", Choice::CloseTab(terminal), true)],
+            vec![self.item(&gettext("Rename Tab…"), Choice::RenameTab(terminal), true)],
+            vec![self.item(&gettext("Close Tab"), Choice::CloseTab(terminal), true)],
         ];
         self.show_menu(sections, self.pointer_at(), false);
     }
@@ -261,7 +267,7 @@ impl App {
             }
             Some(Choice::Preferences) => match config::editable() {
                 Some(path) => pointer::open(&path.to_string_lossy(), &self.toaster),
-                None => self.toast("Could not make the settings file".to_owned()),
+                None => self.toast(gettext("Could not make the settings file")),
             },
             Some(Choice::About) => self.about(),
             Some(Choice::MainMenu) => self.open_main_menu(at),
@@ -278,7 +284,7 @@ impl App {
     /// Asks for the sessions, to list them in a menu.
     pub(super) fn ask_sessions(&mut self) {
         if self.server.version < 2 {
-            self.toast("Listing sessions needs a newer terminal server".to_owned());
+            self.toast(gettext("Listing sessions needs a newer terminal server"));
             return;
         }
         let id = self.server.ask(Question::SessionList);
@@ -295,8 +301,6 @@ impl App {
     /// A menu of the sessions, each opening a menu of what can be done with it.
     pub(super) fn sessions_menu(&mut self, sessions: &[SessionEntry]) {
         self.learn_sessions(sessions);
-        let count =
-            |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
         let items = sessions
             .iter()
             .map(|entry| {
@@ -307,17 +311,34 @@ impl App {
                         .unwrap_or(&tab.title)
                 });
                 let place = if self.sessions.contains(&entry.session) {
-                    "here"
+                    gettext("here")
                 } else if entry.clients > 0 {
-                    "shown"
+                    gettext("shown")
                 } else {
-                    "detached"
+                    gettext("detached")
                 };
-                let label = format!(
-                    "{} · {title} — {}, {}, {place}",
-                    self.session_label(entry.session),
-                    count(entry.tabs.len(), "tab", "tabs"),
-                    count(entry.panes as usize, "pane", "panes"),
+                let tabs = entry.tabs.len() as u32;
+                let tabs = ngettext_f(
+                    "{count} tab",
+                    "{count} tabs",
+                    tabs,
+                    &[("count", &tabs.to_string())],
+                );
+                let panes = ngettext_f(
+                    "{count} pane",
+                    "{count} panes",
+                    entry.panes,
+                    &[("count", &entry.panes.to_string())],
+                );
+                let label = gettext_f(
+                    "{session} · {title} — {tabs}, {panes}, {place}",
+                    &[
+                        ("session", &self.session_label(entry.session)),
+                        ("title", title),
+                        ("tabs", &tabs),
+                        ("panes", &panes),
+                        ("place", &place),
+                    ],
                 );
                 let mut item = self.item(&label, Choice::SessionActions(entry.session), true);
                 item.0.dot = self.session_color(entry.session);
@@ -365,14 +386,20 @@ impl App {
                         .filter(|name| !name.is_empty())
                         .unwrap_or(&tab.title)
                 });
-                let label = format!("Show {} · {title}", self.session_label(entry.session));
+                let label = gettext_f(
+                    "Show {session} · {title}",
+                    &[
+                        ("session", &self.session_label(entry.session)),
+                        ("title", title),
+                    ],
+                );
                 let mut item = self.item(&label, Choice::ShowSession(entry.session), true);
                 item.0.dot = self.session_color(entry.session);
                 item
             })
             .collect();
         let sections = vec![
-            vec![self.item("New Session", Choice::NewSession, true)],
+            vec![self.item(&gettext("New Session"), Choice::NewSession, true)],
             others,
         ];
         let at = Menu::under_new_tab_button();
@@ -384,13 +411,17 @@ impl App {
         let here = self.sessions.contains(&session);
         let sections = vec![
             vec![
-                self.item("Show Here", Choice::ShowSession(session), !here),
-                self.item("Open in New Window", Choice::SessionWindow(session), true),
+                self.item(&gettext("Show Here"), Choice::ShowSession(session), !here),
+                self.item(
+                    &gettext("Open in New Window"),
+                    Choice::SessionWindow(session),
+                    true,
+                ),
             ],
-            vec![self.item("Rename…", Choice::RenameSession(session), true)],
+            vec![self.item(&gettext("Rename…"), Choice::RenameSession(session), true)],
             vec![
-                self.item("Detach", Choice::DetachSession(session), here),
-                self.item("Close…", Choice::CloseSession(session), true),
+                self.item(&gettext("Detach"), Choice::DetachSession(session), here),
+                self.item(&gettext("Close…"), Choice::CloseSession(session), true),
             ],
         ];
         let at = self.keyed_menu_at();
@@ -404,7 +435,7 @@ impl App {
             .filter(|session| session.clients == 0 && !session.tabs.is_empty())
             .peekable();
         if detached.peek().is_none() {
-            self.toast("No windows were detached".to_owned());
+            self.toast(gettext("No windows were detached"));
         }
         for session in detached {
             self.open_window(vec!["--session".into(), session.session.0.to_string()]);

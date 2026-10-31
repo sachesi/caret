@@ -61,7 +61,7 @@ pot:
     xgettext --from-code=UTF-8 --package-name=caret --package-version={{version}} \
         --msgid-bugs-address=https://github.com/sachesi/caret/issues \
         --keyword=gettext_f --keyword=ngettext_f:1,2 \
-        --add-comments=Translators --sort-by-file -o po/caret.pot $(find src -name '*.rs' | sort)
+        --add-comments=Translators --sort-by-file -o po/caret.pot $(find src crates/window/src -name '*.rs' | sort)
     xgettext -j --from-code=UTF-8 --package-name=caret --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/caret/issues --add-comments=Translators --sort-by-file --directory={{pot_dir}} -o po/caret.pot $(cd {{pot_dir}} && ls ui/*.ui)
     xgettext -j --from-code=UTF-8 --package-name=caret --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/caret/issues --language=Desktop --sort-by-file -o po/caret.pot data/{{app_id}}.desktop
     xgettext -j --from-code=UTF-8 --package-name=caret --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/caret/issues --sort-by-file -o po/caret.pot data/{{app_id}}.metainfo.xml data/{{app_id}}.gschema.xml

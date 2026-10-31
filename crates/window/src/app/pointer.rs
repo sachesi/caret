@@ -19,8 +19,11 @@ use smithay_client_toolkit::seat::pointer::{PointerEvent, PointerEventKind, Poin
 
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
 
+use gettextrs::gettext;
+
 use super::{App, Asked};
 use crate::chrome::{Chrome, Part};
+use crate::i18n::gettext_f;
 use crate::panes::Divider;
 
 /// Linux's button codes.
@@ -710,7 +713,8 @@ impl PointerHandler for App {
 
 /// Opens `uri` with the program the desktop has for it, telling `toasts` if it cannot.
 pub(super) fn open(uri: &str, toasts: &Sender<String>) {
-    let failed = |reason: &str| format!("Could not open the link: {reason}");
+    let failed =
+        |reason: &str| gettext_f("Could not open the link: {reason}", &[("reason", reason)]);
     let mut opener = match Command::new("xdg-open")
         .arg(uri)
         .stdin(Stdio::null())
@@ -719,7 +723,7 @@ pub(super) fn open(uri: &str, toasts: &Sender<String>) {
         Ok(opener) => opener,
         Err(error) => {
             tracing::warn!("opening {uri}: {error}");
-            let _ = toasts.send(failed("no program opens links"));
+            let _ = toasts.send(failed(&gettext("no program opens links")));
             return;
         }
     };
@@ -732,11 +736,11 @@ pub(super) fn open(uri: &str, toasts: &Sender<String>) {
                 tracing::warn!("opening {uri}: {status}");
                 // The codes xdg-open exits with.
                 let reason = match status.code() {
-                    Some(2) => "it does not exist",
-                    Some(3) => "no program opens it",
-                    _ => "the program that opens it failed",
+                    Some(2) => gettext("it does not exist"),
+                    Some(3) => gettext("no program opens it"),
+                    _ => gettext("the program that opens it failed"),
                 };
-                let _ = toasts.send(failed(reason));
+                let _ = toasts.send(failed(&reason));
             }
             Ok(_) => {}
             Err(error) => tracing::warn!("opening {uri}: {error}"),
