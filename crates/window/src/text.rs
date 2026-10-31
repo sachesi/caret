@@ -12,7 +12,9 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
-use std::sync::mpsc;
+use std::panic;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 use caret_protocol::encode::{self, Key, Modifiers, MouseAction, MouseButton, Press};
@@ -52,11 +54,14 @@ pub fn run(session: SessionId) -> Result<(), String> {
         .map_err(|error| format!("setting the terminal up: {error}"))?;
     let mut host = host::probe();
     host.console = std::env::var("TERM").is_ok_and(|term| term.starts_with("linux"));
-    let _restore = Restore {
+    let restore = Restore {
         saved,
         enhanced: host.enhanced,
         console: host.console,
+        done: Arc::default(),
     };
+    restore.before_a_panics_message();
+    let _restore = restore;
     // The other screen, the cursor hidden until a pane shows its own, mouse reports while
     // a button is held, and keys written apart where the terminal can.
     print!("\x1b[?1049h\x1b[?25l\x1b[?1002h\x1b[?1006h");
@@ -68,14 +73,31 @@ pub fn run(session: SessionId) -> Result<(), String> {
 
 /// Gives the user back the terminal as it was, however the client ends. Otherwise a panic
 /// leaves a shell with no echo, on the other screen, reporting the mouse.
+#[derive(Clone)]
 struct Restore {
     saved: termios::Termios,
     enhanced: bool,
     console: bool,
+    done: Arc<AtomicBool>,
 }
 
-impl Drop for Restore {
-    fn drop(&mut self) {
+impl Restore {
+    /// A message written on the other screen would go with it the moment the client left.
+    fn before_a_panics_message(&self) {
+        let restore = self.clone();
+        let message = panic::take_hook();
+        panic::set_hook(Box::new(move |info| {
+            if std::thread::current().name() == Some("main") {
+                restore.put_back();
+            }
+            message(info);
+        }));
+    }
+
+    fn put_back(&self) {
+        if self.done.swap(true, Ordering::Relaxed) {
+            return;
+        }
         let mut text = String::new();
         if self.enhanced {
             text.push_str("\x1b[<u");
@@ -92,6 +114,12 @@ impl Drop for Restore {
         let _ = out.write_all(text.as_bytes());
         let _ = out.flush();
         let _ = termios::tcsetattr(io::stdin(), OptionalActions::Now, &self.saved);
+    }
+}
+
+impl Drop for Restore {
+    fn drop(&mut self) {
+        self.put_back();
     }
 }
 
