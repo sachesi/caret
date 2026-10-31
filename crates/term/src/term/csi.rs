@@ -141,12 +141,12 @@ impl Term {
                 self.row().clear(column, columns, blank);
                 self.row().wrapped = false;
                 for below in line + 1..lines {
-                    *self.grid().row_mut(below) = crate::grid::Row::new(columns, blank);
+                    self.grid().row_mut(below).reset(blank);
                 }
             }
             1 => {
                 for above in 0..line {
-                    *self.grid().row_mut(above) = crate::grid::Row::new(columns, blank);
+                    self.grid().row_mut(above).reset(blank);
                 }
                 self.row().clear(0, column + 1, blank);
             }
@@ -167,7 +167,7 @@ impl Term {
                     }
                 }
                 for each in 0..lines {
-                    *self.grid().row_mut(each) = crate::grid::Row::new(columns, blank);
+                    self.grid().row_mut(each).reset(blank);
                 }
             }
             3 => self.history.clear(),

@@ -1140,15 +1140,7 @@ impl Perform for Term {
             let line = self.cursor.line;
             let row = self.row();
             row.split_wide(column, column + count);
-            for (offset, &byte) in rest[..count].iter().enumerate() {
-                row.set(
-                    column + offset,
-                    Cell {
-                        c: char::from(byte),
-                        style,
-                    },
-                );
-            }
+            row.set_ascii(column, &rest[..count], style);
             self.last = Some((char::from(rest[count - 1]), line, column + count - 1));
             if column + count >= columns {
                 self.cursor.column = columns - 1;

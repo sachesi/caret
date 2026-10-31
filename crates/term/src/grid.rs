@@ -95,6 +95,23 @@ impl Row {
         self.touch(column + 1);
     }
 
+    /// Puts one cell of `style` for each byte of ASCII in `text` from `column` on.
+    pub fn set_ascii(&mut self, column: usize, text: &[u8], style: Style) {
+        let end = column + text.len();
+        if !self.clusters.is_empty() {
+            for at in column..end {
+                self.forget_cluster(at);
+            }
+        }
+        for (cell, &byte) in self.cells[column..end].iter_mut().zip(text) {
+            *cell = Cell {
+                c: char::from(byte),
+                style,
+            };
+        }
+        self.touch(end);
+    }
+
     /// Puts `cell` at `column`, its text `text` rather than its character alone.
     pub fn set_cluster(&mut self, column: usize, mut cell: Cell, text: &str) {
         self.forget_cluster(column);
@@ -112,15 +129,24 @@ impl Row {
 
     /// Makes it a blank row of `style`, keeping its memory.
     pub fn reset(&mut self, style: Style) {
-        self.cells.fill(Cell::blank(style));
+        debug_assert!(
+            self.cells[self.used..]
+                .iter()
+                .all(|cell| *cell == Cell::blank(Style::default())),
+            "cells past those used are blank"
+        );
         self.clusters.clear();
         self.wrapped = false;
         self.prompt = false;
-        self.used = if style == Style::default() {
-            0
+        // A row is mostly shorter than the screen is wide, and this is done for each that
+        // scrolls: those past `used` are blanks of this style already.
+        if style == Style::default() {
+            self.cells[..self.used].fill(Cell::blank(style));
+            self.used = 0;
         } else {
-            self.cells.len()
-        };
+            self.cells.fill(Cell::blank(style));
+            self.used = self.cells.len();
+        }
     }
 
     /// Blanks the cells from `start` to `end`, and the other half of any wide character
@@ -385,7 +411,7 @@ impl Grid {
         let count = count.min(bottom + 1 - top);
         self.rows[top..=bottom].rotate_right(count);
         for row in &mut self.rows[top..top + count] {
-            *row = Row::new(self.columns, style);
+            row.reset(style);
         }
         self.dirty[top..=bottom].fill(true);
         self.wrote(top);

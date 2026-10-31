@@ -112,14 +112,12 @@ impl Line {
             let flags = cell.style.flags;
             // Most cells are one narrow character each, in runs of one style.
             if !flags.intersects(Flags::WIDE | Flags::SPACER | Flags::CLUSTER) {
-                let mut run = 0;
-                for other in &row.cells[column..end] {
-                    if other.style != cell.style {
-                        break;
-                    }
-                    self.text.push(other.c);
-                    run += 1;
-                }
+                let cells = &row.cells[column..end];
+                let run = cells
+                    .iter()
+                    .position(|other| other.style != cell.style)
+                    .unwrap_or(cells.len());
+                push_text(&mut self.text, &cells[..run]);
                 self.push_styles(cell.style, run as u32);
                 self.cells += run as u32;
                 column += run;
@@ -279,6 +277,24 @@ impl Line {
             + self.wide.len() * 4
             + self.clusters.len() * 8
             + self.runs.len() * size_of::<(u32, Style)>()
+    }
+}
+
+/// Adds the characters of `cells`. Every row that scrolls comes through here and nearly all
+/// its text is ASCII, which goes in as a whole rather than a character and a capacity check
+/// at a time.
+fn push_text(text: &mut String, cells: &[Cell]) {
+    let mut bytes = [0; 256];
+    for chunk in cells.chunks(bytes.len()) {
+        let mut ascii = true;
+        for (byte, cell) in bytes.iter_mut().zip(chunk) {
+            *byte = cell.c as u8;
+            ascii &= cell.c.is_ascii();
+        }
+        match std::str::from_utf8(&bytes[..chunk.len()]) {
+            Ok(ascii_text) if ascii => text.push_str(ascii_text),
+            _ => text.extend(chunk.iter().map(|cell| cell.c)),
+        }
     }
 }
 
