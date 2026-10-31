@@ -317,6 +317,16 @@ impl App {
         }
     }
 
+    /// Says what is wrong with the first preset that cannot be used; the log has them all.
+    pub(super) fn tell_wrong_presets(&mut self) {
+        if let Some((name, why)) = self.config.wrong_presets.first().cloned() {
+            self.toast(gettext_f(
+                "Preset “{name}” cannot be used: {why}",
+                &[("name", &name), ("why", &why)],
+            ));
+        }
+    }
+
     /// Asks for a name to save the tab's layout under.
     pub(super) fn ask_preset_name(&mut self) {
         let dialog = Dialog::asking(

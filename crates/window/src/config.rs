@@ -113,6 +113,8 @@ pub struct Config {
     pub profiles: Vec<String>,
     /// The layouts the window offers, in the file's order; those wrong are left out.
     pub presets: Vec<Preset>,
+    /// The name of each preset that is wrong, and why.
+    pub wrong_presets: Vec<(String, String)>,
 }
 
 impl Default for Config {
@@ -147,6 +149,7 @@ impl Default for Config {
             keys: HashMap::new(),
             profiles: Vec::new(),
             presets: Vec::new(),
+            wrong_presets: Vec::new(),
         }
     }
 }
@@ -234,6 +237,7 @@ impl Config {
                 Ok(preset) => self.presets.push(preset),
                 Err(why) => {
                     tracing::warn!("{}: `{PRESETS}.{name}`: {why}", path.display());
+                    self.wrong_presets.push((name.to_owned(), why));
                 }
             }
         }

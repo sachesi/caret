@@ -519,6 +519,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         })
         .map_err(|error| AppError::Loop(error.error))?;
     let signal = events.get_signal();
+    app.tell_wrong_presets();
     events.run(None, &mut app, |app| {
         if app.exit {
             signal.stop();
@@ -953,6 +954,9 @@ impl App {
             self.config.presets.iter().map(|preset| preset.shortcut),
         );
         self.restyle(&before);
+        if old.wrong_presets != self.config.wrong_presets {
+            self.tell_wrong_presets();
+        }
     }
 
     /// What the settings and the desktop make of the window: its font, and how the

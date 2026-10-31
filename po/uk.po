@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-31 22:57+0200\n"
+"POT-Creation-Date: 2026-10-31 23:25+0200\n"
 "PO-Revision-Date: 2026-10-31 12:30+0200\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Ukrainian\n"
@@ -16,11 +16,11 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
-#: crates/window/src/app.rs:696
+#: crates/window/src/app.rs:697
 msgid "The text is too long to paste"
 msgstr "Текст задовгий для вставлення"
 
-#: crates/window/src/app.rs:740
+#: crates/window/src/app.rs:741
 msgid "This terminal could not run its program"
 msgstr "Цей термінал не зміг запустити програму"
 
@@ -44,7 +44,7 @@ msgstr "Без назви вкладка показує заголовок пр�
 #: crates/window/src/app/confirm.rs:183 crates/window/src/app/confirm.rs:228
 #: crates/window/src/app/confirm.rs:351 crates/window/src/app/confirm.rs:381
 #: crates/window/src/app/confirm.rs:469 crates/window/src/app/confirm.rs:485
-#: crates/window/src/app/presets.rs:325
+#: crates/window/src/app/presets.rs:335
 msgid "Cancel"
 msgstr "Скасувати"
 
@@ -448,29 +448,34 @@ msgstr "Для пресетів потрібен новіший сервер т�
 msgid "There is no preset “{name}”"
 msgstr "Немає пресета «{name}»"
 
-#: crates/window/src/app/presets.rs:323
+#: crates/window/src/app/presets.rs:324
+#, rust-format
+msgid "Preset “{name}” cannot be used: {why}"
+msgstr "Пресет «{name}» не можна використати: {why}"
+
+#: crates/window/src/app/presets.rs:333
 msgid "Save Layout as Preset"
 msgstr "Зберегти розкладку як пресет"
 
-#: crates/window/src/app/presets.rs:324
+#: crates/window/src/app/presets.rs:334
 msgid "Each pane keeps its directory and the program running in it."
 msgstr "Кожна панель збереже свій каталог і запущену в ній програму."
 
-#: crates/window/src/app/presets.rs:325
+#: crates/window/src/app/presets.rs:335
 msgid "Save"
 msgstr "Зберегти"
 
-#: crates/window/src/app/presets.rs:338
+#: crates/window/src/app/presets.rs:348
 #, rust-format
 msgid "There is already a preset “{name}”"
 msgstr "Пресет «{name}» вже є"
 
-#: crates/window/src/app/presets.rs:402
+#: crates/window/src/app/presets.rs:412
 #, rust-format
 msgid "Saved preset “{name}”"
 msgstr "Пресет «{name}» збережено"
 
-#: crates/window/src/app/presets.rs:404
+#: crates/window/src/app/presets.rs:414
 msgid "Could not write the settings file"
 msgstr "Не вдалося записати файл налаштувань"
 
