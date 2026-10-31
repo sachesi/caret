@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret 0.2.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-31 12:53+0200\n"
+"POT-Creation-Date: 2026-10-31 18:40+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -26,72 +26,94 @@ msgstr ""
 msgid "Command Failed"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:105
+#: crates/window/src/app/confirm.rs:126
 msgid "Rename Tab"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:106
+#: crates/window/src/app/confirm.rs:127
 msgid "Without a name, the tab shows the program’s title."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:107 crates/window/src/app/confirm.rs:126
-#: crates/window/src/app/confirm.rs:154 crates/window/src/app/confirm.rs:274
-#: crates/window/src/app/confirm.rs:304 crates/window/src/app/confirm.rs:371
-#: crates/window/src/app/confirm.rs:385
+#: crates/window/src/app/confirm.rs:128 crates/window/src/app/confirm.rs:147
+#: crates/window/src/app/confirm.rs:175 crates/window/src/app/confirm.rs:220
+#: crates/window/src/app/confirm.rs:342 crates/window/src/app/confirm.rs:372
+#: crates/window/src/app/confirm.rs:460 crates/window/src/app/confirm.rs:476
 msgid "Cancel"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:107 crates/window/src/app/confirm.rs:126
+#: crates/window/src/app/confirm.rs:128 crates/window/src/app/confirm.rs:147
 msgid "Rename"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:115
+#: crates/window/src/app/confirm.rs:136
 msgid "Naming sessions needs a newer terminal server"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:124
+#: crates/window/src/app/confirm.rs:145
 msgid "Rename Session"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:125
+#: crates/window/src/app/confirm.rs:146
 msgid "Without a name, the session is known by its number."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:148
+#: crates/window/src/app/confirm.rs:169
 #, rust-format
 msgid "The programs in the tabs of “{session}” will be stopped."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:152
+#: crates/window/src/app/confirm.rs:173
 msgid "Close Session?"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:154 crates/window/src/app/confirm.rs:167
-#: crates/window/src/app/confirm.rs:274 crates/window/src/app/confirm.rs:304
-#: crates/window/src/app/confirm.rs:371
+#: crates/window/src/app/confirm.rs:175 crates/window/src/app/confirm.rs:233
+#: crates/window/src/app/confirm.rs:342 crates/window/src/app/confirm.rs:372
+#: crates/window/src/app/confirm.rs:458
 msgid "Close"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:162
+#: crates/window/src/app/confirm.rs:200
+#, rust-format
+msgid "{count} detached session will end."
+msgid_plural "{count} detached sessions will end."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/window/src/app/confirm.rs:208
+#, rust-format
+msgid "{count} program in them will be stopped."
+msgid_plural "{count} programs in them will be stopped."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/window/src/app/confirm.rs:218
+msgid "Close All Detached?"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:220 crates/window/src/app/confirm.rs:456
+msgid "Close All"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:228
 #, rust-format
 msgid ""
 "A terminal drawn by the GPU. Version {version}, by sachesi, free software "
 "under the GNU General Public License, version 3 or later."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:167
+#: crates/window/src/app/confirm.rs:233
 msgid "Website"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:272 crates/window/src/app/confirm.rs:297
+#: crates/window/src/app/confirm.rs:340 crates/window/src/app/confirm.rs:365
 msgid "Close Tab?"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:299
+#: crates/window/src/app/confirm.rs:367
 msgid "Close Pane?"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:363
+#: crates/window/src/app/confirm.rs:433
 #, rust-format
 msgid "A program is still running in this window and will be stopped."
 msgid_plural ""
@@ -99,258 +121,295 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/window/src/app/confirm.rs:369
+#: crates/window/src/app/confirm.rs:441
+#, rust-format
+msgid "{count} session will end with this window."
+msgid_plural "{count} sessions will end with this window."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/window/src/app/confirm.rs:448
+#, rust-format
+msgid "The session “{session}” will end with this window."
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:461 crates/window/src/app/menus.rs:588
+msgid "Detach"
+msgstr ""
+
+#: crates/window/src/app/confirm.rs:462
 msgid "Close Window?"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:381
+#: crates/window/src/app/confirm.rs:472
 msgid "Paste Several Lines?"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:383
+#: crates/window/src/app/confirm.rs:474
 msgid ""
 "The program here does not mark pasted text, so each line runs as if typed "
 "and entered."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:385 crates/window/src/app/menus.rs:148
-#: crates/window/src/app/shortcut_list.rs:61
+#: crates/window/src/app/confirm.rs:476 crates/window/src/app/menus.rs:169
+#: crates/window/src/app/shortcut_list.rs:62
 msgid "Paste"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:403
+#: crates/window/src/app/confirm.rs:494
 msgid "A program is still running in this tab and will be stopped."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:404
+#: crates/window/src/app/confirm.rs:495
 msgid "A program is still running in this pane and will be stopped."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:406
+#: crates/window/src/app/confirm.rs:497
 #, rust-format
 msgid "“{program}” is still running in this tab and will be stopped."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:410
+#: crates/window/src/app/confirm.rs:501
 #, rust-format
 msgid "“{program}” is still running in this pane and will be stopped."
 msgstr ""
 
-#: crates/window/src/app/control.rs:18
+#: crates/window/src/app/control.rs:21
 msgid ""
 "Arrows focus · Shift swap · Ctrl resize · V S split · X close · Z zoom · T "
 "tab · D detach"
 msgstr ""
 
-#: crates/window/src/app/control.rs:103
+#: crates/window/src/app/control.rs:115
 msgid "Moving panes needs a newer terminal server"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:96 crates/window/src/app/menus.rs:166
+#: crates/window/src/app/menus.rs:100 crates/window/src/app/menus.rs:187
 #: crates/window/src/app/shortcut_list.rs:23
 #: data/io.github.sachesi.caret.desktop:17
 msgid "New Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:97 crates/window/src/app/menus.rs:168
-#: crates/window/src/app/sessions.rs:222
+#: crates/window/src/app/menus.rs:101 crates/window/src/app/menus.rs:189
+#: crates/window/src/app/sessions.rs:285
 #: crates/window/src/app/shortcut_list.rs:25
 msgid "New Tab"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:101
+#: crates/window/src/app/menus.rs:102 crates/window/src/app/menus.rs:385
+#: crates/window/src/app/menus.rs:555 crates/window/src/app/shortcut_list.rs:26
+msgid "New Session"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:106
 #, rust-format
 msgid "New “{profile}” Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:109 crates/window/src/app/shortcut_list.rs:50
-msgid "Sessions…"
-msgstr ""
-
-#: crates/window/src/app/menus.rs:111 crates/window/src/app/sessions.rs:229
-msgid "Rename Session…"
-msgstr ""
-
-#: crates/window/src/app/menus.rs:115
-msgid "Detach Window"
-msgstr ""
-
-#: crates/window/src/app/menus.rs:116
-msgid "Reattach Windows"
-msgstr ""
-
-#: crates/window/src/app/menus.rs:118 crates/window/src/app/menus.rs:186
-#: crates/window/src/app/shortcut_list.rs:30
-msgid "Full Screen"
-msgstr ""
-
-#: crates/window/src/app/menus.rs:120 crates/window/src/app/shortcut_list.rs:80
-msgid "Preferences"
-msgstr ""
-
-#: crates/window/src/app/menus.rs:121 crates/window/src/app/shortcut_list.rs:81
-#: crates/window/src/app/shortcut_list.rs:87
-msgid "Keyboard Shortcuts"
+#: crates/window/src/app/menus.rs:117 crates/window/src/app/sessions.rs:297
+msgid "Detach Session"
 msgstr ""
 
 #: crates/window/src/app/menus.rs:122
+msgid "Detach Window"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:125 crates/window/src/app/shortcut_list.rs:51
+msgid "Sessions…"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:127 crates/window/src/app/sessions.rs:292
+msgid "Rename Session…"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:135 crates/window/src/app/menus.rs:207
+#: crates/window/src/app/shortcut_list.rs:31
+msgid "Full Screen"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:137 crates/window/src/app/shortcut_list.rs:81
+msgid "Preferences"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:138 crates/window/src/app/shortcut_list.rs:82
+#: crates/window/src/app/shortcut_list.rs:88
+msgid "Keyboard Shortcuts"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:139
 msgid "About Caret"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:147 crates/window/src/app/shortcut_list.rs:60
+#: crates/window/src/app/menus.rs:168 crates/window/src/app/shortcut_list.rs:61
 msgid "Copy"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:149 crates/window/src/app/shortcut_list.rs:62
+#: crates/window/src/app/menus.rs:170 crates/window/src/app/shortcut_list.rs:63
 msgid "Select All"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:151 crates/window/src/app/shortcut_list.rs:63
+#: crates/window/src/app/menus.rs:172 crates/window/src/app/shortcut_list.rs:64
 msgid "Deselect"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:158
+#: crates/window/src/app/menus.rs:179
 msgid "Open Link"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:159
+#: crates/window/src/app/menus.rs:180
 msgid "Copy Link Address"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:169
+#: crates/window/src/app/menus.rs:190
 msgid "Find…"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:172 crates/window/src/app/shortcut_list.rs:37
+#: crates/window/src/app/menus.rs:193 crates/window/src/app/shortcut_list.rs:38
 msgid "Split Right"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:173 crates/window/src/app/shortcut_list.rs:38
+#: crates/window/src/app/menus.rs:194 crates/window/src/app/shortcut_list.rs:39
 msgid "Split Down"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:180 crates/window/src/app/shortcut_list.rs:39
+#: crates/window/src/app/menus.rs:201 crates/window/src/app/shortcut_list.rs:40
 msgid "Close Pane"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:185
+#: crates/window/src/app/menus.rs:206
 msgid "Title Bar"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:189 crates/window/src/app/shortcut_list.rs:24
+#: crates/window/src/app/menus.rs:210 crates/window/src/app/shortcut_list.rs:24
 msgid "Close Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:190
+#: crates/window/src/app/menus.rs:211
 msgid "Main Menu"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:202
+#: crates/window/src/app/menus.rs:223
 msgid "Rename Tab…"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:203 crates/window/src/app/shortcut_list.rs:26
+#: crates/window/src/app/menus.rs:224 crates/window/src/app/shortcut_list.rs:27
 msgid "Close Tab"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:278
+#: crates/window/src/app/menus.rs:297
 msgid "Could not make the settings file"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:306
+#: crates/window/src/app/menus.rs:325 crates/window/src/app/menus.rs:512
 msgid "Listing sessions needs a newer terminal server"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:333
-msgid "here"
+#: crates/window/src/app/menus.rs:364
+msgid "In This Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:335
-msgid "shown"
+#: crates/window/src/app/menus.rs:365
+msgid "In Other Windows"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:337
-msgid "detached"
+#: crates/window/src/app/menus.rs:366
+msgid "Detached"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:341
+#: crates/window/src/app/menus.rs:376
+msgid "Open All Detached"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:378
+msgid "Close All Detached…"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:421
+#, rust-format
+msgid "{session} · {title}"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:429
 #, rust-format
 msgid "{count} tab"
 msgid_plural "{count} tabs"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/window/src/app/menus.rs:347
+#: crates/window/src/app/menus.rs:438
 #, rust-format
 msgid "{count} pane"
 msgid_plural "{count} panes"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/window/src/app/menus.rs:353
+#: crates/window/src/app/menus.rs:443
 #, rust-format
-msgid "{session} · {title} — {tabs}, {panes}, {place}"
+msgid "{tabs}, {panes}"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:409
+#: crates/window/src/app/menus.rs:543
 #, rust-format
 msgid "Show {session} · {title}"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:421
-msgid "New Session"
+#: crates/window/src/app/menus.rs:567
+msgid "Replace This Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:433
-msgid "Show Here"
+#: crates/window/src/app/menus.rs:572
+msgid "Add to This Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:435
+#: crates/window/src/app/menus.rs:580
 msgid "Open in New Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:440
+#: crates/window/src/app/menus.rs:586
 msgid "Rename…"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:442
-msgid "Detach"
-msgstr ""
-
-#: crates/window/src/app/menus.rs:443
+#: crates/window/src/app/menus.rs:589
 msgid "Close…"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:457
+#: crates/window/src/app/menus.rs:624
+#, rust-format
+msgid "{count} detached session"
+msgid_plural "{count} detached sessions"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/window/src/app/menus.rs:629 crates/window/src/notifications.rs:89
+msgid "Show"
+msgstr ""
+
+#: crates/window/src/app/menus.rs:639
 msgid "No windows were detached"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:723
+#: crates/window/src/app/pointer.rs:780
 #, rust-format
 msgid "Could not open the link: {reason}"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:732
+#: crates/window/src/app/pointer.rs:789
 msgid "no program opens links"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:745
+#: crates/window/src/app/pointer.rs:802
 msgid "it does not exist"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:746
+#: crates/window/src/app/pointer.rs:803
 msgid "no program opens it"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:747
+#: crates/window/src/app/pointer.rs:804
 msgid "the program that opens it failed"
 msgstr ""
 
-#: crates/window/src/app/sessions.rs:234
-msgid "Detach Session"
-msgstr ""
-
-#: crates/window/src/app/sessions.rs:239
+#: crates/window/src/app/sessions.rs:302
 msgid "Close Session…"
 msgstr ""
 
@@ -358,135 +417,131 @@ msgstr ""
 msgid "Windows and Tabs"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:27
+#: crates/window/src/app/shortcut_list.rs:28
 msgid "Next Tab"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:28
+#: crates/window/src/app/shortcut_list.rs:29
 msgid "Previous Tab"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:29
+#: crates/window/src/app/shortcut_list.rs:30
 msgid "Switch to a Tab"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:31
+#: crates/window/src/app/shortcut_list.rs:32
 msgid "Show or Hide the Title Bar"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:35
+#: crates/window/src/app/shortcut_list.rs:36
 msgid "Panes"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:40
+#: crates/window/src/app/shortcut_list.rs:41
 msgid "Focus the Pane to the Left"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:41
+#: crates/window/src/app/shortcut_list.rs:42
 msgid "Focus the Pane to the Right"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:42
+#: crates/window/src/app/shortcut_list.rs:43
 msgid "Focus the Pane Above"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:43
+#: crates/window/src/app/shortcut_list.rs:44
 msgid "Focus the Pane Below"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:44
+#: crates/window/src/app/shortcut_list.rs:45
 msgid "Move and Resize Panes"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:48
+#: crates/window/src/app/shortcut_list.rs:49
 msgid "Sessions"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:51
+#: crates/window/src/app/shortcut_list.rs:52
 msgid "Tabs of the Session"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:52
+#: crates/window/src/app/shortcut_list.rs:53
 msgid "Next Session"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:53
+#: crates/window/src/app/shortcut_list.rs:54
 msgid "Previous Session"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:54
+#: crates/window/src/app/shortcut_list.rs:55
 msgid "Switch to a Session"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:58
+#: crates/window/src/app/shortcut_list.rs:59
 #: data/io.github.sachesi.caret.desktop:3
 msgid "Terminal"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:64
+#: crates/window/src/app/shortcut_list.rs:65
 msgid "Find"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:65
+#: crates/window/src/app/shortcut_list.rs:66
 msgid "Zoom In"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:66
+#: crates/window/src/app/shortcut_list.rs:67
 msgid "Zoom Out"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:67
+#: crates/window/src/app/shortcut_list.rs:68
 msgid "Original Size"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:68
+#: crates/window/src/app/shortcut_list.rs:69
 msgid "Scroll Up a Page"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:69
+#: crates/window/src/app/shortcut_list.rs:70
 msgid "Scroll Down a Page"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:71
+#: crates/window/src/app/shortcut_list.rs:72
 msgid "Scroll to the Previous Prompt"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:74
+#: crates/window/src/app/shortcut_list.rs:75
 msgid "Scroll to the Next Prompt"
 msgstr ""
 
-#: crates/window/src/app/shortcut_list.rs:78
+#: crates/window/src/app/shortcut_list.rs:79
 msgid "General"
 msgstr ""
 
-#: crates/window/src/app/tabs.rs:235
+#: crates/window/src/app/tabs.rs:236
 #, rust-format
 msgid "Session {number}"
 msgstr ""
 
-#: crates/window/src/app/tabs.rs:242
+#: crates/window/src/app/tabs.rs:243
 msgid "Showing sessions together needs a newer terminal server"
 msgstr ""
 
-#: crates/window/src/app/tabs.rs:762
+#: crates/window/src/app/tabs.rs:801
 msgid "Splitting needs a newer terminal server"
 msgstr ""
 
-#: crates/window/src/chrome.rs:973
+#: crates/window/src/chrome.rs:1224
 msgid "Find in the history"
 msgstr ""
 
-#: crates/window/src/notifications.rs:89
-msgid "Show"
-msgstr ""
-
-#: crates/window/src/text.rs:802
+#: crates/window/src/text.rs:873
 msgid ""
 "arrows focus · shift swap · ctrl resize · n p tab · v s split · x close · z "
 "zoom · t to tab · d detach · Esc"
 msgstr ""
 
-#: crates/window/src/text.rs:811
+#: crates/window/src/text.rs:882
 #, rust-format
 msgid "{key} control"
 msgstr ""
