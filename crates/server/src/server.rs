@@ -10,7 +10,7 @@ use std::process::ExitStatus;
 use std::sync::mpsc;
 use std::time::Instant;
 
-use caret_protocol::layout::Node;
+use caret_protocol::layout::{Node, Plan, WHOLE};
 use caret_protocol::{
     Answer, Bytes, Command, CursorShape, Message, Options, Palette, Question, Request, Scroll,
     SessionEntry, SessionId, SessionInfo, Size, Tab, TerminalId,
@@ -631,6 +631,7 @@ impl Server {
                 },
                 None => Answer::Gone,
             },
+            Question::Foreground { terminal } => self.foreground(terminal),
             Question::Directory { terminal } => match self.terminals.get(&terminal) {
                 Some(entry) => Answer::Directory {
                     path: Self::directory(entry)
@@ -677,8 +678,24 @@ impl Server {
                 self.split(client, id, terminal, vertical, &command, size);
                 return;
             }
+            Question::Arrange { terminal, plan } => {
+                self.arrange(client, id, terminal, &plan);
+                return;
+            }
         };
         self.send(client, &Message::Answer { id, answer });
+    }
+
+    fn foreground(&self, terminal: TerminalId) -> Answer {
+        match self.running(terminal) {
+            Some(running) => Answer::Command {
+                command: Command {
+                    argv: running.foreground_command(),
+                    ..Command::default()
+                },
+            },
+            None => Answer::Gone,
+        }
     }
 
     fn directory(entry: &Entry) -> Option<PathBuf> {
@@ -945,18 +962,7 @@ impl Server {
         };
         let terminal = self.next_id();
         self.answer(client, id, Answer::Opened { terminal });
-        let viewers: Vec<ClientId> = self
-            .sessions
-            .get(&place.0)
-            .map(|session| {
-                session
-                    .clients
-                    .iter()
-                    .copied()
-                    .filter(|&viewer| self.version(viewer) >= PANES)
-                    .collect()
-            })
-            .unwrap_or_default();
+        let viewers = self.pane_viewers(place.0);
         let failure = self.spawn(terminal, client, place.0, command, size, &viewers);
         let Some(tab) = self
             .sessions
@@ -983,6 +989,97 @@ impl Server {
         }
         if let Some(reason) = failure {
             self.broadcast_for(terminal, &Message::Failed { terminal, reason });
+        }
+    }
+
+    /// The clients of `session` that are shown panes other than a tab's first.
+    fn pane_viewers(&self, session: SessionId) -> Vec<ClientId> {
+        self.sessions
+            .get(&session)
+            .map(|session| {
+                session
+                    .clients
+                    .iter()
+                    .copied()
+                    .filter(|&viewer| self.version(viewer) >= PANES)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Lays out the tab whose one pane is `terminal` as `plan` says, in one change of its
+    /// layout so that the running program is resized once.
+    fn arrange(&mut self, client: ClientId, id: u32, terminal: TerminalId, plan: &Plan) {
+        let alone = Node::Pane { terminal };
+        let Some(place) = self
+            .find_tab(terminal)
+            .filter(|&place| self.tab_state(place).is_some_and(|tab| tab.root == alone))
+            .filter(|_| plan.kept() == 1)
+        else {
+            self.answer(client, id, Answer::Gone);
+            return;
+        };
+        self.answer(client, id, Answer::Opened { terminal });
+        let viewers = self.pane_viewers(place.0);
+        let mut started = Vec::new();
+        let root = self.planned(plan, terminal, (client, place.0, &viewers), &mut started);
+        let Some(tab) = self
+            .sessions
+            .get_mut(&place.0)
+            .and_then(|session| session.tabs.get_mut(place.1))
+        else {
+            return;
+        };
+        tab.root = root;
+        let Some(tab) = self.tab_state(place) else {
+            return;
+        };
+        let layout = Self::layout(place.0, tab);
+        self.broadcast_versions(place.0, None, |version| {
+            (version >= PANES).then(|| layout.clone())
+        });
+        for (terminal, failure) in started {
+            if let Some(title) = self
+                .terminals
+                .get(&terminal)
+                .map(|entry| entry.title.clone())
+            {
+                self.broadcast_for(terminal, &Message::Title { terminal, title });
+            }
+            if let Some(reason) = failure {
+                self.broadcast_for(terminal, &Message::Failed { terminal, reason });
+            }
+        }
+    }
+
+    /// The tree `plan` makes around `kept`, its programs started, each noted in `started`
+    /// with why it failed, if it did.
+    fn planned(
+        &mut self,
+        plan: &Plan,
+        kept: TerminalId,
+        place: (ClientId, SessionId, &[ClientId]),
+        started: &mut Vec<(TerminalId, Option<String>)>,
+    ) -> Node {
+        match plan {
+            Plan::Kept => Node::Pane { terminal: kept },
+            Plan::Run { command, size } => {
+                let terminal = self.next_id();
+                let failure = self.spawn(terminal, place.0, place.1, command, *size, place.2);
+                started.push((terminal, failure));
+                Node::Pane { terminal }
+            }
+            Plan::Split {
+                vertical,
+                share,
+                first,
+                second,
+            } => Node::Split {
+                vertical: *vertical,
+                share: (*share).clamp(1, WHOLE - 1),
+                first: Box::new(self.planned(first, kept, place, started)),
+                second: Box::new(self.planned(second, kept, place, started)),
+            },
         }
     }
 
@@ -1700,6 +1797,106 @@ mod tests {
         harness.next(|message| matches!(message, Message::TabClosed { .. }));
         harness.next(|message| matches!(message, Message::SessionClosed { .. }));
         assert!(harness.server.sessions.is_empty());
+    }
+
+    #[test]
+    fn a_named_program_tells_its_command_line() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        let terminal = harness.open(session, &["sleep", "30"]);
+        // The program takes over the terminal's process group only once started.
+        let mut argv = Vec::new();
+        for _ in 0..50 {
+            harness.request(Request::Ask {
+                id: 6,
+                question: Question::Foreground { terminal },
+            });
+            let answer = harness.next(|message| matches!(message, Message::Answer { id: 6, .. }));
+            let Message::Answer {
+                answer: Answer::Command { command },
+                ..
+            } = answer
+            else {
+                panic!("{answer:?}");
+            };
+            argv = command.argv;
+            if argv.first().is_some_and(|program| program == "sleep") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(argv, ["sleep", "30"]);
+    }
+
+    #[test]
+    fn a_tab_of_one_pane_takes_a_whole_plan_at_once() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        let kept = harness.open(session, &["sleep", "30"]);
+        let run = |text: &str| {
+            Box::new(Plan::Run {
+                command: Command {
+                    argv: vec![
+                        "sh".to_owned(),
+                        "-c".to_owned(),
+                        format!("echo {text}; sleep 30"),
+                    ],
+                    ..Command::default()
+                },
+                size: SIZE,
+            })
+        };
+        let plan = Plan::Split {
+            vertical: true,
+            share: 3000,
+            first: run("left"),
+            second: Box::new(Plan::Split {
+                vertical: false,
+                share: 5000,
+                first: Box::new(Plan::Kept),
+                second: run("below"),
+            }),
+        };
+        let arrange = |plan: Plan| Request::Ask {
+            id: 5,
+            question: Question::Arrange {
+                terminal: kept,
+                plan,
+            },
+        };
+        harness.request(arrange(*run("nothing kept")));
+        assert!(matches!(
+            harness.next(|message| matches!(message, Message::Answer { id: 5, .. })),
+            Message::Answer {
+                answer: Answer::Gone,
+                ..
+            }
+        ));
+
+        harness.request(arrange(plan.clone()));
+        let Message::Layout { tab, root, .. } =
+            harness.next(|message| matches!(message, Message::Layout { .. }))
+        else {
+            unreachable!();
+        };
+        assert_eq!(tab, kept);
+        let panes = root.panes();
+        assert_eq!(panes.len(), 3);
+        assert_eq!(panes[1], kept);
+        assert_eq!(root.share(panes[1]), Some(3000));
+        harness.frame_with(panes[0], "left");
+        harness.frame_with(panes[2], "below");
+
+        harness.request(arrange(plan));
+        assert!(matches!(
+            harness.next(|message| matches!(message, Message::Answer { id: 5, .. })),
+            Message::Answer {
+                answer: Answer::Gone,
+                ..
+            }
+        ));
     }
 
     #[test]

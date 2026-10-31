@@ -1,7 +1,7 @@
 //! A tab's panes: a tree of splits whose leaves are terminals, as the server keeps it
 //! and its clients draw it.
 
-use crate::messages::TerminalId;
+use crate::messages::{Command, Size, TerminalId};
 use crate::wire::variants;
 
 /// What a `share` is out of.
@@ -25,6 +25,41 @@ variants!(Node {
     0 => Pane { terminal },
     1 => Split { vertical, share, first, second },
 });
+
+/// What a tab's one pane is to become.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Plan {
+    /// The pane the tab has, its program running on.
+    Kept,
+    Run {
+        command: Command,
+        size: Size,
+    },
+    Split {
+        /// As in [`Node::Split`].
+        vertical: bool,
+        share: u16,
+        first: Box<Plan>,
+        second: Box<Plan>,
+    },
+}
+variants!(Plan {
+    0 => Kept,
+    1 => Run { command, size },
+    2 => Split { vertical, share, first, second },
+});
+
+impl Plan {
+    /// How many times it keeps the pane there is, which only once makes sense.
+    #[must_use]
+    pub fn kept(&self) -> usize {
+        match self {
+            Self::Kept => 1,
+            Self::Run { .. } => 0,
+            Self::Split { first, second, .. } => first.kept() + second.kept(),
+        }
+    }
+}
 
 /// Which side of a pane another goes to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

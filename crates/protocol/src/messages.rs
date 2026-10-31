@@ -4,6 +4,7 @@
 //! show them, and asks for each frame of a terminal it shows when it is ready to draw
 //! one, so a busy program never floods it.
 
+use crate::layout::Plan;
 use crate::layout::{Node, Side};
 use crate::screen::{CursorShape, Frame, Point, Rgb};
 use crate::wire::{Bytes, DecodeError, Wire, record, variants};
@@ -214,6 +215,18 @@ pub enum Question {
     Programs {
         sessions: Vec<SessionId>,
     },
+    /// Since version 4. Lays out the tab whose one pane is `terminal`, starting the
+    /// plan's programs together: answered with `Opened` for `terminal`, or `Gone` if the
+    /// tab has other panes, then the tab's clients hear of its layout.
+    Arrange {
+        terminal: TerminalId,
+        plan: Plan,
+    },
+    /// Since version 4. The command line of the program in the foreground, unless it is
+    /// the shell the terminal started: answered with `Command`.
+    Foreground {
+        terminal: TerminalId,
+    },
 }
 variants!(Question {
     0 => Sessions,
@@ -228,6 +241,8 @@ variants!(Question {
     9 => Split { terminal, vertical, command, size },
     10 => SessionList,
     11 => Programs { sessions },
+    12 => Arrange { terminal, plan },
+    13 => Foreground { terminal },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]

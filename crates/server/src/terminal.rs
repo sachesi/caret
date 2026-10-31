@@ -97,6 +97,8 @@ pub struct Terminal {
     /// Written to after each order, to wake the thread.
     wake: UnixStream,
     child: u32,
+    /// It runs a program it was told to, not the user's shell.
+    named_program: bool,
     /// A second handle on the controlling side of the pseudoterminal, to ask which process
     /// group is in the foreground.
     controller: File,
@@ -295,6 +297,7 @@ impl Terminal {
         let mut env = launch.environment();
         // How `caret attach` run in the terminal finds the window it is in.
         env.insert("CARET_TERMINAL".to_owned(), id.0.to_string());
+        let named_program = !command.argv.is_empty();
         let program = launch.program();
         launch.check(&program, &env)?;
         let mut process = std::process::Command::new(&program);
@@ -341,6 +344,7 @@ impl Terminal {
             orders,
             wake,
             child,
+            named_program,
             controller,
         })
     }
@@ -428,6 +432,25 @@ impl Terminal {
         }
         let name = std::fs::read_to_string(format!("/proc/{group}/comm")).unwrap_or_default();
         Some(name.trim_end().to_owned())
+    }
+
+    /// The command line of the program in the foreground; empty when that is the shell
+    /// the terminal started.
+    pub fn foreground_command(&self) -> Vec<String> {
+        let Some(group) = pty::foreground(self.controller.as_fd()) else {
+            return Vec::new();
+        };
+        if group == self.child && !self.named_program {
+            return Vec::new();
+        }
+        std::fs::read(format!("/proc/{group}/cmdline"))
+            .map(|line| {
+                line.split(|&byte| byte == 0)
+                    .filter(|word| !word.is_empty())
+                    .map(|word| String::from_utf8_lossy(word).into_owned())
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Where the started program is now, for a new tab to start in the same place.
