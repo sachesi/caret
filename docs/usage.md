@@ -89,7 +89,8 @@ Sessions… in the main menu (Ctrl+Shift+S) lists them by where they are: in thi
 others, or detached, with New Session last. A click or Enter adds a session to the window
 and shows it; `session-list-click = "replace"` has it take the place of the shown session,
 which keeps running. Right-clicking a row, Right arrow, the Menu key or a long press offers
-the rest: open it in a new window, replace or add, rename, detach and close. With several
+the rest: open it in a new window, replace or add, rename, detach and close, and with
+`middle-click-detach` a middle click detaches one this window shows. With several
 detached, the list can open them all or close them all. A new window says when sessions are
 detached, with a button to list them, unless `detached-hint` is off. Right-clicking the +
 button offers a new session and the sessions this window does not show.

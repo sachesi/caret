@@ -69,10 +69,8 @@ window leave its programs running, to attach to again with `caret --attach`.
 `server-side-decorations` off has Caret draw its own frame and header bar even where the
 compositor offers to draw them. The `session-` settings, `middle-click-detach` and
 `tab-previews` are about windows that show several sessions, described under
-[sessions](usage.md#sessions).
-
-The cursor does not blink. Programs can change its shape; the setting is the shape they
-start with.
+[sessions](usage.md#sessions). `rounded-pane-ring` rounds the corners of the ring control
+mode draws around the focused pane.
 
 ## Profiles
 

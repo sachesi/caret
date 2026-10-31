@@ -550,8 +550,7 @@ impl Server {
         }
     }
 
-    /// Every session, with its name and how many panes and clients it has.
-    /// How many programs other than those started run in `sessions`.
+    /// How many programs other than the shells they started with run in `sessions`.
     fn programs(&self, sessions: &[SessionId]) -> Answer {
         let count = sessions
             .iter()
@@ -566,6 +565,7 @@ impl Server {
         }
     }
 
+    /// Every session, with its name and how many panes and clients it has.
     fn session_list(&self) -> Answer {
         Answer::SessionList {
             sessions: self
