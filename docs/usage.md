@@ -78,15 +78,21 @@ The programs in the tabs run in Caret's terminal server, which keeps them while 
 window shows them, until you log out unless you
 [set it up to go on](installing.md#install). A window's tabs are a session. Detach Window
 in the main menu closes the window and leaves its session running, with its history;
-Reattach Windows, or
+Open All Detached in the Sessions list, or
 `caret --attach`, opens a window for each detached one, on the tab it showed and with its
 profile. A window that crashes or is
 killed is detached the same way. With `close-detaches`, closing a window detaches it
-too; otherwise closing it ends its programs, as closing a tab does.
+too; otherwise closing it ends its programs, as closing a tab does. A window with a program
+running, with several sessions or with a named one asks first, and offers to detach instead.
 
-Sessions… in the main menu (Ctrl+Shift+S) lists them all, with their tabs and how many
-windows show them, to open one in a window of its own or in this one, rename it or close
-it. Right-clicking the + button lists them too, and offers a new session in this window.
+Sessions… in the main menu (Ctrl+Shift+S) lists them by where they are: in this window, in
+others, or detached, with New Session last. A click or Enter adds a session to the window
+and shows it; `session-list-click = "replace"` has it take the place of the shown session,
+which keeps running. Right-clicking a row, Right arrow, the Menu key or a long press offers
+the rest: open it in a new window, replace or add, rename, detach and close. With several
+detached, the list can open them all or close them all. A new window says when sessions are
+detached, with a button to list them, unless `detached-hint` is off. Right-clicking the +
+button offers a new session and the sessions this window does not show.
 `caret sessions` prints the same list, and `caret attach` with a session's number or
 name shows it: in a Caret window when run in one, or else in the terminal it runs in,
 drawn with escape sequences, where control mode's D detaches back to the shell. On a

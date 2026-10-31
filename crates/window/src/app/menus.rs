@@ -6,8 +6,8 @@ use gettextrs::gettext;
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
 use super::{App, Asked, pointer};
-use crate::chrome::{Item, Menu};
-use crate::config;
+use crate::chrome::{Item, Menu, Part};
+use crate::config::{self, SessionListClick};
 use crate::i18n::{gettext_f, ngettext_f};
 use crate::shortcuts::Action;
 
@@ -24,8 +24,14 @@ pub enum Choice {
     RenameSession(SessionId),
     DetachSession(SessionId),
     CloseSession(SessionId),
-    /// What can be done with a session, in a menu of its own.
-    SessionActions(SessionId),
+    /// A row of the Sessions list, which goes to the session.
+    ListedSession(SessionId),
+    /// Shows the session in place of the shown one.
+    ReplaceWith(SessionId),
+    /// Ends these detached sessions, asking first.
+    CloseDetached(Vec<SessionId>),
+    /// A line naming the items after it.
+    Title,
     ShowSession(SessionId),
     SessionWindow(SessionId),
     /// A tab of a session's list of tabs, by its key.
@@ -103,6 +109,17 @@ impl App {
             sections.push(profiles.collect());
         }
         let session = self.shown_session();
+        let mut detach_items = Vec::new();
+        if self.sessions.len() > 1
+            && let Some(session) = session
+        {
+            detach_items.push(self.item(
+                &gettext("Detach Session"),
+                Choice::DetachSession(session),
+                true,
+            ));
+        }
+        detach_items.push(self.item(&gettext("Detach Window"), Choice::Detach, true));
         sections.extend([
             vec![
                 self.act_item(&gettext("Sessions…"), Action::Sessions),
@@ -111,9 +128,10 @@ impl App {
                     Choice::RenameSession(session.unwrap_or(SessionId(0))),
                     session.is_some(),
                 ),
-                self.item(&gettext("Detach Window"), Choice::Detach, true),
-                self.item(&gettext("Reattach Windows"), Choice::Reattach, true),
-            ],
+            ]
+            .into_iter()
+            .chain(detach_items)
+            .collect(),
             vec![self.act_item(&gettext("Full Screen"), Action::Fullscreen)],
             vec![
                 self.act_item(&gettext("Preferences"), Action::Preferences),
@@ -246,7 +264,9 @@ impl App {
             Some(Choice::RenameSession(session)) => self.rename_session(session),
             Some(Choice::DetachSession(session)) => self.detach_session(session),
             Some(Choice::CloseSession(session)) => self.close_session(session),
-            Some(Choice::SessionActions(session)) => self.session_menu(session),
+            Some(Choice::ListedSession(session)) => self.go_to_listed(session),
+            Some(Choice::ReplaceWith(session)) => self.replace_session(session),
+            Some(Choice::CloseDetached(sessions)) => self.close_detached(sessions),
             Some(Choice::ShowSession(session)) => self.show_session(session),
             Some(Choice::SessionWindow(session)) => {
                 self.open_window(vec!["--session".into(), session.0.to_string()]);
@@ -266,7 +286,7 @@ impl App {
             }
             Some(Choice::About) => self.about(),
             Some(Choice::MainMenu) => self.open_main_menu(at),
-            None => {}
+            Some(Choice::Title) | None => {}
         }
     }
 
@@ -316,55 +336,160 @@ impl App {
         (x, self.chrome.top() as f32 + 8.0)
     }
 
-    /// A menu of the sessions, each opening a menu of what can be done with it.
+    /// The Sessions list: where each session is, then New Session. A click goes to one, as
+    /// the setting has it; its context menu has the rest.
     pub(super) fn sessions_menu(&mut self, sessions: &[SessionEntry]) {
         self.learn_sessions(sessions);
-        let items = sessions
-            .iter()
-            .map(|entry| {
-                let title = entry.tabs.first().map_or("", |tab| {
-                    tab.name
-                        .as_deref()
-                        .filter(|name| !name.is_empty())
-                        .unwrap_or(&tab.title)
-                });
-                let place = if self.sessions.contains(&entry.session) {
-                    gettext("here")
-                } else if entry.clients > 0 {
-                    gettext("shown")
-                } else {
-                    gettext("detached")
-                };
-                let tabs = entry.tabs.len() as u32;
-                let tabs = ngettext_f(
-                    "{count} tab",
-                    "{count} tabs",
-                    tabs,
-                    &[("count", &tabs.to_string())],
-                );
-                let panes = ngettext_f(
-                    "{count} pane",
-                    "{count} panes",
-                    entry.panes,
-                    &[("count", &entry.panes.to_string())],
-                );
-                let label = gettext_f(
-                    "{session} · {title} — {tabs}, {panes}, {place}",
-                    &[
-                        ("session", &self.session_label(entry.session)),
-                        ("title", title),
-                        ("tabs", &tabs),
-                        ("panes", &panes),
-                        ("place", &place),
-                    ],
-                );
-                let mut item = self.item(&label, Choice::SessionActions(entry.session), true);
-                item.0.dot = self.session_color(entry.session);
-                item
-            })
-            .collect();
+        if self.chrome.toast_button.take().is_some() {
+            self.chrome.toast = None;
+        }
+        let shown = self.shown_session();
+        let (mut here, mut elsewhere, mut detached) = (Vec::new(), Vec::new(), Vec::new());
+        let mut detached_sessions = Vec::new();
+        for entry in sessions {
+            let mut row = self.session_row(entry);
+            row.0.checked = Some(entry.session) == shown;
+            row.0.current = row.0.checked;
+            if self.sessions.contains(&entry.session) {
+                here.push(row);
+            } else if entry.clients > 0 {
+                elsewhere.push(row);
+            } else {
+                detached.push(row);
+                detached_sessions.push(entry.session);
+            }
+        }
+        let mut sections = Vec::new();
+        for (title, rows) in [
+            (gettext("In This Window"), here),
+            (gettext("In Other Windows"), elsewhere),
+            (gettext("Detached"), detached),
+        ] {
+            if !rows.is_empty() {
+                let mut section = vec![self.title_item(&title)];
+                section.extend(rows);
+                sections.push(section);
+            }
+        }
+        if detached_sessions.len() > 1 {
+            sections.push(vec![
+                self.item(&gettext("Open All Detached"), Choice::Reattach, true),
+                self.item(
+                    &gettext("Close All Detached…"),
+                    Choice::CloseDetached(detached_sessions),
+                    true,
+                ),
+            ]);
+        }
+        sections.push(vec![
+            self.act_item(&gettext("New Session"), Action::NewSession),
+        ]);
         let at = self.keyed_menu_at();
-        self.show_menu(vec![items], at, false);
+        self.show_menu(sections, at, false);
+        let focused = self
+            .chrome
+            .menu
+            .as_ref()
+            .and_then(|menu| menu.items().position(|item| item.checked));
+        if let Some(menu) = &mut self.chrome.menu {
+            menu.focused = focused;
+            if focused.is_none() {
+                menu.step(1);
+            }
+        }
+        self.dirty = true;
+        self.draw();
+    }
+
+    /// A line naming the rows after it.
+    fn title_item(&self, title: &str) -> (Item, Choice) {
+        let mut item = self.item(title, Choice::Title, false);
+        item.0.title = true;
+        item
+    }
+
+    /// `entry`'s row in the Sessions list: its name and title, then its tabs, and its panes
+    /// where those differ.
+    fn session_row(&self, entry: &SessionEntry) -> (Item, Choice) {
+        let title = entry.tabs.first().map_or("", |tab| {
+            tab.name
+                .as_deref()
+                .filter(|name| !name.is_empty())
+                .unwrap_or(&tab.title)
+        });
+        let label = gettext_f(
+            "{session} · {title}",
+            &[
+                ("session", &self.session_label(entry.session)),
+                ("title", title),
+            ],
+        );
+        let tabs = entry.tabs.len() as u32;
+        let count = ngettext_f(
+            "{count} tab",
+            "{count} tabs",
+            tabs,
+            &[("count", &tabs.to_string())],
+        );
+        let count = if entry.panes == tabs {
+            count
+        } else {
+            let panes = ngettext_f(
+                "{count} pane",
+                "{count} panes",
+                entry.panes,
+                &[("count", &entry.panes.to_string())],
+            );
+            gettext_f("{tabs}, {panes}", &[("tabs", &count), ("panes", &panes)])
+        };
+        let mut row = self.item(&label, Choice::ListedSession(entry.session), true);
+        row.0.dot = self.session_color(entry.session);
+        row.0.shortcut = Some(count);
+        row
+    }
+
+    /// Goes to a session listed in the Sessions list, as the setting has it.
+    fn go_to_listed(&mut self, session: SessionId) {
+        match self.config.session_list_click {
+            SessionListClick::Add => self.show_session(session),
+            SessionListClick::Replace => self.replace_session(session),
+        }
+    }
+
+    /// The session of the Sessions list's row at `index`, if it is one.
+    pub(super) fn listed_session(&self, index: usize) -> Option<SessionId> {
+        match self.choices.get(index) {
+            Some(&Choice::ListedSession(session)) => Some(session),
+            _ => None,
+        }
+    }
+
+    /// The Sessions list's row a press is holding, for a long press to open its menu.
+    pub(super) fn pressed_listed_row(&self) -> Option<usize> {
+        match self.chrome.pressed {
+            Some(Part::MenuItem(index)) => {
+                Some(index).filter(|&index| self.listed_session(index).is_some())
+            }
+            _ => None,
+        }
+    }
+
+    /// The context menu of the Sessions list's row at `index`, at `at`, if it has one.
+    pub(super) fn listed_menu(&mut self, index: usize, at: (f32, f32)) {
+        if let Some(session) = self.listed_session(index) {
+            self.session_menu(session, at);
+        }
+    }
+
+    /// Detaches the session of the Sessions list's row at `index`, if this window shows it.
+    pub(super) fn detach_listed(&mut self, index: usize) {
+        if let Some(session) = self
+            .listed_session(index)
+            .filter(|session| self.sessions.contains(session))
+        {
+            self.close_menu();
+            self.detach_session(session);
+        }
     }
 
     /// Keeps the names and colours the server lists, for sessions not shown here too.
@@ -434,17 +559,29 @@ impl App {
         self.show_menu(sections, at, false);
     }
 
-    /// What can be done with `session`.
-    fn session_menu(&mut self, session: SessionId) {
+    /// What can be done with `session`, at `at`.
+    fn session_menu(&mut self, session: SessionId, at: (f32, f32)) {
         let here = self.sessions.contains(&session);
+        let other_action = match self.config.session_list_click {
+            SessionListClick::Add => self.item(
+                &gettext("Replace This Window"),
+                Choice::ReplaceWith(session),
+                !here,
+            ),
+            SessionListClick::Replace => self.item(
+                &gettext("Add to This Window"),
+                Choice::ShowSession(session),
+                !here,
+            ),
+        };
         let sections = vec![
             vec![
-                self.item(&gettext("Show Here"), Choice::ShowSession(session), !here),
                 self.item(
                     &gettext("Open in New Window"),
                     Choice::SessionWindow(session),
                     true,
                 ),
+                other_action,
             ],
             vec![self.item(&gettext("Rename…"), Choice::RenameSession(session), true)],
             vec![
@@ -452,8 +589,25 @@ impl App {
                 self.item(&gettext("Close…"), Choice::CloseSession(session), true),
             ],
         ];
-        let at = self.keyed_menu_at();
         self.show_menu(sections, at, false);
+    }
+
+    /// Says how many sessions are detached, if any, with a button that lists them.
+    pub(super) fn hint_detached(&mut self, sessions: &[SessionInfo]) {
+        let count = sessions
+            .iter()
+            .filter(|session| session.clients == 0 && !session.tabs.is_empty())
+            .count() as u32;
+        if count == 0 || !self.config.detached_hint {
+            return;
+        }
+        let text = ngettext_f(
+            "{count} detached session",
+            "{count} detached sessions",
+            count,
+            &[("count", &count.to_string())],
+        );
+        self.toast_sessions(text, gettext("Show"));
     }
 
     /// Opens a window for each session no window shows, or says there is none.
@@ -494,6 +648,12 @@ impl App {
             Keysym::Return | Keysym::KP_Enter | Keysym::space => {
                 if let Some(focused) = menu.focused {
                     self.choose(focused);
+                }
+            }
+            Keysym::Right | Keysym::KP_Right | Keysym::Menu => {
+                if let Some(focused) = menu.focused {
+                    let at = self.keyed_menu_at();
+                    self.listed_menu(focused, at);
                 }
             }
             _ => {}

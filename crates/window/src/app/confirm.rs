@@ -21,6 +21,7 @@ pub enum Confirm {
     Paste { terminal: TerminalId, text: Vec<u8> },
     Rename(TerminalId),
     RenameSession(SessionId),
+    CloseSessions(Vec<SessionId>),
     CloseSession(SessionId),
     About,
 }
@@ -46,6 +47,21 @@ impl App {
         self.hover();
         self.dirty = true;
         self.draw();
+    }
+
+    /// Does what the dialog's button at `index` says.
+    pub(super) fn press_response(&mut self, index: usize) {
+        let accepts = self
+            .chrome
+            .dialog
+            .as_ref()
+            .is_some_and(|dialog| dialog.accepts(index));
+        if index > 0 && !accepts && matches!(self.confirming, Some(Confirm::CloseWindow)) {
+            self.respond(false);
+            self.end(true);
+            return;
+        }
+        self.respond(accepts);
     }
 
     /// Closes the dialog, doing what it asked if `accepted`.
@@ -81,6 +97,11 @@ impl App {
             }
             Some(Confirm::CloseSession(session)) if accepted => {
                 self.server.send(&Request::CloseSession { session });
+            }
+            Some(Confirm::CloseSessions(sessions)) if accepted => {
+                for session in sessions {
+                    self.server.send(&Request::CloseSession { session });
+                }
             }
             Some(Confirm::RenameSession(session)) if accepted => {
                 let name = field
@@ -156,6 +177,51 @@ impl App {
         self.confirm(dialog, Confirm::CloseSession(session));
     }
 
+    /// Asks before ending the detached `sessions`, with how many programs run in them if the
+    /// server can tell.
+    pub(super) fn close_detached(&mut self, sessions: Vec<SessionId>) {
+        if self.server.version < 3 {
+            self.confirm_close_detached(sessions, None);
+            return;
+        }
+        let id = self.server.ask(Question::Programs {
+            sessions: sessions.clone(),
+        });
+        self.asked.insert(id, Asked::CloseDetached(sessions));
+    }
+
+    pub(super) fn confirm_close_detached(
+        &mut self,
+        sessions: Vec<SessionId>,
+        programs: Option<u32>,
+    ) {
+        let count = sessions.len() as u32;
+        let ending = ngettext_f(
+            "{count} detached session will end.",
+            "{count} detached sessions will end.",
+            count,
+            &[("count", &count.to_string())],
+        );
+        let body = match programs.filter(|&programs| programs > 0) {
+            Some(programs) => {
+                let running = ngettext_f(
+                    "{count} program in them will be stopped.",
+                    "{count} programs in them will be stopped.",
+                    programs,
+                    &[("count", &programs.to_string())],
+                );
+                format!("{ending} {running}")
+            }
+            None => ending,
+        };
+        let dialog = Dialog::new(
+            &gettext("Close All Detached?"),
+            &body,
+            [&gettext("Cancel"), &gettext("Close All")],
+        );
+        self.confirm(dialog, Confirm::CloseSessions(sessions));
+    }
+
     /// Says what Caret is, which version, and under which licence, offering its website.
     pub(super) fn about(&mut self) {
         let body = gettext_f(
@@ -197,17 +263,17 @@ impl App {
         let has_field = dialog.field.is_some();
         match (event.keysym, dialog.focused, &mut dialog.field) {
             (Keysym::Escape, ..) => self.respond(false),
-            (Keysym::Return | Keysym::KP_Enter, focused, _) => {
-                self.respond(focused.is_none_or(|focused| focused == 1));
+            (Keysym::Return | Keysym::KP_Enter, None, _) => self.respond(true),
+            (Keysym::Return | Keysym::KP_Enter | Keysym::space, Some(focused), _) => {
+                self.press_response(focused);
             }
-            (Keysym::space, Some(focused), _) => self.respond(focused == 1),
             (Keysym::Tab | Keysym::ISO_Left_Tab, ..)
             | (Keysym::Left | Keysym::Right, Some(_), _) => {
-                let order: &[Option<usize>] = if has_field {
-                    &[None, Some(0), Some(1)]
-                } else {
-                    &[Some(0), Some(1)]
-                };
+                let order: Vec<Option<usize>> = has_field
+                    .then_some(None)
+                    .into_iter()
+                    .chain((0..dialog.responses.len()).map(Some))
+                    .collect();
                 let at = order
                     .iter()
                     .position(|&focused| focused == dialog.focused)
@@ -357,21 +423,44 @@ impl App {
         }
         let busy = closing.busy;
         self.closing = None;
-        if busy == 0 {
+        let several = self.sessions.len() > 1;
+        let named = self
+            .sessions
+            .iter()
+            .find_map(|session| self.session_names.get(session).cloned());
+        let body = if busy > 0 {
+            ngettext_f(
+                "A program is still running in this window and will be stopped.",
+                "{count} programs are still running in this window and will be stopped.",
+                busy,
+                &[("count", &busy.to_string())],
+            )
+        } else if several {
+            let count = self.sessions.len() as u32;
+            ngettext_f(
+                "{count} session will end with this window.",
+                "{count} sessions will end with this window.",
+                count,
+                &[("count", &count.to_string())],
+            )
+        } else if let Some(name) = named {
+            gettext_f(
+                "The session “{session}” will end with this window.",
+                &[("session", &name)],
+            )
+        } else {
             self.end(false);
             return;
-        }
-        let body = ngettext_f(
-            "A program is still running in this window and will be stopped.",
-            "{count} programs are still running in this window and will be stopped.",
-            busy,
-            &[("count", &busy.to_string())],
-        );
-        let dialog = Dialog::new(
-            &gettext("Close Window?"),
-            &body,
-            [&gettext("Cancel"), &gettext("Close")],
-        );
+        };
+        let close = if several {
+            gettext("Close All")
+        } else {
+            gettext("Close")
+        };
+        let cancel = gettext("Cancel");
+        let detach = gettext("Detach");
+        let mut dialog = Dialog::new(&gettext("Close Window?"), &body, [&cancel, &close]);
+        dialog.responses.insert(1, detach);
         self.confirm(dialog, Confirm::CloseWindow);
     }
 

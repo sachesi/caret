@@ -253,7 +253,7 @@ impl App {
                     current: Some(tab.key) == shown,
                     closes: true,
                     preview: self.config.tab_previews.then(|| self.tab_preview(index)),
-                    shortcut: None,
+                    ..Item::default()
                 };
                 (item, Choice::ShowTab(tab.key))
             })

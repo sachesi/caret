@@ -249,6 +249,23 @@ impl App {
         self.set_cursor();
     }
 
+    /// Takes a press of `button` on the menu's item at `index` other than a click, saying
+    /// whether it did anything.
+    fn pressed_listed(&mut self, index: usize, button: u32) -> bool {
+        match button {
+            BUTTON_RIGHT => {
+                let at = self.pointer_at();
+                self.listed_menu(index, at);
+                true
+            }
+            BUTTON_MIDDLE if self.config.middle_click_detach => {
+                self.detach_listed(index);
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn pressed_frame(&mut self, part: Part, button: u32, serial: u32) {
         // A press outside the menu closes it and goes no further, unless it resizes.
         if self.chrome.menu.is_some()
@@ -258,6 +275,9 @@ impl App {
             if part == Part::OffMenu {
                 return;
             }
+        }
+        if matches!(part, Part::MenuItem(index) if self.pressed_listed(index, button)) {
+            return;
         }
         if self.grouped() && self.pressed_session_tab(part, button) {
             return;
@@ -278,6 +298,7 @@ impl App {
                 | Part::FindUp
                 | Part::FindDown
                 | Part::Response(_)
+                | Part::ToastButton
                 | Part::Swatch(_)
                 | Part::MenuItem(_)
                 | Part::MenuClose(_),
@@ -379,7 +400,12 @@ impl App {
                 Part::CloseTab(index) => self.close_tab(index),
                 Part::FindUp => self.find(true),
                 Part::FindDown => self.find(false),
-                Part::Response(index) => self.respond(index == 1),
+                Part::Response(index) => self.press_response(index),
+                Part::ToastButton => {
+                    self.chrome.toast = None;
+                    self.chrome.toast_button = None;
+                    self.act(crate::shortcuts::Action::Sessions);
+                }
                 Part::Swatch(index) => self.pick_swatch(index),
                 Part::MenuItem(index) => self.choose(index),
                 Part::MenuClose(index) => self.close_listed(index),
@@ -779,6 +805,7 @@ fn cursor(part: Part) -> Shape {
         | Part::FindUp
         | Part::FindDown
         | Part::Response(_)
+        | Part::ToastButton
         | Part::Swatch(_)
         | Part::Dialog
         | Part::MainMenu

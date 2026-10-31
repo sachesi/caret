@@ -23,9 +23,14 @@ const ITEM_RADIUS: f32 = 6.0;
 const HEADING: f32 = 30.0;
 const DOT: f32 = 8.0;
 const DOT_ROOM: f32 = 18.0;
+const CHECK_ROOM: f32 = 22.0;
 const PREVIEW: f32 = 64.0;
 
 #[derive(Debug, Clone, Default)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each says one thing about how the item is drawn"
+)]
 pub struct Item {
     pub label: String,
     /// The keys that do the same, to show beside the label.
@@ -37,6 +42,10 @@ pub struct Item {
     pub current: bool,
     /// A button at its end closes what it stands for.
     pub closes: bool,
+    /// A check before the label, for what is on show.
+    pub checked: bool,
+    /// It names the items after it and cannot be chosen.
+    pub title: bool,
     pub preview: Option<Preview>,
 }
 
@@ -132,6 +141,7 @@ impl Menu {
                         .as_deref()
                         .map_or(0.0, |shortcut| SHORTCUT_GAP + measure(shortcut))
                     + if item.dot.is_some() { DOT_ROOM } else { 0.0 }
+                    + self.check_room()
                     + end)
                     .max(preview)
             })
@@ -142,6 +152,15 @@ impl Menu {
             .fold(0.0, f32::max);
         // Whole pixels to spare, as the room for each label is cut to whole pixels.
         self.width = (widest.ceil() + 1.0 + 2.0 * (ITEM_PADDING + PADDING)).max(MIN_WIDTH);
+    }
+
+    /// The room before each label for the check any item in the menu has.
+    fn check_room(&self) -> f32 {
+        if self.items().any(|item| item.checked) {
+            CHECK_ROOM
+        } else {
+            0.0
+        }
     }
 
     /// Moves the focus `steps` items on, past those that cannot be chosen.
@@ -375,6 +394,23 @@ impl Painter<'_> {
         };
         let middle = top + ITEM * scale / 2.0;
         let mut start = x + inset + padding;
+        if item.title {
+            let room = width - 2.0 * (inset + padding);
+            self.menu_title(quads, &item.label, [start, middle, room], draw);
+            return;
+        }
+        let check_room = menu.check_room() * scale;
+        if item.checked
+            && let Some(icon) = draw(&Drawing::Icon(Icon::Check))
+        {
+            quads.push(centred(
+                start + check_room / 2.0 - 3.0 * scale,
+                middle,
+                icon,
+                color,
+            ));
+        }
+        start += check_room;
         if let Some(dot) = item.dot {
             quads.push(circle(start + DOT * scale / 2.0, middle, DOT * scale, dot));
             start += DOT_ROOM * scale;
@@ -425,6 +461,25 @@ impl Painter<'_> {
                 let dim = (colors.foreground & !0xff) | 0x8c;
                 quads.push(self.left_label(right, middle, glyph, dim));
             }
+        }
+    }
+
+    /// A line naming the items after it, from `start`, centred on `middle`.
+    fn menu_title(
+        &self,
+        quads: &mut Vec<Quad>,
+        title: &str,
+        [start, middle, room]: [f32; 3],
+        draw: &mut impl FnMut(&Drawing) -> Option<(u32, GpuGlyph)>,
+    ) {
+        let label = Drawing::Label {
+            text: title.to_owned(),
+            width: room.max(0.0) as u32,
+            bold: true,
+        };
+        if let Some(glyph) = draw(&label) {
+            let dim = (self.chrome.colors().foreground & !0xff) | 0xb0;
+            quads.push(self.left_label(start, middle, glyph, dim));
         }
     }
 

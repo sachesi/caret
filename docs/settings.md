@@ -29,8 +29,10 @@ cannot be read is skipped with a warning on stderr, and the rest still apply.
 | `title-bar` | bool | true |
 | `server-side-decorations` | bool | true |
 | `session-click` | `"switch"`, `"popup"` | `"switch"` |
+| `session-list-click` | `"add"`, `"replace"` | `"add"` |
 | `session-colors` | bool | true |
 | `rounded-pane-ring` | bool | true |
+| `detached-hint` | bool | true |
 | `middle-click-detach` | bool | false |
 | `tab-previews` | bool | false |
 

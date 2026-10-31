@@ -52,7 +52,13 @@ impl App {
                         && let Some(finger) = app.touch.finger.as_mut()
                     {
                         finger.held = true;
-                        app.open_terminal_menu();
+                        if let Some(index) = app.pressed_listed_row() {
+                            app.chrome.pressed = None;
+                            let at = app.pointer_at();
+                            app.listed_menu(index, at);
+                        } else {
+                            app.open_terminal_menu();
+                        }
                     }
                     TimeoutAction::Drop
                 });
@@ -98,7 +104,8 @@ impl TouchHandler for App {
         self.serial = serial;
         if direct {
             self.pointer_pressed(position, BUTTON_LEFT, serial);
-        } else {
+        }
+        if !direct || self.pressed_listed_row().is_some() {
             self.start_long_press();
         }
     }

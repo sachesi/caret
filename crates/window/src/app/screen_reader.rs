@@ -132,7 +132,7 @@ impl App {
                 heading: dialog.heading.clone(),
                 body: dialog.body.clone(),
                 field: dialog.field.as_ref().map(|field| field.text.clone()),
-                buttons: dialog.responses.to_vec(),
+                buttons: dialog.responses.clone(),
                 focused: dialog.focused,
             })
             .or(list);

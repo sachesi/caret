@@ -551,6 +551,21 @@ impl Server {
     }
 
     /// Every session, with its name and how many panes and clients it has.
+    /// How many programs other than those started run in `sessions`.
+    fn programs(&self, sessions: &[SessionId]) -> Answer {
+        let count = sessions
+            .iter()
+            .filter_map(|session| self.sessions.get(session))
+            .flat_map(|session| &session.tabs)
+            .flat_map(|tab| tab.root.panes())
+            .filter_map(|terminal| self.running(terminal))
+            .filter(|running| running.busy().is_some())
+            .count();
+        Answer::Programs {
+            count: u32::try_from(count).unwrap_or(u32::MAX),
+        }
+    }
+
     fn session_list(&self) -> Answer {
         Answer::SessionList {
             sessions: self
@@ -593,6 +608,7 @@ impl Server {
                 }
             }
             Question::SessionList => self.session_list(),
+            Question::Programs { sessions } => self.programs(&sessions),
             Question::NewSession => {
                 let session = SessionId(self.next_session);
                 self.next_session += 1;

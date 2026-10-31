@@ -45,6 +45,15 @@ pub enum SessionClick {
     Popup,
 }
 
+/// What a click on a session in the Sessions list does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionListClick {
+    /// Adds it to the window and shows it.
+    Add,
+    /// Shows it in place of the shown session, which stays running.
+    Replace,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::struct_excessive_bools,
@@ -82,10 +91,13 @@ pub struct Config {
     pub server_side_decorations: bool,
     /// What a click on a session's tab does, while a window shows several.
     pub session_click: SessionClick,
+    pub session_list_click: SessionListClick,
     /// Each session has a colour of its own, on its tab and around the panes.
     pub session_colors: bool,
     /// The ring around the focused pane in control mode has rounded corners.
     pub rounded_pane_ring: bool,
+    /// A new window says when sessions are detached.
+    pub detached_hint: bool,
     /// A middle click on a session's tab detaches the session.
     pub middle_click_detach: bool,
     /// A session's list of tabs shows what each one holds.
@@ -120,8 +132,10 @@ impl Default for Config {
             title_bar: true,
             server_side_decorations: true,
             session_click: SessionClick::Switch,
+            session_list_click: SessionListClick::Add,
             session_colors: true,
             rounded_pane_ring: true,
+            detached_hint: true,
             middle_click_detach: false,
             tab_previews: false,
             keys: HashMap::new(),
@@ -290,6 +304,13 @@ impl Config {
             "close-detaches" => self.close_detaches = boolean()?,
             "title-bar" => self.title_bar = boolean()?,
             "server-side-decorations" => self.server_side_decorations = boolean()?,
+            "session-list-click" => {
+                self.session_list_click = match item.as_str() {
+                    Some("add") => SessionListClick::Add,
+                    Some("replace") => SessionListClick::Replace,
+                    _ => return Err("\"add\" or \"replace\""),
+                };
+            }
             "session-click" => {
                 self.session_click = match item.as_str() {
                     Some("switch") => SessionClick::Switch,
@@ -299,6 +320,7 @@ impl Config {
             }
             "session-colors" => self.session_colors = boolean()?,
             "rounded-pane-ring" => self.rounded_pane_ring = boolean()?,
+            "detached-hint" => self.detached_hint = boolean()?,
             "middle-click-detach" => self.middle_click_detach = boolean()?,
             "tab-previews" => self.tab_previews = boolean()?,
             _ => return Err("a setting Caret knows"),
@@ -391,11 +413,17 @@ const STARTER: &str = r##"# Caret's settings. Take the # off a setting to change
 # another session's tab shows its last tab, and on the shown session's tab or
 # the arrow lists its tabs; "popup": every click lists them.
 #session-click = "switch"
+# A click on a session in the Sessions list. "add": adds it to this window and
+# shows it; "replace": shows it in place of the shown session, which stays
+# running. New sessions do the same.
+#session-list-click = "add"
 # Whether each session has a colour of its own, on its tab, its list of tabs and
 # the ring of control mode.
 #session-colors = true
 # Whether the ring of control mode has rounded corners.
 #rounded-pane-ring = true
+# Whether a new window says when sessions are detached, offering to list them.
+#detached-hint = true
 # Whether a middle click on a session's tab detaches the session.
 #middle-click-detach = false
 # Whether a session's list of tabs shows a small picture of each.

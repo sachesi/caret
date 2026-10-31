@@ -26,7 +26,7 @@ pub use wire::{Bytes, DecodeError, Wire};
 pub const MAGIC: [u8; 8] = *b"caret\0\0\0";
 pub const OLDEST: u16 = 1;
 /// Version 2 adds split panes.
-pub const NEWEST: u16 = 2;
+pub const NEWEST: u16 = 3;
 
 /// The largest message either side reads; a frame of a huge screen is a few megabytes.
 pub const LONGEST: usize = 64 << 20;

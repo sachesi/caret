@@ -13,6 +13,7 @@ use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 
 use super::{App, Asked};
 use crate::chrome::{Preview, TabLabel};
+use crate::config::SessionListClick;
 use crate::grid::{self, Grid, Unresolved};
 use crate::i18n::gettext_f;
 use crate::panes::{self, Direction, Placed, Rect};
@@ -243,9 +244,47 @@ impl App {
             ));
             return;
         }
-        if !self.sessions.contains(&session) {
-            self.sessions.push(session);
-            self.server.send(&Request::Attach { session });
+        if self.sessions.contains(&session) {
+            self.show_session_tab(session);
+            return;
+        }
+        self.arriving = Some((session, None));
+        self.sessions.push(session);
+        self.server.send(&Request::Attach { session });
+    }
+
+    /// Shows `session` in place of the shown one, which keeps running in the server.
+    pub(super) fn replace_session(&mut self, session: SessionId) {
+        if self.sessions.contains(&session) {
+            self.show_session_tab(session);
+            return;
+        }
+        self.show_session(session);
+        if let Some(arriving) = &mut self.arriving {
+            arriving.1 = self.tabs.get(self.selected).map(|tab| tab.session);
+        }
+    }
+
+    /// Notes that the new `session` is coming to this window, as the setting has it.
+    pub(super) fn arrive(&mut self, session: SessionId) {
+        let replaces = (self.config.session_list_click == SessionListClick::Replace)
+            .then(|| self.tabs.get(self.selected).map(|tab| tab.session))
+            .flatten();
+        self.arriving = Some((session, replaces));
+    }
+
+    /// Shows the session on its way once it has a tab, letting go of the one it replaces.
+    pub(super) fn session_arrived(&mut self) {
+        let Some((session, replaces)) = self.arriving else {
+            return;
+        };
+        if self.session_tab(session).is_none() {
+            return;
+        }
+        self.arriving = None;
+        self.show_session_tab(session);
+        if let Some(replaced) = replaces.filter(|replaced| self.sessions.contains(replaced)) {
+            self.detach_session(replaced);
         }
     }
 

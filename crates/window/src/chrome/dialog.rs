@@ -29,8 +29,9 @@ const WARNING_SHADES: [u32; 2] = [0xffff_ff1a, 0x0000_0633];
 pub struct Dialog {
     pub heading: String,
     pub body: String,
-    /// The buttons' labels: the first declines, the second does what was asked.
-    pub responses: [String; 2],
+    /// The buttons' labels: the first declines, the last does what was asked, and one
+    /// between does what it says.
+    pub responses: Vec<String>,
     pub appearance: Appearance,
     /// The button Enter presses; none while the field has the keys.
     pub focused: Option<usize>,
@@ -60,7 +61,7 @@ struct Layout {
     body: f32,
     field: [f32; 4],
     swatches: Vec<[f32; 4]>,
-    buttons: [[f32; 4]; 2],
+    buttons: Vec<[f32; 4]>,
 }
 
 impl Dialog {
@@ -69,7 +70,7 @@ impl Dialog {
         Self {
             heading: heading.to_owned(),
             body: body.to_owned(),
-            responses: responses.map(str::to_owned),
+            responses: responses.map(str::to_owned).to_vec(),
             appearance: Appearance::Destructive,
             focused: Some(0),
             field: None,
@@ -89,6 +90,11 @@ impl Dialog {
             field: Some(Field::holding_selected(text)),
             ..Self::new(heading, body, responses)
         }
+    }
+
+    /// Whether the button at `index` is the one that does what was asked.
+    pub fn accepts(&self, index: usize) -> bool {
+        index + 1 == self.responses.len()
     }
 
     /// How wide the body's lines may be in a window `width` wide.
@@ -116,7 +122,8 @@ impl Dialog {
             (width - card_width) / 2.0,
             ((height - card_height) / 2.0).max(0.0),
         );
-        let button_width = (card_width - 2.0 * PADDING - BUTTON_SPACING) / 2.0;
+        let count = self.responses.len() as f32;
+        let button_width = (card_width - 2.0 * PADDING - (count - 1.0) * BUTTON_SPACING) / count;
         let button_y = y + card_height - PADDING - BUTTON;
         let row = card_width - 2.0 * PADDING;
         let step = (row - SWATCH) / (self.swatches.len().max(2) - 1) as f32;
@@ -134,14 +141,16 @@ impl Dialog {
             swatches: (0..self.swatches.len())
                 .map(|index| [x + PADDING + index as f32 * step, swatch_y, SWATCH, SWATCH])
                 .collect(),
-            buttons: [0.0, 1.0].map(|index| {
-                [
-                    x + PADDING + index * (button_width + BUTTON_SPACING),
-                    button_y,
-                    button_width,
-                    BUTTON,
-                ]
-            }),
+            buttons: (0..self.responses.len())
+                .map(|index| {
+                    [
+                        x + PADDING + index as f32 * (button_width + BUTTON_SPACING),
+                        button_y,
+                        button_width,
+                        BUTTON,
+                    ]
+                })
+                .collect(),
         }
     }
 
@@ -365,7 +374,7 @@ impl Painter<'_> {
             quads.push(rounded(x, y, width, height, radius, colors.dialog));
         }
         let (fill, text, shades) = match dialog.appearance {
-            _ if index == 0 => (colors.button[0], colors.foreground, colors.flat),
+            _ if !dialog.accepts(index) => (colors.button[0], colors.foreground, colors.flat),
             Appearance::Destructive => (colors.destructive, 0xffff_ffff, WARNING_SHADES),
             Appearance::Suggested => (ACCENT, 0xffff_ffff, WARNING_SHADES),
         };

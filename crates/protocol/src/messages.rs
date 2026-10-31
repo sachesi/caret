@@ -210,6 +210,10 @@ pub enum Question {
     },
     /// Since version 2. The sessions, with their names: answered with `SessionList`.
     SessionList,
+    /// Since version 3. How many programs other than those started run in `sessions`.
+    Programs {
+        sessions: Vec<SessionId>,
+    },
 }
 variants!(Question {
     0 => Sessions,
@@ -223,6 +227,7 @@ variants!(Question {
     8 => OpenTab { session, index, command, size },
     9 => Split { terminal, vertical, command, size },
     10 => SessionList,
+    11 => Programs { sessions },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -259,6 +264,9 @@ pub enum Answer {
     SessionList {
         sessions: Vec<SessionEntry>,
     },
+    Programs {
+        count: u32,
+    },
 }
 variants!(Answer {
     0 => Sessions { sessions },
@@ -272,6 +280,7 @@ variants!(Answer {
     8 => Gone,
     9 => Opened { terminal },
     10 => SessionList { sessions },
+    11 => Programs { count },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]

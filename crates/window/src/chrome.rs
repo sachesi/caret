@@ -69,6 +69,8 @@ const TOAST: f32 = 42.0;
 const TOAST_PADDING: f32 = 18.0;
 const TOAST_MARGIN: f32 = 12.0;
 const TOAST_BACKGROUND: u32 = 0x2828_2cf0;
+/// The room either side of a toast button's label.
+const TOAST_BUTTON_PADDING: f32 = 12.0;
 /// The bubble showing a link's address: how far it is from the window's corner, and the
 /// room around its text.
 const BUBBLE_INSET: f32 = 6.0;
@@ -189,6 +191,7 @@ pub enum Icon {
     Up,
     Down,
     Menu,
+    Check,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -219,6 +222,15 @@ pub struct Preedit {
     pub height: f32,
     /// The terminal's text colour.
     pub color: u32,
+}
+
+/// A button on a toast, measured to place it.
+#[derive(Debug, Clone, Default)]
+pub struct ToastButton {
+    pub label: String,
+    /// How wide the toast's text and this label are, in logical pixels.
+    pub text_width: f32,
+    pub label_width: f32,
 }
 
 /// A line of text the user types, and where typing goes in it.
@@ -435,6 +447,8 @@ pub enum Part {
     FindDown,
     /// A dialog's button, a colour it offers, and the rest of the window under it.
     Response(usize),
+    /// The button on the toast.
+    ToastButton,
     Swatch(usize),
     Dialog,
     /// A menu's item, the button that closes what it stands for, the menu between its
@@ -564,6 +578,8 @@ pub struct Chrome {
     pub shortcut_list: Option<ShortcutList>,
     /// A short message over the bottom of the window.
     pub toast: Option<String>,
+    /// A button on the toast.
+    pub toast_button: Option<ToastButton>,
     /// The keys of a mode the window is in, under the toast.
     pub hints: Option<String>,
     pub hovered: Option<Part>,
@@ -584,6 +600,22 @@ impl Chrome {
         } else {
             0
         }
+    }
+
+    /// Whether `(x, y)` is on the toast's button, in a window `size` big.
+    fn toast_button_at(&self, (x, y): (f64, f64), size: (u32, u32)) -> bool {
+        let Some(button) = self.toast_button.as_ref().filter(|_| self.toast.is_some()) else {
+            return false;
+        };
+        let mut bottom = size.1 as f32;
+        if self.hints.is_some() {
+            bottom -= TOAST + TOAST_MARGIN;
+        }
+        let (right, _) = toast_button_span(button, size.0 as f32);
+        let (x, y) = (x as f32, y as f32);
+        let top = bottom - TOAST_MARGIN - TOAST;
+        (right - button.label_width - 2.0 * TOAST_BUTTON_PADDING..right).contains(&x)
+            && (top..top + TOAST).contains(&y)
     }
 
     pub fn header(&self) -> u32 {
@@ -634,6 +666,9 @@ impl Chrome {
         }
         if let Some(list) = &self.shortcut_list {
             return Some(list.part_at((x, y), size));
+        }
+        if self.toast_button_at((x, y), size) {
+            return Some(Part::ToastButton);
         }
         let header = f64::from(self.header());
         if y < header {
@@ -810,6 +845,9 @@ impl Chrome {
         }
         if let Some(toast) = &self.toast {
             painter.toast(&mut quads, toast, bottom, &mut draw);
+            if let Some(button) = &self.toast_button {
+                painter.toast_button(&mut quads, button, bottom, &mut draw);
+            }
         }
         if let Some(list) = &self.shortcut_list {
             painter.shortcut_list(&mut quads, list, size.1 as f32 * scale, &mut draw);
@@ -1254,7 +1292,13 @@ impl Painter<'_> {
             return;
         };
         let (width, _) = halves(glyph.1.size);
-        let (toast_width, toast_height) = (width as f32 + 2.0 * padding, TOAST * scale);
+        let text_width = self
+            .chrome
+            .toast_button
+            .as_ref()
+            .filter(|_| self.chrome.toast.as_deref() == Some(text))
+            .map_or(width as f32, |button| button.text_width * scale);
+        let (toast_width, toast_height) = (text_width + 2.0 * padding, TOAST * scale);
         let x = (margin + (self.width - toast_width) / 2.0).round();
         let y = (margin + height - TOAST_MARGIN * scale - toast_height).round();
         quads.push(Quad {
@@ -1277,11 +1321,46 @@ impl Painter<'_> {
             TOAST_BACKGROUND,
         ));
         quads.push(self.label(
-            x + toast_width / 2.0,
+            x + padding + width as f32 / 2.0,
             y + toast_height / 2.0,
             glyph,
             0xffff_ffff,
         ));
+    }
+
+    /// `button` at the end of the toast over `height`, which it was made room for.
+    fn toast_button(
+        &self,
+        quads: &mut Vec<Quad>,
+        button: &ToastButton,
+        height: f32,
+        draw: &mut impl FnMut(&Drawing) -> Option<(u32, GpuGlyph)>,
+    ) {
+        let (scale, margin) = (self.scale, self.margin);
+        let (right, _) = toast_button_span(button, self.width / scale);
+        let padding = TOAST_BUTTON_PADDING * scale;
+        let width = button.label_width * scale + 2.0 * padding;
+        let x = margin + right * scale - width;
+        let middle = margin + height - (TOAST_MARGIN + TOAST / 2.0) * scale;
+        let side = (TOAST - 12.0) * scale;
+        if self.chrome.over(Part::ToastButton, false) {
+            quads.push(rounded(
+                x,
+                (middle - side / 2.0).round(),
+                width,
+                side,
+                side / 2.0,
+                0xffff_ff26,
+            ));
+        }
+        let label = Drawing::Label {
+            text: button.label.clone(),
+            width: (button.label_width * scale).ceil() as u32 + 1,
+            bold: true,
+        };
+        if let Some(glyph) = draw(&label) {
+            quads.push(self.label(x + width / 2.0, middle, glyph, 0xffff_ffff));
+        }
     }
 
     /// A link's address in a bubble at the bottom left of a window `height` high.
@@ -1430,6 +1509,14 @@ fn rounded(x: f32, y: f32, width: f32, height: f32, radius: f32, color: u32) -> 
     }
 }
 
+/// How far a toast with `button` in a window `width` wide reaches: its button's right
+/// edge and its left edge, in logical pixels, its text being padded to take the room.
+fn toast_button_span(button: &ToastButton, width: f32) -> (f32, f32) {
+    let toast = button.text_width + 2.0 * TOAST_PADDING;
+    let left = (width - toast) / 2.0;
+    (left + toast - TOAST_PADDING / 2.0, left)
+}
+
 /// A ring as wide as `diameter`, its line a fifth of that.
 fn ring((x, y): (f32, f32), diameter: f32, color: u32) -> Quad {
     let line = (diameter / 5.0).round().max(1.0);
@@ -1508,7 +1595,7 @@ pub fn themed_icon(icon: Icon, scale: f32, theme: &str) -> Option<Raster> {
         Icon::Minimize => "window-minimize-symbolic",
         Icon::Maximize => "window-maximize-symbolic",
         Icon::Restore => "window-restore-symbolic",
-        Icon::NewTab | Icon::Up | Icon::Down | Icon::Menu => return None,
+        Icon::NewTab | Icon::Check | Icon::Up | Icon::Down | Icon::Menu => return None,
     };
     crate::icon_theme::symbolic(theme, name, (ICON * scale).round() as u32)
 }
@@ -1536,6 +1623,7 @@ pub fn icon(icon: Icon, scale: f32) -> Raster {
             &[[6.0, 3.5], [12.5, 3.5], [12.5, 10.0]],
         ],
         Icon::NewTab => &[&[[3.0, 8.0], [13.0, 8.0]], &[[8.0, 3.0], [8.0, 13.0]]],
+        Icon::Check => &[&[[3.0, 8.5], [6.5, 12.0], [13.0, 4.5]]],
         Icon::Up => &[&[[3.0, 10.5], [8.0, 5.5], [13.0, 10.5]]],
         Icon::Down => &[&[[3.0, 5.5], [8.0, 10.5], [13.0, 5.5]]],
         Icon::Menu => &[

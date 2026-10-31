@@ -123,6 +123,10 @@ enum Asked {
     SessionHere,
     /// The sessions, to offer those the window does not show from its + button.
     NewMenu,
+    /// The sessions, to say at the start how many are detached.
+    DetachedHint,
+    /// How many programs run in these detached sessions, to ask before closing them.
+    CloseDetached(Vec<SessionId>),
     /// A tab, opened at this size.
     Tab(Size),
     /// What a new tab runs, or a new pane, beside the focused one or under it.
@@ -185,6 +189,9 @@ struct App {
     last_tabs: HashMap<SessionId, TerminalId>,
     /// The session whose tabs the menu open lists.
     popup: Option<SessionId>,
+    /// A session on its way to this window, to show once it has a tab, and the session it
+    /// takes the place of.
+    arriving: Option<(SessionId, Option<SessionId>)>,
     tabs: Vec<tabs::Tab>,
     selected: usize,
     /// The tab the window opened, to show when the server tells of it.
@@ -395,6 +402,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         session_colors: HashMap::new(),
         last_tabs: HashMap::new(),
         popup: None,
+        arriving: None,
         tabs: Vec::new(),
         selected: 0,
         opened: None,
@@ -488,6 +496,7 @@ fn begin(server: &mut connection::Connection, start: Start) -> (HashMap<u32, Ask
         return (asked, Command::default());
     }
     asked.insert(server.ask(Question::NewSession), Asked::Session);
+    asked.insert(server.ask(Question::Sessions), Asked::DetachedHint);
     let directory = start.directory.map(|directory| {
         let directory = std::env::current_dir().unwrap_or_default().join(directory);
         Bytes(directory.into_os_string().into_vec())
@@ -714,12 +723,16 @@ impl App {
                     self.tab_opened(session, index, tab);
                 }
                 self.open_first_tab();
+                self.session_arrived();
             }
             Message::TabOpened {
                 session,
                 index,
                 tab,
-            } if self.sessions.contains(&session) => self.tab_opened(session, index, tab),
+            } if self.sessions.contains(&session) => {
+                self.tab_opened(session, index, tab);
+                self.session_arrived();
+            }
             Message::TabClosed { session, terminal } if self.sessions.contains(&session) => {
                 self.tab_closed(terminal);
             }
@@ -767,6 +780,7 @@ impl App {
                 self.tab_into_window(key, session);
             }
             (Some(Asked::SessionHere), Answer::Session { session }) => {
+                self.arrive(session);
                 self.sessions.push(session);
                 self.server.send(&Request::Attach { session });
                 self.open_tab_in(session, Command::default());
@@ -811,9 +825,15 @@ impl App {
             (Some(Asked::Closing), answer) => self.closing_busy(&answer),
             (Some(Asked::Menu(at)), Answer::Link { uri }) => self.terminal_menu(at, uri),
             (Some(Asked::Menu(at)), _) => self.terminal_menu(at, None),
+            (Some(Asked::DetachedHint), Answer::Sessions { sessions }) => {
+                self.hint_detached(&sessions);
+            }
             (Some(Asked::Reattach), Answer::Sessions { sessions }) => self.reattach(&sessions),
             (Some(Asked::SessionList), Answer::SessionList { sessions }) => {
                 self.sessions_menu(&sessions);
+            }
+            (Some(Asked::CloseDetached(sessions)), Answer::Programs { count }) => {
+                self.confirm_close_detached(sessions, Some(count));
             }
             (Some(Asked::Copy { .. } | Asked::Find(_) | Asked::Link | Asked::Pane) | None, _) => {}
             (Some(_), answer) => {
