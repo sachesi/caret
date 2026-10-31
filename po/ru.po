@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-31 12:31+0200\n"
+"POT-Creation-Date: 2026-10-31 12:42+0200\n"
 "PO-Revision-Date: 2026-10-31 12:30+0200\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Russian\n"
@@ -121,8 +121,8 @@ msgstr ""
 "Эта программа не отмечает вставленный текст, поэтому каждая строка "
 "выполнится, как если бы её набрали и нажали Enter."
 
-#: crates/window/src/app/confirm.rs:385 crates/window/src/app/menus.rs:149
-#: crates/window/src/app/shortcut_list.rs:65 ui/shortcuts_dialog.ui:99
+#: crates/window/src/app/confirm.rs:385 crates/window/src/app/menus.rs:148
+#: crates/window/src/app/shortcut_list.rs:61 ui/shortcuts_dialog.ui:99
 msgid "Paste"
 msgstr "Вставить"
 
@@ -156,141 +156,141 @@ msgstr ""
 msgid "Moving panes needs a newer terminal server"
 msgstr "Для перемещения панелей нужен более новый терминальный сервер"
 
-#: crates/window/src/app/menus.rs:97 crates/window/src/app/menus.rs:167
-#: crates/window/src/app/shortcut_list.rs:27
+#: crates/window/src/app/menus.rs:96 crates/window/src/app/menus.rs:166
+#: crates/window/src/app/shortcut_list.rs:23
 #: data/io.github.sachesi.caret.desktop:17 ui/shortcuts_dialog.ui:15
 msgid "New Window"
 msgstr "Новое окно"
 
-#: crates/window/src/app/menus.rs:98 crates/window/src/app/menus.rs:169
-#: crates/window/src/app/sessions.rs:221
-#: crates/window/src/app/shortcut_list.rs:29 ui/shortcuts_dialog.ui:21
+#: crates/window/src/app/menus.rs:97 crates/window/src/app/menus.rs:168
+#: crates/window/src/app/sessions.rs:222
+#: crates/window/src/app/shortcut_list.rs:25 ui/shortcuts_dialog.ui:21
 #: ui/window.ui:87
 msgid "New Tab"
 msgstr "Новая вкладка"
 
-#: crates/window/src/app/menus.rs:102
+#: crates/window/src/app/menus.rs:101
 #, rust-format
 msgid "New “{profile}” Window"
 msgstr "Новое окно «{profile}»"
 
-#: crates/window/src/app/menus.rs:110 crates/window/src/app/shortcut_list.rs:54
+#: crates/window/src/app/menus.rs:109 crates/window/src/app/shortcut_list.rs:50
 msgid "Sessions…"
 msgstr "Сеансы…"
 
-#: crates/window/src/app/menus.rs:112 crates/window/src/app/sessions.rs:228
+#: crates/window/src/app/menus.rs:111 crates/window/src/app/sessions.rs:229
 msgid "Rename Session…"
 msgstr "Переименовать сеанс…"
 
-#: crates/window/src/app/menus.rs:116
+#: crates/window/src/app/menus.rs:115
 msgid "Detach Window"
 msgstr "Отсоединить окно"
 
-#: crates/window/src/app/menus.rs:117
+#: crates/window/src/app/menus.rs:116
 msgid "Reattach Windows"
 msgstr "Вернуть окна"
 
-#: crates/window/src/app/menus.rs:119 crates/window/src/app/menus.rs:187
-#: crates/window/src/app/shortcut_list.rs:34 ui/shortcuts_dialog.ui:82
+#: crates/window/src/app/menus.rs:118 crates/window/src/app/menus.rs:186
+#: crates/window/src/app/shortcut_list.rs:30 ui/shortcuts_dialog.ui:82
 msgid "Full Screen"
 msgstr "Во весь экран"
 
-#: crates/window/src/app/menus.rs:121 src/preferences.rs:18
-#: ui/shortcuts_dialog.ui:170
+#: crates/window/src/app/menus.rs:120 crates/window/src/app/shortcut_list.rs:77
+#: src/preferences.rs:18 ui/shortcuts_dialog.ui:170
 msgid "Preferences"
 msgstr "Параметры"
 
-#: crates/window/src/app/menus.rs:122 crates/window/src/app/shortcut_list.rs:76
-#: crates/window/src/app/shortcut_list.rs:81 ui/shortcuts_dialog.ui:176
+#: crates/window/src/app/menus.rs:121 crates/window/src/app/shortcut_list.rs:78
+#: crates/window/src/app/shortcut_list.rs:84 ui/shortcuts_dialog.ui:176
 msgid "Keyboard Shortcuts"
 msgstr "Комбинации клавиш"
 
-#: crates/window/src/app/menus.rs:123
+#: crates/window/src/app/menus.rs:122
 msgid "About Caret"
 msgstr "О Caret"
 
-#: crates/window/src/app/menus.rs:148 crates/window/src/app/shortcut_list.rs:64
+#: crates/window/src/app/menus.rs:147 crates/window/src/app/shortcut_list.rs:60
 #: ui/shortcuts_dialog.ui:93
 msgid "Copy"
 msgstr "Копировать"
 
-#: crates/window/src/app/menus.rs:150 crates/window/src/app/shortcut_list.rs:66
+#: crates/window/src/app/menus.rs:149 crates/window/src/app/shortcut_list.rs:62
 #: ui/shortcuts_dialog.ui:105
 msgid "Select All"
 msgstr "Выделить всё"
 
-#: crates/window/src/app/menus.rs:152 crates/window/src/app/shortcut_list.rs:67
+#: crates/window/src/app/menus.rs:151 crates/window/src/app/shortcut_list.rs:63
 #: ui/shortcuts_dialog.ui:111
 msgid "Deselect"
 msgstr "Снять выделение"
 
-#: crates/window/src/app/menus.rs:159
+#: crates/window/src/app/menus.rs:158
 msgid "Open Link"
 msgstr "Открыть ссылку"
 
-#: crates/window/src/app/menus.rs:160
+#: crates/window/src/app/menus.rs:159
 msgid "Copy Link Address"
 msgstr "Копировать адрес ссылки"
 
-#: crates/window/src/app/menus.rs:170
+#: crates/window/src/app/menus.rs:169
 msgid "Find…"
 msgstr "Найти…"
 
-#: crates/window/src/app/menus.rs:173 crates/window/src/app/shortcut_list.rs:41
+#: crates/window/src/app/menus.rs:172 crates/window/src/app/shortcut_list.rs:37
 msgid "Split Right"
 msgstr "Разделить вправо"
 
-#: crates/window/src/app/menus.rs:174 crates/window/src/app/shortcut_list.rs:42
+#: crates/window/src/app/menus.rs:173 crates/window/src/app/shortcut_list.rs:38
 msgid "Split Down"
 msgstr "Разделить вниз"
 
-#: crates/window/src/app/menus.rs:181 crates/window/src/app/shortcut_list.rs:43
+#: crates/window/src/app/menus.rs:180 crates/window/src/app/shortcut_list.rs:39
 msgid "Close Pane"
 msgstr "Закрыть панель"
 
-#: crates/window/src/app/menus.rs:186 src/preferences.rs:178
+#: crates/window/src/app/menus.rs:185 src/preferences.rs:178
 msgid "Title Bar"
 msgstr "Заголовок окна"
 
-#: crates/window/src/app/menus.rs:190 crates/window/src/app/shortcut_list.rs:28
+#: crates/window/src/app/menus.rs:189 crates/window/src/app/shortcut_list.rs:24
 #: ui/shortcuts_dialog.ui:33
 msgid "Close Window"
 msgstr "Закрыть окно"
 
-#: crates/window/src/app/menus.rs:191 ui/window.ui:101
+#: crates/window/src/app/menus.rs:190 ui/window.ui:101
 msgid "Main Menu"
 msgstr "Главное меню"
 
-#: crates/window/src/app/menus.rs:203
+#: crates/window/src/app/menus.rs:202
 msgid "Rename Tab…"
 msgstr "Переименовать вкладку…"
 
-#: crates/window/src/app/menus.rs:204 crates/window/src/app/shortcut_list.rs:30
+#: crates/window/src/app/menus.rs:203 crates/window/src/app/shortcut_list.rs:26
 #: ui/shortcuts_dialog.ui:27
 msgid "Close Tab"
 msgstr "Закрыть вкладку"
 
-#: crates/window/src/app/menus.rs:271
+#: crates/window/src/app/menus.rs:278
 msgid "Could not make the settings file"
 msgstr "Не удалось создать файл параметров"
 
-#: crates/window/src/app/menus.rs:288
+#: crates/window/src/app/menus.rs:306
 msgid "Listing sessions needs a newer terminal server"
 msgstr "Для списка сеансов нужен более новый терминальный сервер"
 
-#: crates/window/src/app/menus.rs:315
+#: crates/window/src/app/menus.rs:333
 msgid "here"
 msgstr "здесь"
 
-#: crates/window/src/app/menus.rs:317
+#: crates/window/src/app/menus.rs:335
 msgid "shown"
 msgstr "открыт"
 
-#: crates/window/src/app/menus.rs:319
+#: crates/window/src/app/menus.rs:337
 msgid "detached"
 msgstr "отсоединён"
 
-#: crates/window/src/app/menus.rs:323
+#: crates/window/src/app/menus.rs:341
 #, rust-format
 msgid "{count} tab"
 msgid_plural "{count} tabs"
@@ -298,7 +298,7 @@ msgstr[0] "{count} вкладка"
 msgstr[1] "{count} вкладки"
 msgstr[2] "{count} вкладок"
 
-#: crates/window/src/app/menus.rs:329
+#: crates/window/src/app/menus.rs:347
 #, rust-format
 msgid "{count} pane"
 msgid_plural "{count} panes"
@@ -306,41 +306,41 @@ msgstr[0] "{count} панель"
 msgstr[1] "{count} панели"
 msgstr[2] "{count} панелей"
 
-#: crates/window/src/app/menus.rs:335
+#: crates/window/src/app/menus.rs:353
 #, rust-format
 msgid "{session} · {title} — {tabs}, {panes}, {place}"
 msgstr "{session} · {title} — {tabs}, {panes}, {place}"
 
-#: crates/window/src/app/menus.rs:391
+#: crates/window/src/app/menus.rs:409
 #, rust-format
 msgid "Show {session} · {title}"
 msgstr "Показать {session} · {title}"
 
-#: crates/window/src/app/menus.rs:403
+#: crates/window/src/app/menus.rs:421
 msgid "New Session"
 msgstr "Новый сеанс"
 
-#: crates/window/src/app/menus.rs:415
+#: crates/window/src/app/menus.rs:433
 msgid "Show Here"
 msgstr "Показать здесь"
 
-#: crates/window/src/app/menus.rs:417
+#: crates/window/src/app/menus.rs:435
 msgid "Open in New Window"
 msgstr "Открыть в новом окне"
 
-#: crates/window/src/app/menus.rs:422
+#: crates/window/src/app/menus.rs:440
 msgid "Rename…"
 msgstr "Переименовать…"
 
-#: crates/window/src/app/menus.rs:424
+#: crates/window/src/app/menus.rs:442
 msgid "Detach"
 msgstr "Отсоединить"
 
-#: crates/window/src/app/menus.rs:425
+#: crates/window/src/app/menus.rs:443
 msgid "Close…"
 msgstr "Закрыть…"
 
-#: crates/window/src/app/menus.rs:439 src/application.rs:234
+#: crates/window/src/app/menus.rs:457 src/application.rs:234
 msgid "No windows were detached"
 msgstr "Нет отсоединённых окон"
 
@@ -365,119 +365,135 @@ msgstr "нет программы, которая её открывает"
 msgid "the program that opens it failed"
 msgstr "программа, которая её открывает, завершилась с ошибкой"
 
-#: crates/window/src/app/sessions.rs:233
+#: crates/window/src/app/sessions.rs:234
 msgid "Detach Session"
 msgstr "Отсоединить сеанс"
 
-#: crates/window/src/app/sessions.rs:238
+#: crates/window/src/app/sessions.rs:239
 msgid "Close Session…"
 msgstr "Закрыть сеанс…"
 
-#: crates/window/src/app/shortcut_list.rs:25 ui/shortcuts_dialog.ui:12
+#: crates/window/src/app/shortcut_list.rs:21 ui/shortcuts_dialog.ui:12
 msgid "Windows and Tabs"
 msgstr "Окна и вкладки"
 
-#: crates/window/src/app/shortcut_list.rs:31 ui/shortcuts_dialog.ui:39
+#: crates/window/src/app/shortcut_list.rs:27 ui/shortcuts_dialog.ui:39
 msgid "Next Tab"
 msgstr "Следующая вкладка"
 
-#: crates/window/src/app/shortcut_list.rs:32 ui/shortcuts_dialog.ui:45
+#: crates/window/src/app/shortcut_list.rs:28 ui/shortcuts_dialog.ui:45
 msgid "Previous Tab"
 msgstr "Предыдущая вкладка"
 
-#: crates/window/src/app/shortcut_list.rs:33 ui/shortcuts_dialog.ui:63
+#: crates/window/src/app/shortcut_list.rs:29 ui/shortcuts_dialog.ui:63
 msgid "Switch to a Tab"
 msgstr "Перейти к вкладке"
 
-#: crates/window/src/app/shortcut_list.rs:35 ui/shortcuts_dialog.ui:76
+#: crates/window/src/app/shortcut_list.rs:31 ui/shortcuts_dialog.ui:76
 msgid "Show or Hide the Title Bar"
 msgstr "Показать или скрыть заголовок окна"
 
-#: crates/window/src/app/shortcut_list.rs:39
+#: crates/window/src/app/shortcut_list.rs:35
 msgid "Panes"
 msgstr "Панели"
 
-#: crates/window/src/app/shortcut_list.rs:44
+#: crates/window/src/app/shortcut_list.rs:40
 msgid "Focus the Pane to the Left"
 msgstr "Перейти к панели слева"
 
-#: crates/window/src/app/shortcut_list.rs:45
+#: crates/window/src/app/shortcut_list.rs:41
 msgid "Focus the Pane to the Right"
 msgstr "Перейти к панели справа"
 
-#: crates/window/src/app/shortcut_list.rs:46
+#: crates/window/src/app/shortcut_list.rs:42
 msgid "Focus the Pane Above"
 msgstr "Перейти к панели выше"
 
-#: crates/window/src/app/shortcut_list.rs:47
+#: crates/window/src/app/shortcut_list.rs:43
 msgid "Focus the Pane Below"
 msgstr "Перейти к панели ниже"
 
-#: crates/window/src/app/shortcut_list.rs:48
+#: crates/window/src/app/shortcut_list.rs:44
 msgid "Move and Resize Panes"
 msgstr "Перемещать панели и менять их размер"
 
-#: crates/window/src/app/shortcut_list.rs:52
+#: crates/window/src/app/shortcut_list.rs:48
 msgid "Sessions"
 msgstr "Сеансы"
 
-#: crates/window/src/app/shortcut_list.rs:55
+#: crates/window/src/app/shortcut_list.rs:51
 msgid "Tabs of the Session"
 msgstr "Вкладки сеанса"
 
-#: crates/window/src/app/shortcut_list.rs:56
+#: crates/window/src/app/shortcut_list.rs:52
 msgid "Next Session"
 msgstr "Следующий сеанс"
 
-#: crates/window/src/app/shortcut_list.rs:57
+#: crates/window/src/app/shortcut_list.rs:53
 msgid "Previous Session"
 msgstr "Предыдущий сеанс"
 
-#: crates/window/src/app/shortcut_list.rs:58
+#: crates/window/src/app/shortcut_list.rs:54
 msgid "Switch to a Session"
 msgstr "Перейти к сеансу"
 
-#: crates/window/src/app/shortcut_list.rs:62
+#: crates/window/src/app/shortcut_list.rs:58
 #: data/io.github.sachesi.caret.desktop:3 ui/shortcuts_dialog.ui:90
 msgid "Terminal"
 msgstr "Терминал"
 
-#: crates/window/src/app/shortcut_list.rs:68 ui/shortcuts_dialog.ui:117
+#: crates/window/src/app/shortcut_list.rs:64 ui/shortcuts_dialog.ui:117
 #: ui/window.ui:113
 msgid "Find"
 msgstr "Найти"
 
-#: crates/window/src/app/shortcut_list.rs:69 ui/shortcuts_dialog.ui:147
+#: crates/window/src/app/shortcut_list.rs:65 ui/shortcuts_dialog.ui:147
 msgid "Zoom In"
 msgstr "Увеличить"
 
-#: crates/window/src/app/shortcut_list.rs:70 ui/shortcuts_dialog.ui:153
+#: crates/window/src/app/shortcut_list.rs:66 ui/shortcuts_dialog.ui:153
 msgid "Zoom Out"
 msgstr "Уменьшить"
 
-#: crates/window/src/app/shortcut_list.rs:71 ui/shortcuts_dialog.ui:159
+#: crates/window/src/app/shortcut_list.rs:67 ui/shortcuts_dialog.ui:159
 msgid "Original Size"
 msgstr "Обычный размер"
+
+#: crates/window/src/app/shortcut_list.rs:68 ui/shortcuts_dialog.ui:123
+msgid "Scroll Up a Page"
+msgstr "На страницу вверх"
+
+#: crates/window/src/app/shortcut_list.rs:69 ui/shortcuts_dialog.ui:129
+msgid "Scroll Down a Page"
+msgstr "На страницу вниз"
+
+#: crates/window/src/app/shortcut_list.rs:70 ui/shortcuts_dialog.ui:135
+msgid "Scroll to the Previous Prompt"
+msgstr "Прокрутить к предыдущему приглашению"
+
+#: crates/window/src/app/shortcut_list.rs:71 ui/shortcuts_dialog.ui:141
+msgid "Scroll to the Next Prompt"
+msgstr "Прокрутить к следующему приглашению"
 
 #: crates/window/src/app/shortcut_list.rs:75 src/preferences.rs:23
 #: ui/shortcuts_dialog.ui:167
 msgid "General"
 msgstr "Общие"
 
-#: crates/window/src/app/tabs.rs:220
+#: crates/window/src/app/tabs.rs:235
 #, rust-format
 msgid "Session {number}"
 msgstr "Сеанс {number}"
 
-#: crates/window/src/app/tabs.rs:227
+#: crates/window/src/app/tabs.rs:242
 msgid "Showing sessions together needs a newer terminal server"
 msgstr "Для показа сеансов вместе нужен более новый терминальный сервер"
 
-#: crates/window/src/app/tabs.rs:702
+#: crates/window/src/app/tabs.rs:762
 msgid "Splitting needs a newer terminal server"
 msgstr "Для разделения нужен более новый терминальный сервер"
 
-#: crates/window/src/chrome.rs:959 ui/window.ui:137
+#: crates/window/src/chrome.rs:973 ui/window.ui:137
 msgid "Find in the history"
 msgstr "Поиск в истории"
 
@@ -1083,22 +1099,6 @@ msgstr "Alt и номер вкладки"
 #: ui/shortcuts_dialog.ui:70
 msgid "Show All Tabs"
 msgstr "Показать все вкладки"
-
-#: ui/shortcuts_dialog.ui:123
-msgid "Scroll Up a Page"
-msgstr "На страницу вверх"
-
-#: ui/shortcuts_dialog.ui:129
-msgid "Scroll Down a Page"
-msgstr "На страницу вниз"
-
-#: ui/shortcuts_dialog.ui:135
-msgid "Scroll to the Previous Prompt"
-msgstr "Прокрутить к предыдущему приглашению"
-
-#: ui/shortcuts_dialog.ui:141
-msgid "Scroll to the Next Prompt"
-msgstr "Прокрутить к следующему приглашению"
 
 #: ui/window.ui:22
 msgid "_Detach Window"

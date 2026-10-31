@@ -33,7 +33,6 @@ pub enum Choice {
     /// A session of its own in this window.
     NewSession,
     NewTabIn(SessionId),
-    Preferences,
     About,
     /// The main menu, for a window without its header bar.
     MainMenu,
@@ -118,7 +117,7 @@ impl App {
             ],
             vec![self.act_item(&gettext("Full Screen"), Action::Fullscreen)],
             vec![
-                self.item(&gettext("Preferences"), Choice::Preferences, true),
+                self.act_item(&gettext("Preferences"), Action::Preferences),
                 self.act_item(&gettext("Keyboard Shortcuts"), Action::ShortcutList),
                 self.item(&gettext("About Caret"), Choice::About, true),
             ],
@@ -266,14 +265,33 @@ impl App {
                 let id = self.server.ask(Question::Sessions);
                 self.asked.insert(id, Asked::Reattach);
             }
-            Some(Choice::Preferences) => match config::editable() {
-                Some(path) => pointer::open(&path.to_string_lossy(), &self.toaster),
-                None => self.toast(gettext("Could not make the settings file")),
-            },
             Some(Choice::About) => self.about(),
             Some(Choice::MainMenu) => self.open_main_menu(at),
             None => {}
         }
+    }
+
+    /// Opens the settings file with the program the desktop has for it.
+    pub(super) fn open_preferences(&mut self) {
+        match config::editable() {
+            Some(path) => pointer::open(&path.to_string_lossy(), &self.toaster),
+            None => self.toast(gettext("Could not make the settings file")),
+        }
+    }
+
+    /// Where the terminal's menu opens from the keys: under the cursor, or where other
+    /// menus the keys open go while it is out of sight.
+    pub(super) fn cursor_menu_at(&self) -> (f32, f32) {
+        let Some(cursor) = self.grid.cursor else {
+            return self.keyed_menu_at();
+        };
+        let (scale, cell, margin) = (self.factor(), self.fonts.cell(), self.chrome.margin());
+        let (x, y) = self.origin();
+        let logical = |device: i32| (f64::from(device) / scale) as f32 - margin as f32;
+        (
+            logical(x + i32::from(cursor.point.column) * cell.width),
+            logical(y + (i32::from(cursor.point.line) + 1) * cell.height),
+        )
     }
 
     /// Opens another window, with the settings of `profile` if one is named.

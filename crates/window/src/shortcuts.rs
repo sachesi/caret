@@ -46,6 +46,15 @@ pub enum Action {
     ShowSession(u8),
     /// Lists the actions and their keys.
     ShortcutList,
+    PageUp,
+    PageDown,
+    /// Scrolls to the prompt before or after the one at the top of the view.
+    PreviousPrompt,
+    NextPrompt,
+    /// Opens the terminal's menu.
+    TerminalMenu,
+    /// Opens the settings file.
+    Preferences,
 }
 
 /// Each action, its name in `config.toml`, and the keys it has unless bound to others.
@@ -117,6 +126,16 @@ const ACTIONS: &[(Action, &str, &[&str])] = &[
     (Action::ShowSession(8), "session-8", &["Ctrl+Alt+8"]),
     (Action::ShowSession(9), "session-9", &["Ctrl+Alt+9"]),
     (Action::ShortcutList, "shortcuts", &["Ctrl+question"]),
+    (Action::PageUp, "page-up", &["Shift+Page_Up"]),
+    (Action::PageDown, "page-down", &["Shift+Page_Down"]),
+    (
+        Action::PreviousPrompt,
+        "previous-prompt",
+        &["Ctrl+Shift+Up"],
+    ),
+    (Action::NextPrompt, "next-prompt", &["Ctrl+Shift+Down"]),
+    (Action::TerminalMenu, "terminal-menu", &["Menu"]),
+    (Action::Preferences, "preferences", &["Ctrl+comma"]),
 ];
 
 /// Each action's name in `config.toml` and the keys it has unless bound to others.
@@ -288,6 +307,31 @@ mod tests {
             ..Modifiers::default()
         };
         assert_eq!(shortcuts.action(Keysym::space, ctrl), None);
+    }
+
+    #[test]
+    fn the_history_scrolls_by_the_page_and_between_prompts() {
+        let shortcuts = Shortcuts::new(&HashMap::new());
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::default()
+        };
+        assert_eq!(
+            shortcuts.action(Keysym::Page_Up, shift),
+            Some(Action::PageUp)
+        );
+        assert_eq!(
+            shortcuts.action(Keysym::Page_Up, Modifiers::default()),
+            None
+        );
+        assert_eq!(
+            shortcuts.action(Keysym::Down, CTRL_SHIFT),
+            Some(Action::NextPrompt)
+        );
+        assert_eq!(
+            shortcuts.action(Keysym::Menu, Modifiers::default()),
+            Some(Action::TerminalMenu)
+        );
     }
 
     #[test]

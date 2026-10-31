@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 
 use caret_protocol::encode::{self, Modifiers, Press};
 use caret_protocol::{
-    Answer, Bytes, Command, Message, Options, Question, Request, Select, SessionId, Size,
-    TerminalId,
+    Answer, Bytes, Command, Message, Options, Question, Request, Scroll, Select, SessionId,
+    Size, TerminalId,
 };
 use smithay_client_toolkit::compositor::{
     CompositorHandler, CompositorState, Region,
@@ -1384,7 +1384,22 @@ impl App {
             Action::PreviousSession => self.step_session(-1),
             Action::ShowSession(number) => self.nth_session(usize::from(number)),
             Action::ShortcutList => self.open_shortcut_list(),
+            Action::PageUp => return self.scroll_view(Scroll::Page { up: true }),
+            Action::PageDown => return self.scroll_view(Scroll::Page { up: false }),
+            Action::PreviousPrompt => return self.scroll_view(Scroll::Prompt { up: true }),
+            Action::NextPrompt => return self.scroll_view(Scroll::Prompt { up: false }),
+            Action::TerminalMenu => self.terminal_menu(self.cursor_menu_at(), None),
+            Action::Preferences => self.open_preferences(),
         }
+        true
+    }
+
+    /// Scrolls the focused pane's view as `scroll` says; false without one.
+    fn scroll_view(&mut self, scroll: Scroll) -> bool {
+        let Some(terminal) = self.terminal() else {
+            return false;
+        };
+        self.server.send(&Request::Scroll { terminal, scroll });
         true
     }
 

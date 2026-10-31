@@ -65,11 +65,21 @@ impl App {
                     line(gettext("Zoom In"), Action::ZoomIn),
                     line(gettext("Zoom Out"), Action::ZoomOut),
                     line(gettext("Original Size"), Action::ZoomReset),
+                    line(gettext("Scroll Up a Page"), Action::PageUp),
+                    line(gettext("Scroll Down a Page"), Action::PageDown),
+                    line(
+                        gettext("Scroll to the Previous Prompt"),
+                        Action::PreviousPrompt,
+                    ),
+                    line(gettext("Scroll to the Next Prompt"), Action::NextPrompt),
                 ],
             ),
             section(
                 gettext("General"),
-                vec![line(gettext("Keyboard Shortcuts"), Action::ShortcutList)],
+                vec![
+                    line(gettext("Preferences"), Action::Preferences),
+                    line(gettext("Keyboard Shortcuts"), Action::ShortcutList),
+                ],
             ),
         ];
         self.close_menu();
