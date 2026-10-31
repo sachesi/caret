@@ -256,7 +256,7 @@ impl App {
             self.end(true);
             return;
         }
-        self.server.send(&Request::Detach { session });
+        self.leave_session(session);
         self.session_gone(session);
     }
 

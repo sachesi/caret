@@ -744,6 +744,13 @@ impl App {
                 };
                 self.retitle();
             }
+            Message::SessionRemembered {
+                session,
+                tab,
+                profile,
+            } if self.sessions.contains(&session) => {
+                self.take_up_session(session, tab, profile);
+            }
             _ => {}
         }
     }
@@ -910,9 +917,9 @@ impl App {
             maximized: self.chrome.maximized,
         }
         .save();
-        for &session in &self.sessions {
+        for session in self.sessions.clone() {
             if detach {
-                self.server.send(&Request::Detach { session });
+                self.leave_session(session);
             } else {
                 self.server.send(&Request::CloseSession { session });
             }

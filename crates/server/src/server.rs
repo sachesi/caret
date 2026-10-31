@@ -54,6 +54,8 @@ struct Session {
     /// The name the user gave it.
     name: Option<String>,
     color: Option<u8>,
+    /// What the last window to leave it left: the tab it showed and its profile.
+    remembered: Option<(Option<TerminalId>, Option<String>)>,
 }
 
 struct TabState {
@@ -454,6 +456,15 @@ impl Server {
                     (version >= PANES).then_some(Message::SessionColored { session, color })
                 });
             }
+            Request::RememberSession {
+                session,
+                tab,
+                profile,
+            } => {
+                if let Some(state) = self.sessions.get_mut(&session) {
+                    state.remembered = Some((tab, profile));
+                }
+            }
             Request::MoveTab {
                 terminal,
                 session,
@@ -734,6 +745,21 @@ impl Server {
                 &Message::SessionColored {
                     session: session_id,
                     color: Some(color),
+                },
+            );
+        }
+        if let Some((tab, profile)) = self
+            .sessions
+            .get(&session_id)
+            .and_then(|session| session.remembered.clone())
+            .filter(|_| version >= PANES)
+        {
+            self.send(
+                client,
+                &Message::SessionRemembered {
+                    session: session_id,
+                    tab,
+                    profile,
                 },
             );
         }
@@ -1912,6 +1938,33 @@ mod tests {
         }
         match harness.next(|message| matches!(message, Message::SessionColored { .. })) {
             Message::SessionColored { color, .. } => assert_eq!(color, Some(3)),
+            _ => unreachable!(),
+        }
+        harness.request(Request::CloseSession { session });
+    }
+
+    #[test]
+    fn the_next_window_on_a_session_hears_what_the_last_one_left() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        let tab = harness.open(session, &["sh", "-c", "sleep 30"]);
+        harness.request(Request::RememberSession {
+            session,
+            tab: Some(tab),
+            profile: Some("work".to_owned()),
+        });
+        harness.request(Request::Detach { session });
+        harness.request(Request::Attach { session });
+        match harness.next(|message| matches!(message, Message::SessionRemembered { .. })) {
+            Message::SessionRemembered {
+                tab: remembered,
+                profile,
+                ..
+            } => {
+                assert_eq!(remembered, Some(tab));
+                assert_eq!(profile.as_deref(), Some("work"));
+            }
             _ => unreachable!(),
         }
         harness.request(Request::CloseSession { session });

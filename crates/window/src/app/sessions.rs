@@ -1,7 +1,7 @@
 //! The window's sessions while it shows several: one tab for each in the strip, which
 //! shows the session's last tab or lists its tabs, and the keys between sessions.
 
-use caret_protocol::{Question, SessionId, TerminalId};
+use caret_protocol::{Question, Request, SessionId, TerminalId};
 use gettextrs::gettext;
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
@@ -9,7 +9,7 @@ use super::menus::Choice;
 use super::pointer::{BUTTON_LEFT, BUTTON_MIDDLE, BUTTON_RIGHT};
 use super::{App, Asked};
 use crate::chrome::{self, Item, Part, SessionLabel, TabLabel};
-use crate::config::SessionClick;
+use crate::config::{Config, SessionClick};
 use crate::shortcuts::Action;
 
 /// How far, in logical pixels, a held tab goes before it is dragged rather than clicked.
@@ -84,6 +84,39 @@ impl App {
             .and_then(|&key| self.tab_of(key))
             .filter(|&index| self.tabs[index].session == session)
             .or_else(|| self.tabs.iter().position(|tab| tab.session == session))
+    }
+
+    /// Detaches from `session`, leaving its last tab and the window's profile for the
+    /// next window to take up.
+    pub(super) fn leave_session(&mut self, session: SessionId) {
+        self.remember_tab();
+        self.server.send(&Request::RememberSession {
+            session,
+            tab: self.last_tabs.get(&session).copied(),
+            profile: self.profile.clone(),
+        });
+        self.server.send(&Request::Detach { session });
+    }
+
+    /// Goes back to what the window before this one had of `session`: its tab, and its
+    /// profile when no other was asked for and this is the window's own session.
+    pub(super) fn take_up_session(
+        &mut self,
+        session: SessionId,
+        tab: Option<TerminalId>,
+        profile: Option<String>,
+    ) {
+        if let Some(tab) = tab {
+            self.last_tabs.insert(session, tab);
+            let showing = self.tabs.get(self.selected).map(|tab| tab.session);
+            if let Some(index) = self.tab_of(tab).filter(|_| showing == Some(session)) {
+                self.show(index);
+            }
+        }
+        if self.profile.is_none() && profile.is_some() && self.sessions.first() == Some(&session) {
+            self.profile = profile;
+            self.reconfigure(Config::load(self.profile.as_deref()));
+        }
     }
 
     /// Remembers the tab shown as its session's last.

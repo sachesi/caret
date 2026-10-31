@@ -444,6 +444,13 @@ pub enum Request {
         session: SessionId,
         color: Option<u8>,
     },
+    /// Since version 2. What a window showing the session had, for the next one to
+    /// attach to it to take up: the tab it showed and the profile of its settings.
+    RememberSession {
+        session: SessionId,
+        tab: Option<TerminalId>,
+        profile: Option<String>,
+    },
 }
 variants!(Request {
     0 => Look { palette, options },
@@ -470,6 +477,7 @@ variants!(Request {
     21 => NameSession { session, name },
     22 => ShowSession { terminal, session },
     23 => ColorSession { session, color },
+    24 => RememberSession { session, tab, profile },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -571,6 +579,13 @@ pub enum Message {
         session: SessionId,
         color: Option<u8>,
     },
+    /// Since version 2. What the window before this client had of the session, after
+    /// `Attached` when one told the server.
+    SessionRemembered {
+        session: SessionId,
+        tab: Option<TerminalId>,
+        profile: Option<String>,
+    },
 }
 variants!(Message {
     0 => Answer { id, answer },
@@ -593,4 +608,5 @@ variants!(Message {
     17 => SessionNamed { session, name },
     18 => ShowSession { session },
     19 => SessionColored { session, color },
+    20 => SessionRemembered { session, tab, profile },
 });
