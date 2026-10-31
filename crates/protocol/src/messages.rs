@@ -227,6 +227,15 @@ pub enum Question {
     Foreground {
         terminal: TerminalId,
     },
+    /// Since version 5. The session `terminal` is in: answered with `Session`, or `Gone`.
+    SessionOf {
+        terminal: TerminalId,
+    },
+    /// Since version 5. What runs in `session` other than idle shells: answered with
+    /// `ProgramNames`.
+    ProgramNames {
+        session: SessionId,
+    },
 }
 variants!(Question {
     0 => Sessions,
@@ -243,6 +252,8 @@ variants!(Question {
     11 => Programs { sessions },
     12 => Arrange { terminal, plan },
     13 => Foreground { terminal },
+    14 => SessionOf { terminal },
+    15 => ProgramNames { session },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -282,6 +293,9 @@ pub enum Answer {
     Programs {
         count: u32,
     },
+    ProgramNames {
+        programs: Vec<String>,
+    },
 }
 variants!(Answer {
     0 => Sessions { sessions },
@@ -296,6 +310,7 @@ variants!(Answer {
     9 => Opened { terminal },
     10 => SessionList { sessions },
     11 => Programs { count },
+    12 => ProgramNames { programs },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -475,6 +490,10 @@ pub enum Request {
         tab: Option<TerminalId>,
         profile: Option<String>,
     },
+    /// Since version 5. Has every client showing the session let it go; it keeps running.
+    DetachEveryone {
+        session: SessionId,
+    },
 }
 variants!(Request {
     0 => Look { palette, options },
@@ -502,6 +521,7 @@ variants!(Request {
     22 => ShowSession { terminal, session },
     23 => ColorSession { session, color },
     24 => RememberSession { session, tab, profile },
+    25 => DetachEveryone { session },
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -604,6 +624,10 @@ pub enum Message {
         session: SessionId,
         color: Option<u8>,
     },
+    /// Since version 5. Another client asked everyone showing `session` to let it go.
+    DetachSession {
+        session: SessionId,
+    },
     /// Since version 2. What the window before this client had of the session, after
     /// `Attached` when one told the server.
     SessionRemembered {
@@ -634,4 +658,5 @@ variants!(Message {
     18 => ShowSession { session },
     19 => SessionColored { session, color },
     20 => SessionRemembered { session, tab, profile },
+    21 => DetachSession { session },
 });

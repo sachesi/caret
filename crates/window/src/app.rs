@@ -786,6 +786,9 @@ impl App {
             Message::SessionClosed { session } if self.sessions.contains(&session) => {
                 self.session_gone(session);
             }
+            Message::DetachSession { session } if self.sessions.contains(&session) => {
+                self.detach_session(session);
+            }
             Message::Layout { session, tab, root } if self.sessions.contains(&session) => {
                 self.tab_layout(tab, root);
             }

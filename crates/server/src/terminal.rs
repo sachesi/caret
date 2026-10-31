@@ -132,6 +132,12 @@ pub struct Terminal {
     named_program: bool,
 }
 
+/// The name of the process group's leader, as the kernel gives it.
+fn program_name_of(group: u32) -> String {
+    let name = std::fs::read_to_string(format!("/proc/{group}/comm")).unwrap_or_default();
+    name.trim_end().to_owned()
+}
+
 /// What the server's loop asks about a program that runs.
 struct Started {
     child: u32,
@@ -574,8 +580,15 @@ impl Terminal {
         if group == started.child {
             return None;
         }
-        let name = std::fs::read_to_string(format!("/proc/{group}/comm")).unwrap_or_default();
-        Some(name.trim_end().to_owned())
+        Some(program_name_of(group))
+    }
+
+    /// The name of the program in the foreground, unless it is an idle shell the terminal
+    /// started: a program named when the terminal was opened counts.
+    pub fn foreground_program(&self) -> Option<String> {
+        let started = self.started.get()?;
+        let group = pty::foreground(started.controller.as_fd())?;
+        (group != started.child || self.named_program).then(|| program_name_of(group))
     }
 
     /// The command line of the program in the foreground; empty when that is the shell

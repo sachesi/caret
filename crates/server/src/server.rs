@@ -36,6 +36,9 @@ pub enum Input {
     Terminal(TerminalId, Event),
 }
 
+/// The first protocol version whose clients can be asked to let a session go.
+const DETACH_EVERYONE: u16 = 5;
+
 /// The first protocol version with split panes.
 const PANES: u16 = 2;
 
@@ -374,6 +377,11 @@ impl Server {
             Request::Ask { id, question } => self.ask(client, id, question),
             Request::Attach { session } => self.attach(client, session),
             Request::Detach { session } => self.detach(client, session),
+            Request::DetachEveryone { session } => {
+                self.broadcast_versions(session, None, |version| {
+                    (version >= DETACH_EVERYONE).then_some(Message::DetachSession { session })
+                });
+            }
             Request::CloseSession { session } => {
                 let keys: Vec<TerminalId> = self
                     .sessions
@@ -571,6 +579,26 @@ impl Server {
         }
     }
 
+    fn session_of(&self, terminal: TerminalId) -> Answer {
+        self.terminals
+            .get(&terminal)
+            .map_or(Answer::Gone, |entry| Answer::Session {
+                session: entry.session,
+            })
+    }
+
+    fn program_names(&self, session: SessionId) -> Answer {
+        let programs = self
+            .sessions
+            .get(&session)
+            .into_iter()
+            .flat_map(|session| &session.tabs)
+            .flat_map(|tab| tab.root.panes())
+            .filter_map(|terminal| self.running(terminal)?.foreground_program())
+            .collect();
+        Answer::ProgramNames { programs }
+    }
+
     /// Every session, with its name and how many panes and clients it has.
     fn session_list(&self) -> Answer {
         Answer::SessionList {
@@ -638,6 +666,8 @@ impl Server {
                 None => Answer::Gone,
             },
             Question::Foreground { terminal } => self.foreground(terminal),
+            Question::SessionOf { terminal } => self.session_of(terminal),
+            Question::ProgramNames { session } => self.program_names(session),
             Question::Directory { terminal } => match self.terminals.get(&terminal) {
                 Some(entry) => Answer::Directory {
                     path: Self::directory(entry)
@@ -2046,6 +2076,102 @@ mod tests {
         harness.frame_with(terminal, "exitedwithstatus3");
         harness.request(Request::CloseTab { terminal });
         harness.next(|message| matches!(message, Message::SessionClosed { .. }));
+    }
+
+    #[test]
+    fn a_terminal_says_which_session_it_is_in() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        let terminal = harness.open(session, &["cat"]);
+        harness.request(Request::Ask {
+            id: 8,
+            question: Question::SessionOf { terminal },
+        });
+        assert!(matches!(
+            harness.next(|message| matches!(message, Message::Answer { id: 8, .. })),
+            Message::Answer { answer: Answer::Session { session: found }, .. } if found == session
+        ));
+        harness.request(Request::Ask {
+            id: 9,
+            question: Question::SessionOf {
+                terminal: TerminalId(9999),
+            },
+        });
+        assert!(matches!(
+            harness.next(|message| matches!(message, Message::Answer { id: 9, .. })),
+            Message::Answer {
+                answer: Answer::Gone,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn a_program_named_at_the_start_counts_as_running_and_an_idle_shell_does_not() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        harness.open(session, &["sleep", "30"]);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            harness.request(Request::Ask {
+                id: 8,
+                question: Question::ProgramNames { session },
+            });
+            let answer = harness.next(|message| matches!(message, Message::Answer { id: 8, .. }));
+            let Message::Answer {
+                answer: Answer::ProgramNames { programs },
+                ..
+            } = answer
+            else {
+                panic!("{answer:?}");
+            };
+            if programs == ["sleep"] {
+                break;
+            }
+            assert!(Instant::now() < deadline, "it runs {programs:?}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let idle = harness.new_session();
+        harness.request(Request::Attach { session: idle });
+        let shell = Command {
+            argv: Vec::new(),
+            ..Command::default()
+        };
+        harness.request(Request::Ask {
+            id: 10,
+            question: Question::OpenTab {
+                session: idle,
+                index: 0,
+                command: shell,
+                size: SIZE,
+            },
+        });
+        harness.next(|message| matches!(message, Message::Answer { id: 10, .. }));
+        std::thread::sleep(Duration::from_millis(200));
+        harness.request(Request::Ask {
+            id: 11,
+            question: Question::ProgramNames { session: idle },
+        });
+        assert!(matches!(
+            harness.next(|message| matches!(message, Message::Answer { id: 11, .. })),
+            Message::Answer { answer: Answer::ProgramNames { programs }, .. } if programs.is_empty()
+        ));
+    }
+
+    #[test]
+    fn every_client_showing_a_session_is_asked_to_let_it_go() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        harness.open(session, &["cat"]);
+        harness.request(Request::DetachEveryone { session });
+        assert!(matches!(
+            harness.next(|message| matches!(message, Message::DetachSession { .. })),
+            Message::DetachSession { session: told } if told == session
+        ));
+        assert!(harness.server.sessions.contains_key(&session));
     }
 
     #[test]

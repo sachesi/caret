@@ -497,6 +497,10 @@ impl Client {
                 self.resize();
             }
             Message::SessionClosed { session } if session == self.session => return false,
+            Message::DetachSession { session } if session == self.session => {
+                self.send(&Request::Detach { session });
+                return false;
+            }
             Message::Title { terminal, title } => {
                 if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.key == terminal) {
                     tab.title.clone_from(&title);
