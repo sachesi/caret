@@ -1562,8 +1562,7 @@ impl Server {
                 entry.exit_status = Some(status);
                 self.program_ended(terminal);
             }
-            Event::Crashed => {
-                let reason = "The terminal crashed".to_owned();
+            Event::Failed(reason) => {
                 entry.terminal = None;
                 entry.failure = Some(reason.clone());
                 self.broadcast_for(terminal, &Message::Failed { terminal, reason });
@@ -2556,6 +2555,20 @@ mod tests {
             }
             assert!(Instant::now() < deadline, "what it wrote never showed");
         }
+    }
+
+    #[test]
+    fn what_is_typed_before_a_program_has_started_reaches_it() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        let terminal = harness.open(session, &["sh", "-c", "read line; exit $line"]);
+        harness.request(Request::Input {
+            terminal,
+            bytes: Bytes(b"0\n".to_vec()),
+            bottom: false,
+        });
+        harness.next(|message| matches!(message, Message::TabClosed { .. }));
     }
 
     #[test]

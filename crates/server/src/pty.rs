@@ -3,7 +3,7 @@
 
 use std::fs::File;
 use std::io;
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::OnceLock;
@@ -81,42 +81,34 @@ impl Pty {
     /// controlling terminal, in a session of its own.
     #[expect(
         unsafe_code,
-        reason = "openpty, termios and the child's setup through libc"
+        reason = "the pseudoterminal, termios and the child's setup through libc"
     )]
     pub fn spawn(mut program: Command, size: Size) -> io::Result<Self> {
-        let (mut controller, mut terminal): (RawFd, RawFd) = (-1, -1);
-        let winsize = winsize(size);
-        // SAFETY: the descriptors are written to live integers, the name may be null, and
-        // the termios and size pointers are to values that outlive the call.
-        check(unsafe {
-            libc::openpty(
-                &raw mut controller,
-                &raw mut terminal,
-                std::ptr::null_mut(),
-                std::ptr::null(),
-                &raw const winsize,
-            )
-        })?;
-        // SAFETY: openpty opened both and nothing else owns them.
-        let (controller, terminal) = unsafe {
-            (
-                OwnedFd::from_raw_fd(controller),
-                OwnedFd::from_raw_fd(terminal),
-            )
+        // Close-on-exec from the moment they are open: other terminals' threads start
+        // programs at the same time, and a program inheriting the controlling side would
+        // keep this terminal's from ever being told it hung up.
+        // SAFETY: posix_openpt takes flags and returns a new descriptor.
+        let controller =
+            check(unsafe { libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC) })?;
+        // SAFETY: posix_openpt opened it and nothing else owns it.
+        let controller = unsafe { OwnedFd::from_raw_fd(controller) };
+        // SAFETY: both take the open descriptor; TIOCGPTPEER opens the other side, and
+        // returns a new descriptor.
+        let terminal = unsafe {
+            check(libc::unlockpt(controller.as_raw_fd()))?;
+            check(libc::ioctl(
+                controller.as_raw_fd(),
+                libc::TIOCGPTPEER,
+                libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC,
+            ))?
         };
-        // Neither is passed on to the program but through its standard streams.
-        add_flags(
-            controller.as_fd(),
-            libc::F_GETFD,
-            libc::F_SETFD,
-            libc::FD_CLOEXEC,
-        )?;
-        add_flags(
-            terminal.as_fd(),
-            libc::F_GETFD,
-            libc::F_SETFD,
-            libc::FD_CLOEXEC,
-        )?;
+        // SAFETY: the kernel opened it and nothing else owns it.
+        let terminal = unsafe { OwnedFd::from_raw_fd(terminal) };
+        let winsize = winsize(size);
+        // SAFETY: TIOCSWINSZ reads a winsize, which outlives the call.
+        check(unsafe {
+            libc::ioctl(controller.as_raw_fd(), libc::TIOCSWINSZ, &raw const winsize)
+        })?;
 
         // Input is UTF-8, so that erasing a character takes all its bytes.
         // SAFETY: an all-zero termios is a valid value for tcgetattr to fill in.
@@ -324,6 +316,17 @@ mod tests {
         let mut pty = Pty::spawn(shell, size()).expect("sh starts");
         let told = output(&mut pty);
         assert_eq!(told.trim(), before.rlim_cur.to_string());
+    }
+
+    #[test]
+    fn a_program_has_a_named_terminal_of_the_right_size_that_it_controls() {
+        let mut shell = Command::new("sh");
+        shell.args(["-c", "tty; stty size; test -r /dev/tty && echo controlling"]);
+        let mut pty = Pty::spawn(shell, size()).expect("sh starts");
+        let told = output(&mut pty);
+        assert!(told.contains("/dev/pts/"), "{told}");
+        assert!(told.contains("24 80"), "{told}");
+        assert!(told.contains("controlling"), "{told}");
     }
 
     #[test]

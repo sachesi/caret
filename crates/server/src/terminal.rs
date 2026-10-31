@@ -14,7 +14,7 @@ use std::os::unix::net::UnixStream;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
-use std::sync::mpsc;
+use std::sync::{Arc, OnceLock, mpsc};
 use std::time::{Duration, Instant};
 
 use caret_protocol::{
@@ -82,8 +82,9 @@ pub enum Event {
     Report(Report),
     /// The program exited, and what it wrote before has been read.
     Exited(ExitStatus),
-    /// The terminal's thread gave up, and the program has been hung up on.
-    Crashed,
+    /// The program could not be started, or the terminal's thread gave up and hung up on
+    /// it, and why.
+    Failed(String),
 }
 
 /// How a client shows terminals: its colours, and whether output brings its view down.
@@ -124,12 +125,92 @@ pub struct Terminal {
     orders: mpsc::Sender<Order>,
     /// Written to after each order, to wake the thread.
     wake: UnixStream,
-    child: u32,
+    /// Set once the program runs.
+    started: Arc<OnceLock<Started>>,
     /// It runs a program it was told to, not the user's shell.
     named_program: bool,
+}
+
+/// What the server's loop asks about a program that runs.
+struct Started {
+    child: u32,
     /// A second handle on the controlling side of the pseudoterminal, to ask which process
     /// group is in the foreground.
     controller: File,
+}
+
+/// A terminal's thread until its program runs. Starting one looks for it and enters its
+/// directory, which on a mount that has stopped answering takes as long as that does, so
+/// it stays off the server's loop and every other terminal.
+struct Start {
+    id: TerminalId,
+    command: Command,
+    size: Size,
+    options: caret_term::Options,
+    palette: Palette,
+    started: Arc<OnceLock<Started>>,
+    events: mpsc::Sender<Input>,
+}
+
+impl Start {
+    fn run(self, orders: mpsc::Receiver<Order>, woken: UnixStream) {
+        let pty = self.program();
+        let pty = match pty {
+            Ok(pty) => pty,
+            Err(error) => {
+                let failed = Event::Failed(error.to_string());
+                let _ = self.events.send(Input::Terminal(self.id, failed));
+                return;
+            }
+        };
+        let (columns, lines) = (usize::from(self.size.columns), usize::from(self.size.lines));
+        let mut term = Term::new(columns, lines, self.options);
+        term.set_palette_base(palette::base(&self.palette));
+        term.set_cell_size(self.size.cell_width, self.size.cell_height);
+        Worker {
+            id: self.id,
+            term,
+            pty: Some(pty),
+            reading: true,
+            unwritten: Unwritten::default(),
+            buffer: vec![0; 64 * 1024],
+            orders,
+            woken,
+            events: self.events,
+            viewers: HashMap::new(),
+            synchronized: None,
+            focused: true,
+        }
+        .run();
+    }
+
+    fn program(&self) -> io::Result<Pty> {
+        let launch = Launch(&self.command);
+        let mut env = launch.environment();
+        // How `caret attach` run in the terminal finds the window it is in.
+        env.insert("CARET_TERMINAL".to_owned(), self.id.0.to_string());
+        let program = launch.program();
+        launch.check(&program, &env)?;
+        let mut process = std::process::Command::new(&program);
+        process
+            .args(self.command.argv.iter().skip(1))
+            .env_clear()
+            .envs(&env);
+        if let Some(directory) = launch.directory() {
+            process.current_dir(directory);
+        }
+        let pty = Pty::spawn(process, self.size)?;
+        let controller = match pty.controller.try_clone() {
+            Ok(controller) => controller,
+            Err(error) => {
+                pty.hang_up(Duration::ZERO);
+                return Err(error);
+            }
+        };
+        let child = pty.id();
+        let _ = self.started.set(Started { child, controller });
+        Ok(pty)
+    }
 }
 
 /// Set beside `GSK_RENDERER` when the window chose GTK's renderer itself, so that the
@@ -326,60 +407,26 @@ impl Terminal {
         // A thread busy for long leaves the socket full of wakes it has yet to see. More of
         // them say nothing new, and must not hold up the server's loop.
         wake.set_nonblocking(true)?;
-        let launch = Launch(command);
-        let mut env = launch.environment();
-        // How `caret attach` run in the terminal finds the window it is in.
-        env.insert("CARET_TERMINAL".to_owned(), id.0.to_string());
-        let named_program = !command.argv.is_empty();
-        let program = launch.program();
-        launch.check(&program, &env)?;
-        let mut process = std::process::Command::new(&program);
-        process
-            .args(command.argv.iter().skip(1))
-            .env_clear()
-            .envs(&env);
-        if let Some(directory) = launch.directory() {
-            process.current_dir(directory);
-        }
-        let size = fitted(size);
-        let pty = Pty::spawn(process, size)?;
-        let child = pty.id();
-        let controller = match pty.controller.try_clone() {
-            Ok(controller) => controller,
-            Err(error) => {
-                pty.hang_up(Duration::ZERO);
-                return Err(error);
-            }
-        };
         let (orders, received) = mpsc::channel();
-
-        let mut term = Term::new(usize::from(size.columns), usize::from(size.lines), options);
-        term.set_palette_base(palette::base(palette));
-        term.set_cell_size(size.cell_width, size.cell_height);
-        let worker = Worker {
+        let started = Arc::new(OnceLock::new());
+        let start = Start {
             id,
-            term,
-            pty: Some(pty),
-            reading: true,
-            unwritten: Unwritten::default(),
-            buffer: vec![0; 64 * 1024],
-            orders: received,
-            woken,
+            command: command.clone(),
+            size: fitted(size),
+            options,
+            palette: palette.clone(),
+            started: started.clone(),
             events: events.clone(),
-            viewers: HashMap::new(),
-            synchronized: None,
-            focused: true,
         };
         let told = events.clone();
         std::thread::Builder::new()
             .name(format!("terminal {}", id.0))
-            .spawn(move || guarded(id, &told, || worker.run()))?;
+            .spawn(move || guarded(id, &told, || start.run(received, woken)))?;
         Ok(Self {
             orders,
             wake,
-            child,
-            named_program,
-            controller,
+            started,
+            named_program: !command.argv.is_empty(),
         })
     }
 
@@ -460,8 +507,9 @@ impl Terminal {
     /// The name of the program in the foreground when it is not the one the terminal
     /// started, the shell usually: something that closing would interrupt.
     pub fn busy(&self) -> Option<String> {
-        let group = pty::foreground(self.controller.as_fd())?;
-        if group == self.child {
+        let started = self.started.get()?;
+        let group = pty::foreground(started.controller.as_fd())?;
+        if group == started.child {
             return None;
         }
         let name = std::fs::read_to_string(format!("/proc/{group}/comm")).unwrap_or_default();
@@ -471,10 +519,13 @@ impl Terminal {
     /// The command line of the program in the foreground; empty when that is the shell
     /// the terminal started.
     pub fn foreground_command(&self) -> Vec<String> {
-        let Some(group) = pty::foreground(self.controller.as_fd()) else {
+        let Some(started) = self.started.get() else {
             return Vec::new();
         };
-        if group == self.child && !self.named_program {
+        let Some(group) = pty::foreground(started.controller.as_fd()) else {
+            return Vec::new();
+        };
+        if group == started.child && !self.named_program {
             return Vec::new();
         }
         std::fs::read(format!("/proc/{group}/cmdline"))
@@ -489,7 +540,8 @@ impl Terminal {
 
     /// Where the started program is now, for a new tab to start in the same place.
     pub fn directory(&self) -> Option<PathBuf> {
-        std::fs::read_link(format!("/proc/{}/cwd", self.child)).ok()
+        let started = self.started.get()?;
+        std::fs::read_link(format!("/proc/{}/cwd", started.child)).ok()
     }
 }
 
@@ -498,7 +550,8 @@ impl Terminal {
 fn guarded(id: TerminalId, events: &mpsc::Sender<Input>, run: impl FnOnce()) {
     if panic::catch_unwind(AssertUnwindSafe(run)).is_err() {
         tracing::error!("terminal {} crashed", id.0);
-        let _ = events.send(Input::Terminal(id, Event::Crashed));
+        let failed = Event::Failed("The terminal crashed".to_owned());
+        let _ = events.send(Input::Terminal(id, failed));
     }
 }
 
@@ -1182,7 +1235,7 @@ mod tests {
             .expect("the panic stays in the guard");
         assert!(matches!(
             inputs.try_recv(),
-            Ok(Input::Terminal(TerminalId(5), Event::Crashed))
+            Ok(Input::Terminal(TerminalId(5), Event::Failed(_)))
         ));
     }
 
