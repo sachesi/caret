@@ -1,7 +1,7 @@
 //! Split presets: layouts named in `config.toml`, each pane with what it runs and where.
 //! Nothing here needs a window, which starts them from what `Preset` gives it.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use caret_protocol::TerminalId;
 use caret_protocol::layout::{MOST_PANES, Node, WHOLE};
@@ -18,6 +18,9 @@ pub struct Preset {
     pub name: String,
     pub shape: Shape,
     pub shortcut: Option<Shortcut>,
+    /// Every pane has a command, which leaves no pane for a running program: the layout
+    /// always opens in a new tab.
+    pub opens_tab: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,15 +70,16 @@ impl Preset {
             }
         }
         let mut shape = parse_layout(layout.ok_or("it has no `layout`")?)?;
-        shape.settle(&mut settings)?;
+        let opens_tab = shape.settle(&settings)?;
         Ok(Self {
             name: name.to_owned(),
             shape,
             shortcut,
+            opens_tab,
         })
     }
 
-    /// The pane the running program goes to.
+    /// The pane the running program goes to, or the one a new tab of the layout starts with.
     pub fn kept(&self) -> &PresetPane {
         self.shape
             .panes()
@@ -138,21 +142,26 @@ impl Shape {
 
     /// Gives each pane its settings, and marks the one to keep where none is: the first
     /// that starts nothing of its own.
-    fn settle(&mut self, settings: &mut HashMap<String, PresetPane>) -> Result<(), String> {
+    /// Gives the panes their settings and marks the one to keep, and says whether the
+    /// layout has to open in a new tab. A name used twice gives both panes its settings.
+    fn settle(&mut self, settings: &HashMap<String, PresetPane>) -> Result<bool, String> {
         let mut panes = self.panes_mut();
         if panes.len() < 2 {
             return Err("its `layout` has only one pane".to_owned());
         }
+        if let Some(unknown) = settings
+            .keys()
+            .find(|name| !panes.iter().any(|pane| pane.name == **name))
+        {
+            return Err(format!("its `layout` has no pane `{unknown}`"));
+        }
         for pane in &mut panes {
-            if let Some(set) = settings.remove(&pane.name) {
+            if let Some(set) = settings.get(&pane.name) {
                 **pane = PresetPane {
                     name: std::mem::take(&mut pane.name),
-                    ..set
+                    ..set.clone()
                 };
             }
-        }
-        if let Some(unknown) = settings.keys().next() {
-            return Err(format!("its `layout` has no pane `{unknown}`"));
         }
         if panes.iter().filter(|pane| pane.keep).count() > 1 {
             return Err("more than one pane has `keep`".to_owned());
@@ -166,14 +175,17 @@ impl Shape {
                 pane.name
             ));
         }
-        if !panes.iter().any(|pane| pane.keep) {
-            panes
-                .iter_mut()
-                .find(|pane| pane.command.is_empty())
-                .ok_or("every pane has a `command`, which leaves none to `keep`")?
-                .keep = true;
+        if panes.iter().any(|pane| pane.keep) {
+            return Ok(false);
         }
-        Ok(())
+        let opens_tab = panes.iter().all(|pane| !pane.command.is_empty());
+        if let Some(pane) = panes
+            .iter_mut()
+            .find(|pane| opens_tab || pane.command.is_empty())
+        {
+            pane.keep = true;
+        }
+        Ok(opens_tab)
     }
 
     /// The tree with made-up terminals in order, to find where the panes go.
@@ -288,14 +300,14 @@ fn parse_layout(layout: &str) -> Result<Shape, String> {
     let mut parser = Parser {
         tokens: &tokens,
         at: 0,
-        names: HashSet::new(),
+        panes: 0,
         depth: 0,
     };
     let shape = parser.group()?;
     if parser.at < parser.tokens.len() {
         return Err("`layout` has a `)` without its `(`".to_owned());
     }
-    if parser.names.len() > MOST_PANES {
+    if parser.panes > MOST_PANES {
         return Err(format!("`layout` has more than {MOST_PANES} panes"));
     }
     Ok(shape)
@@ -304,7 +316,7 @@ fn parse_layout(layout: &str) -> Result<Shape, String> {
 struct Parser<'a> {
     tokens: &'a [Token<'a>],
     at: usize,
-    names: HashSet<&'a str>,
+    panes: usize,
     /// How many parentheses are open, which the parser recurses into.
     depth: usize,
 }
@@ -343,9 +355,7 @@ impl<'a> Parser<'a> {
     fn part(&mut self) -> Result<(Shape, Option<u8>), String> {
         let shape = match self.next() {
             Some(Token::Name(name)) => {
-                if !self.names.insert(name) {
-                    return Err(format!("`layout` names pane `{name}` twice"));
-                }
+                self.panes += 1;
                 Shape::Pane(PresetPane {
                     name: (*name).to_owned(),
                     ..PresetPane::default()
@@ -558,7 +568,6 @@ mod tests {
         for (layout, why) in [
             ("a", "only one pane"),
             ("a | b / c", "parentheses"),
-            ("a | a", "twice"),
             ("(a | b", "without its `)`"),
             ("a | b)", "without its `(`"),
             ("a | ", "missing a pane"),
@@ -603,10 +612,6 @@ mod tests {
                 "[panes.a]\nkeep = true\ncommand = \"top\"\n",
                 "already running",
             ),
-            (
-                "[panes.a]\ncommand = \"x\"\n[panes.b]\ncommand = \"y\"\n",
-                "none to `keep`",
-            ),
             ("[panes.c]\nkeep = true\n", "no pane `c`"),
             ("[panes.a]\nkep = true\n", "no setting `kep`"),
             ("[panes.a]\ncommand = \"'open\"\n", "open quote"),
@@ -620,6 +625,30 @@ mod tests {
                 .unwrap_err()
                 .contains("`size`")
         );
+    }
+
+    #[test]
+    fn a_name_used_twice_gives_both_panes_its_settings() {
+        let preset = read("layout = \"a | b | a\"\n[panes.a]\ncommand = \"top\"\n").unwrap();
+        let panes = preset.shape.panes();
+        assert_eq!(panes[0].command, ["top"]);
+        assert_eq!(panes[2].command, ["top"]);
+        assert!(panes[1].keep);
+        assert!(!preset.opens_tab);
+        let error = read("layout = \"a | a\"\n[panes.a]\nkeep = true\n").unwrap_err();
+        assert!(error.contains("more than one"), "{error}");
+    }
+
+    #[test]
+    fn a_layout_with_a_command_in_every_pane_opens_a_tab_starting_with_the_first() {
+        let preset = read("layout = \"a | a\"\n[panes.a]\ncommand = \"top\"\n").unwrap();
+        assert!(preset.opens_tab);
+        assert_eq!(preset.kept().command, ["top"]);
+        assert_eq!(
+            preset.shape.panes().iter().filter(|pane| pane.keep).count(),
+            1
+        );
+        assert!(!read("layout = \"a | b\"").unwrap().opens_tab);
     }
 
     #[test]

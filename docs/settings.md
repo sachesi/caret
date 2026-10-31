@@ -108,14 +108,22 @@ A pane's table is optional. `command` is what it runs, the shell or `custom-comm
 without one, and `directory` is where, starting with `~` for the home directory or
 relative to the current pane; without one it starts where the current pane is.
 
+A name can appear more than once in `layout`, and each of its panes then takes the same
+table, so `layout = "top | top"` needs only one.
+
 A tab with one pane takes the layout, and its running program stays, moved to the pane
 with `keep = true`, or else to the first without a command. A kept pane cannot have a
-command. A tab with several panes is left as it is and the layout opens in a new tab,
-where the kept pane starts a shell in its `directory`.
+command, and only one pane can be kept. A tab with several panes is left as it is and the
+layout opens in a new tab, where the kept pane starts a shell in its `directory`. A layout
+with a command in every pane has nowhere to put a running program, so it always opens in a
+new tab.
 
-A preset that cannot be used is left out of the menu, with a warning in the log saying
-why. Save Layout as Preset, under Presets in a tab with several panes, writes the tab's
-layout here, with each pane's directory and the command line running in it.
+A preset that cannot be used is left out of the menu, and a toast says why when the window
+opens or the settings change, with every such preset in the log. Save Layout as Preset,
+under Presets in a tab with several panes, writes the tab's layout here, with each pane's
+directory and the command line running in it. The focused pane is the kept one, if it runs
+no program of its own. To have a saved layout start where you are, take the `directory`
+lines out of it.
 
 ## Keys
 

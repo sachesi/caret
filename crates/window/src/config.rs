@@ -465,7 +465,8 @@ const STARTER: &str = r##"# Caret's settings. Take the # off a setting to change
 #tab-previews = false
 
 # Split presets lay out a tab: one with a single pane keeps its program in the pane
-# with `keep`, or the first without a command, and otherwise a new tab opens. In
+# with `keep`, or the first without a command. A tab with several panes, or a layout
+# with a command in every pane, opens a new tab. A pane's name can be used twice. In
 # `layout`, | is side by side, / is one under another, and a percent is a size. They
 # are in the terminal's menu and the main menu, and with caret --preset NAME.
 # [split-presets.dev]

@@ -198,7 +198,7 @@ impl App {
 
     /// Goes on with `preset`, now that it is known what its panes start from.
     pub(super) fn preset_from(&mut self, preset: &Preset, base: Command) {
-        if self.tab_is_split() {
+        if self.tab_is_split() || preset.opens_tab {
             let Some(session) = self.shown_session() else {
                 return;
             };
