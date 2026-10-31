@@ -26,6 +26,7 @@ use caret_term::view::{Span, Unit, View};
 use caret_term::{Report, Term};
 
 use crate::capture::{Sent, capture};
+use crate::listen::Outbox;
 use crate::palette;
 use crate::pty::{self, Pty};
 use crate::server::{ClientId, Input, encoded};
@@ -72,7 +73,7 @@ enum Order {
     Follow(caret_term::Options, Palette),
     Show {
         client: ClientId,
-        writer: mpsc::Sender<Vec<u8>>,
+        writer: Outbox,
         look: Look,
     },
     Hide(ClientId),
@@ -367,7 +368,7 @@ impl Terminal {
     }
 
     /// Lets `client` see the terminal, through frames sent to `writer`.
-    pub fn show(&self, client: ClientId, writer: mpsc::Sender<Vec<u8>>, look: Look) {
+    pub fn show(&self, client: ClientId, writer: Outbox, look: Look) {
         self.order(Order::Show {
             client,
             writer,
@@ -441,7 +442,7 @@ impl Terminal {
     reason = "each is a separate state of the client"
 )]
 struct Viewer {
-    writer: mpsc::Sender<Vec<u8>>,
+    writer: Outbox,
     view: View,
     /// Its colours, which programs' changes go over.
     base: caret_term::palette::Base,
@@ -459,8 +460,7 @@ struct Viewer {
 
 impl Viewer {
     fn send(&self, message: &Message) {
-        // Fails once the client is gone, which the loop hears of from its reader.
-        let _ = self.writer.send(encoded(message));
+        self.writer.send(encoded(message));
     }
 
     fn answer(&self, id: u32, answer: Answer) {

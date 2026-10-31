@@ -12,15 +12,77 @@ use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, mpsc};
 
-use caret_protocol::Request;
+use caret_protocol::{LONGEST, Request};
 
 use crate::server::{ClientId, Input};
 
 /// The first descriptor systemd passes.
 const LISTEN_FDS_START: RawFd = 3;
+
+/// Bytes queued for a client before it is hung up on: room for two of the longest
+/// messages.
+const BACKLOG: usize = 2 * LONGEST;
+
+/// What a queued message costs beyond its bytes, counted against [`BACKLOG`] so that
+/// many short ones are not more than it allows: its allocation and its place in the
+/// queue.
+const OVERHEAD: usize = 64;
+
+/// Messages on their way to a client, queued for its writer thread. A client that falls
+/// [`BACKLOG`] bytes behind, stopped or stuck while its programs go on, is hung up on,
+/// before what it does not read takes the server's memory.
+#[derive(Clone)]
+pub struct Outbox {
+    queue: mpsc::Sender<Vec<u8>>,
+    queued: Arc<AtomicUsize>,
+    socket: Arc<UnixStream>,
+}
+
+/// The writer's end of an [`Outbox`]: the messages, and the count of bytes queued it
+/// takes them off.
+pub struct Queued {
+    pub messages: mpsc::Receiver<Vec<u8>>,
+    queued: Arc<AtomicUsize>,
+}
+
+impl Outbox {
+    /// An outbox for the client on `socket`, which it shuts to hang up.
+    pub fn new(socket: UnixStream) -> (Self, Queued) {
+        let (queue, messages) = mpsc::channel();
+        let queued = Arc::new(AtomicUsize::new(0));
+        let outbox = Self {
+            queue,
+            queued: queued.clone(),
+            socket: Arc::new(socket),
+        };
+        (outbox, Queued { messages, queued })
+    }
+
+    /// Queues `bytes`; nothing happens once the client is gone, which the loop hears of
+    /// from its reader.
+    pub fn send(&self, bytes: Vec<u8>) {
+        let length = bytes.len() + OVERHEAD;
+        let before = self.queued.fetch_add(length, Ordering::Relaxed);
+        if before + length > BACKLOG {
+            if before <= BACKLOG {
+                tracing::warn!("hanging up on a client {before} bytes behind");
+                let _ = self.socket.shutdown(std::net::Shutdown::Both);
+            }
+            return;
+        }
+        let _ = self.queue.send(bytes);
+    }
+}
+
+impl Queued {
+    /// `bytes` of a message were written to the client.
+    fn written(&self, bytes: usize) {
+        self.queued.fetch_sub(bytes, Ordering::Relaxed);
+    }
+}
 
 /// The socket systemd activated the server with, if it did. Called before any thread
 /// starts: it takes the variables that say so out of the environment, so that no program
@@ -151,22 +213,26 @@ fn serve(client: ClientId, mut stream: UnixStream, events: &mpsc::Sender<Input>)
             return;
         }
     };
-    let (writer, written) = mpsc::channel::<Vec<u8>>();
-    let mut out = match stream.try_clone() {
-        Ok(out) => out,
+    let (mut out, hang_up) = match stream
+        .try_clone()
+        .and_then(|out| Ok((out, stream.try_clone()?)))
+    {
+        Ok(clones) => clones,
         Err(error) => {
             tracing::warn!("opening a client's socket for writing: {error}");
             return;
         }
     };
+    let (writer, queued) = Outbox::new(hang_up);
     let spawned = std::thread::Builder::new()
         .name(format!("client {} writer", client.0))
         .spawn(move || {
             // Ends when the loop forgets the client, or the client stops reading.
-            for bytes in written {
+            for bytes in &queued.messages {
                 if out.write_all(&bytes).is_err() {
                     break;
                 }
+                queued.written(bytes.len() + OVERHEAD);
             }
             let _ = out.shutdown(std::net::Shutdown::Both);
         });
@@ -199,4 +265,24 @@ fn serve(client: ClientId, mut stream: UnixStream, events: &mpsc::Sender<Input>)
         }
     }
     let _ = events.send(Input::Disconnected(client));
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Read;
+
+    use super::*;
+
+    #[test]
+    fn a_client_too_far_behind_is_hung_up_on() {
+        let (ours, mut theirs) = UnixStream::pair().expect("a socket pair");
+        let (outbox, queued) = Outbox::new(ours);
+        outbox.send(vec![1; 16]);
+        assert_eq!(queued.messages.try_recv().ok(), Some(vec![1; 16]));
+        queued.written(16 + OVERHEAD);
+        outbox.send(vec![0; BACKLOG]);
+        assert!(queued.messages.try_recv().is_err());
+        let mut byte = [0];
+        assert_eq!(theirs.read(&mut byte).expect("the socket reads"), 0);
+    }
 }

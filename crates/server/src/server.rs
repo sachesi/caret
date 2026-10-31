@@ -17,6 +17,7 @@ use caret_protocol::{
 };
 use caret_term::Report;
 
+use crate::listen::Outbox;
 use crate::palette;
 use crate::terminal::{self, Event, Look, Terminal};
 
@@ -28,7 +29,7 @@ pub enum Input {
         client: ClientId,
         /// The protocol version agreed with it.
         version: u16,
-        writer: mpsc::Sender<Vec<u8>>,
+        writer: Outbox,
     },
     Request(ClientId, Request),
     Disconnected(ClientId),
@@ -39,7 +40,7 @@ pub enum Input {
 const PANES: u16 = 2;
 
 struct Client {
-    writer: mpsc::Sender<Vec<u8>>,
+    writer: Outbox,
     version: u16,
     palette: Palette,
     options: Options,
@@ -213,8 +214,7 @@ impl Server {
 
     fn send(&self, client: ClientId, message: &Message) {
         if let Some(client) = self.clients.get(&client) {
-            // Fails once its writer has ended, and its reader then says it is gone.
-            let _ = client.writer.send(encoded(message));
+            client.writer.send(encoded(message));
         }
     }
 
@@ -226,7 +226,7 @@ impl Server {
         let bytes = encoded(message);
         for client in &session.clients {
             if let Some(client) = self.clients.get(client) {
-                let _ = client.writer.send(bytes.clone());
+                client.writer.send(bytes.clone());
             }
         }
     }
@@ -250,7 +250,7 @@ impl Server {
             if let Some(state) = self.clients.get(client)
                 && (state.version >= PANES || first == Some(terminal))
             {
-                let _ = state.writer.send(bytes.clone());
+                state.writer.send(bytes.clone());
             }
         }
     }
@@ -271,7 +271,7 @@ impl Server {
                 && let Some(state) = self.clients.get(client)
                 && let Some(message) = message(state.version)
             {
-                let _ = state.writer.send(encoded(&message));
+                state.writer.send(encoded(&message));
             }
         }
     }
@@ -1469,6 +1469,7 @@ impl Server {
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::net::UnixStream;
     use std::time::Duration;
 
     use caret_protocol::layout::Side;
@@ -1492,10 +1493,17 @@ mod tests {
         cell_height: 16,
     };
 
+    /// An outbox, and the messages sent to it.
+    fn outbox() -> (Outbox, mpsc::Receiver<Vec<u8>>) {
+        let (socket, _) = UnixStream::pair().expect("a socket pair");
+        let (outbox, queued) = Outbox::new(socket);
+        (outbox, queued.messages)
+    }
+
     fn harness() -> Harness {
         let (events, inputs) = mpsc::channel();
         let mut server = Server::new(events);
-        let (writer, sent) = mpsc::channel();
+        let (writer, sent) = outbox();
         server.handle(Input::Connected {
             client: CLIENT,
             version: caret_protocol::NEWEST,
@@ -1665,7 +1673,7 @@ mod tests {
         harness.server.handle(Input::Disconnected(CLIENT));
         assert!(harness.server.sessions.contains_key(&session));
 
-        let (writer, sent) = mpsc::channel();
+        let (writer, sent) = outbox();
         harness.server.handle(Input::Connected {
             client: CLIENT,
             version: caret_protocol::NEWEST,
@@ -1893,7 +1901,7 @@ mod tests {
     fn a_client_from_before_panes_sees_a_tab_as_its_first_pane() {
         const OLDER: ClientId = ClientId(2);
         let mut harness = harness();
-        let (writer, older) = mpsc::channel();
+        let (writer, older) = outbox();
         harness.server.handle(Input::Connected {
             client: OLDER,
             version: 1,
