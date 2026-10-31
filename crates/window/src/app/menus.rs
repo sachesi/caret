@@ -10,7 +10,7 @@ use crate::config;
 use crate::shortcuts::Action;
 
 /// What a menu's item does.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Choice {
     Act(Action),
     RenameTab(TerminalId),

@@ -113,6 +113,8 @@ mod toast;
 /// A question the window is waiting for the answer to.
 enum Asked {
     Session,
+    /// A session for the tab with this key to move to, in a window of its own.
+    Window(TerminalId),
     /// A tab, opened at this size.
     Tab(Size),
     /// What a new tab runs, or a new pane, beside the focused one or under it.
@@ -685,6 +687,9 @@ impl App {
                 self.sessions.push(session);
                 self.server.send(&Request::Attach { session });
                 self.open_first_tab();
+            }
+            (Some(Asked::Window(key)), Answer::Session { session }) => {
+                self.tab_into_window(key, session);
             }
             (Some(Asked::NextCommand(None)), Answer::Command { command }) => {
                 self.open_tab(command);

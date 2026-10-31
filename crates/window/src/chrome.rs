@@ -509,6 +509,17 @@ impl Chrome {
             .or_else(|| self.tabs.len().checked_sub(1))
     }
 
+    /// The tab of the strip of a window `width` wide at `(x, y)`, in logical pixels from
+    /// the window's corner, whatever is over the strip.
+    pub fn strip_at(&self, (x, y): (f32, f32), width: u32) -> Option<usize> {
+        let header = self.header() as f32;
+        if !(header..header + self.tab_bar() as f32).contains(&y) {
+            return None;
+        }
+        self.shares(width as f32)
+            .position(|(left, share)| (left..left + share).contains(&x))
+    }
+
     /// Where a menu opened from the tab at `index` of the strip of a window `width` wide
     /// goes: under the tab, at its left edge.
     pub fn under_tab(&self, index: usize, width: u32) -> Option<(f32, f32)> {
@@ -1380,6 +1391,35 @@ mod tests {
         );
         assert_eq!(chrome.part_at((20.0, 23.0), size), Some(Part::NewTab));
         assert_eq!(chrome.part_at((100.0, middle + 30.0), size), None);
+    }
+
+    #[test]
+    fn a_session_s_tab_lists_its_tabs_and_is_found_under_a_menu() {
+        let session = |title: &str| TabLabel {
+            session: Some(SessionLabel {
+                tabs: 2,
+                color: None,
+            }),
+            ..label(title)
+        };
+        let mut chrome = Chrome {
+            floating: false,
+            tabs: vec![session("one"), session("two")],
+            ..floating()
+        };
+        let size = (800, 500);
+        let middle = HEADER as f32 + TAB_BAR as f32 / 2.0;
+        assert_eq!(
+            chrome.part_at((800.0 - 3.0 - 19.0, f64::from(middle)), size),
+            Some(Part::TabMenu(1))
+        );
+        assert_eq!(
+            chrome.under_tab(1, 800),
+            Some((400.0, (HEADER + TAB_BAR) as f32))
+        );
+        chrome.menu = Some(Menu::new(Vec::new(), (0.0, 0.0), false));
+        assert_eq!(chrome.strip_at((500.0, middle), 800), Some(1));
+        assert_eq!(chrome.strip_at((500.0, middle + 30.0), 800), None);
     }
 
     #[test]

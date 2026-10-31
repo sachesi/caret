@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 
 use caret_protocol::encode::{self, MouseAction, MouseButton};
 use caret_protocol::{
-    Bytes, Mode, Point, Question, Request, Scroll, Select, SelectionKind, TerminalId,
+    Bytes, Mode, Point, Question, Request, Scroll, Select, SelectionKind, SessionId,
+    TerminalId,
 };
 use smithay_client_toolkit::reexports::client::protocol::wl_pointer::WlPointer;
 use smithay_client_toolkit::reexports::client::{Connection, QueueHandle};
@@ -46,11 +47,15 @@ pub struct Pointer {
     /// The last click on the header bar, which a second soon after maximizes the window.
     header_click: Option<Instant>,
     /// Logical pixels from the surface's corner.
-    position: (f64, f64),
+    pub(super) position: (f64, f64),
     /// Selecting with the left button held.
     selecting: bool,
     /// The tab held by the left button, which moves along the strip with the pointer.
     dragged_tab: Option<TerminalId>,
+    /// The session's tab, or the listed tab, held by the left button: where it was
+    /// pressed, and whether it has been dragged since.
+    pub(super) dragged_session: Option<(SessionId, (f64, f64), bool)>,
+    pub(super) dragged_row: Option<(TerminalId, (f64, f64), bool)>,
     /// The divider between panes held by the left button, which follows the pointer.
     dividing: Option<Divider>,
     /// The pane held by the left button, to move where it is let go of.
@@ -158,13 +163,18 @@ impl App {
     }
 
     /// The cursor's shape where the pointer is.
-    fn set_cursor(&mut self) {
+    pub(super) fn set_cursor(&mut self) {
         let divider = self
             .pointer
             .dividing
             .or_else(|| self.placed().divider_at(self.device_point()));
         let shape = match self.chrome.hovered {
             _ if self.pointer.moving.is_some() => Shape::Grabbing,
+            _ if matches!(self.pointer.dragged_session, Some((_, _, true)))
+                || matches!(self.pointer.dragged_row, Some((_, _, true))) =>
+            {
+                Shape::Grabbing
+            }
             Some(part) => cursor(part),
             None if divider.is_some_and(|divider| divider.vertical) => Shape::ColResize,
             None if divider.is_some() => Shape::RowResize,
@@ -259,6 +269,9 @@ impl App {
                 | Part::MenuClose(_),
                 BUTTON_LEFT,
             ) => {
+                if let Part::MenuItem(index) = part {
+                    self.hold_listed(index);
+                }
                 self.chrome.pressed = Some(part);
                 self.dirty = true;
                 self.draw();
@@ -339,6 +352,32 @@ impl App {
             }
         }
         self.draw();
+    }
+
+    /// Lets go of what the button held: a tab, a pane, a divider, a button of the frame,
+    /// or the terminal's selection.
+    fn let_go(&mut self, button: u32) {
+        if let Some(terminal) = self.pointer.dragged_tab.take()
+            && self.outside()
+        {
+            self.tab_to_window(terminal);
+        }
+        if self.drop_listed() {
+            self.chrome.pressed = None;
+            self.set_cursor();
+            self.dirty = true;
+            self.draw();
+        } else if self.pointer.moving.is_some() {
+            self.drop_pane();
+            self.set_cursor();
+        } else if self.pointer.dividing.is_some() {
+            self.let_go_of_divider();
+            self.set_cursor();
+        } else if self.chrome.pressed.is_some() {
+            self.released_frame();
+        } else {
+            self.released(button);
+        }
     }
 
     /// Whether the program gets the mouse: it asked, and Shift is not held to select
@@ -572,6 +611,14 @@ impl PointerHandler for App {
                     self.show_link();
                     self.draw();
                 }
+                PointerEventKind::Motion { .. }
+                    if self.pointer.dragged_session.is_some()
+                        || self.pointer.dragged_row.is_some() =>
+                {
+                    self.pointer.position = event.position;
+                    self.drag_listed();
+                    self.hover();
+                }
                 PointerEventKind::Motion { .. } if self.pointer.moving.is_some() => {
                     self.pointer.position = event.position;
                     self.dirty = true;
@@ -608,20 +655,7 @@ impl PointerHandler for App {
                         _ => self.pressed(button, serial),
                     }
                 }
-                PointerEventKind::Release { button, .. } => {
-                    self.pointer.dragged_tab = None;
-                    if self.pointer.moving.is_some() {
-                        self.drop_pane();
-                        self.set_cursor();
-                    } else if self.pointer.dividing.is_some() {
-                        self.let_go_of_divider();
-                        self.set_cursor();
-                    } else if self.chrome.pressed.is_some() {
-                        self.released_frame();
-                    } else {
-                        self.released(button);
-                    }
-                }
+                PointerEventKind::Release { button, .. } => self.let_go(button),
                 PointerEventKind::Axis { .. } if self.chrome.hovered.is_some() => {}
                 // Only a wheel zooms: a touchpad's scrolling would zoom by the pixel.
                 PointerEventKind::Axis { vertical, .. } if self.modifiers.ctrl => {

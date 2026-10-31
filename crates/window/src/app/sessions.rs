@@ -1,15 +1,18 @@
 //! The window's sessions while it shows several: one tab for each in the strip, which
 //! shows the session's last tab or lists its tabs, and the keys between sessions.
 
-use caret_protocol::{SessionId, TerminalId};
+use caret_protocol::{Question, SessionId, TerminalId};
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
-use super::App;
 use super::menus::Choice;
 use super::pointer::{BUTTON_LEFT, BUTTON_MIDDLE, BUTTON_RIGHT};
+use super::{App, Asked};
 use crate::chrome::{self, Item, Part, SessionLabel, TabLabel};
 use crate::config::SessionClick;
 use crate::shortcuts::Action;
+
+/// How far, in logical pixels, a held tab goes before it is dragged rather than clicked.
+const DRAG: f64 = 8.0;
 
 /// The colours sessions take by their number, unless the user gave one another.
 pub const COLORS: [u32; 9] = [
@@ -98,7 +101,10 @@ impl App {
             return true;
         };
         match (part, button) {
-            (Part::Tab(_), BUTTON_LEFT) => self.session_clicked(index),
+            // Clicked once let go of without being dragged.
+            (Part::Tab(_), BUTTON_LEFT) => {
+                self.pointer.dragged_session = Some((session, self.pointer.position, false));
+            }
             (_, BUTTON_LEFT | BUTTON_RIGHT) => self.session_popup(session),
             (_, BUTTON_MIDDLE) if self.config.middle_click_detach => {
                 self.detach_session(session);
@@ -229,10 +235,14 @@ impl App {
             self.close_menu();
             return;
         }
-        let (at, filter, focused) = (old.at, old.filter.clone().unwrap_or_default(), old.focused);
+        let (at, filter) = (old.at, old.filter.clone().unwrap_or_default());
+        // The focus stays with what it was on, wherever that is listed now.
+        let focused = old
+            .focused
+            .and_then(|focused| self.choices.get(focused).cloned());
         let mut menu = self.popup_menu(session, at, &filter);
-        let count = menu.items().count();
-        menu.focused = focused.filter(|&focused| focused < count);
+        menu.focused =
+            focused.and_then(|focused| self.choices.iter().position(|choice| *choice == focused));
         self.chrome.menu = Some(menu);
     }
 
@@ -279,5 +289,166 @@ impl App {
         {
             self.close_tab(index);
         }
+    }
+
+    /// Starts holding the listed tab at `index`, which may be dragged.
+    pub(super) fn hold_listed(&mut self, index: usize) {
+        if self.popup.is_some()
+            && let Some(Choice::ShowTab(key)) = self.choices.get(index)
+        {
+            self.pointer.dragged_row = Some((*key, self.pointer.position, false));
+        }
+    }
+
+    /// Follows the pointer with the session's tab or the listed tab held: the session
+    /// moves along the strip, the tab among the listed ones.
+    pub(super) fn drag_listed(&mut self) {
+        let position = self.pointer.position;
+        let far = |start: (f64, f64)| (position.0 - start.0).hypot(position.1 - start.1) > DRAG;
+        if let Some((session, start, dragged)) = &mut self.pointer.dragged_session {
+            *dragged |= far(*start);
+            let session = *session;
+            if *dragged {
+                self.drag_session(session);
+            }
+        }
+        self.set_cursor();
+        if let Some((key, start, dragged)) = &mut self.pointer.dragged_row {
+            *dragged |= far(*start);
+            let key = *key;
+            if *dragged {
+                self.drag_row(key);
+            }
+        }
+    }
+
+    /// Moves `session` to where the pointer is along the strip.
+    fn drag_session(&mut self, session: SessionId) {
+        let (Some((width, _)), Some(from)) = (
+            self.size,
+            self.sessions.iter().position(|&shown| shown == session),
+        ) else {
+            return;
+        };
+        let (x, _) = self.pointer_at();
+        let Some(to) = self
+            .chrome
+            .tab_at(f64::from(x), width)
+            .filter(|&to| to != from && to < self.sessions.len())
+        else {
+            return;
+        };
+        self.sessions.remove(from);
+        self.sessions.insert(to, session);
+        // Each session's tabs stay together, in the sessions' order.
+        let shown = self.tabs.get(self.selected).map(|tab| tab.key);
+        let order = self.sessions.clone();
+        self.tabs
+            .sort_by_key(|tab| order.iter().position(|&s| s == tab.session));
+        if let Some(index) = shown.and_then(|shown| self.tab_of(shown)) {
+            self.selected = index;
+        }
+        self.retitle();
+    }
+
+    /// Moves the listed tab `key` to the place of the listed tab under the pointer.
+    fn drag_row(&mut self, key: TerminalId) {
+        let (Some(size), Some(menu)) = (self.size, self.chrome.menu.as_ref()) else {
+            return;
+        };
+        let margin = f64::from(self.chrome.margin());
+        let (x, y) = self.pointer.position;
+        let Part::MenuItem(index) = menu.part_at((x - margin, y - margin), size) else {
+            return;
+        };
+        let Some(&Choice::ShowTab(other)) = self.choices.get(index) else {
+            return;
+        };
+        let keys = self.session_keys_of(key);
+        if other == key {
+            return;
+        }
+        if let (Some(to), Some(session)) = (
+            keys.iter().position(|&listed| listed == other),
+            self.tab_of(key).map(|index| self.tabs[index].session),
+        ) {
+            self.move_tab_to(key, session, to);
+        }
+    }
+
+    /// The keys of the tabs of `key`'s session, in order.
+    fn session_keys_of(&self, key: TerminalId) -> Vec<TerminalId> {
+        let session = self.tab_of(key).map(|index| self.tabs[index].session);
+        self.tabs
+            .iter()
+            .filter(|tab| Some(tab.session) == session)
+            .map(|tab| tab.key)
+            .collect()
+    }
+
+    /// Lets go of the session's tab or the listed tab held: a session's tab not dragged
+    /// is clicked, and one dragged out of the window, or a listed tab dragged out of it
+    /// or onto another session's tab, goes there. False when neither was held, or a
+    /// listed tab was not dragged, so that it is chosen.
+    pub(super) fn drop_listed(&mut self) -> bool {
+        if let Some((session, _, dragged)) = self.pointer.dragged_session.take() {
+            if !dragged {
+                if let Some(index) = self.sessions.iter().position(|&shown| shown == session) {
+                    self.session_clicked(index);
+                }
+            } else if self.outside() {
+                self.session_to_window(session);
+            }
+            return true;
+        }
+        let Some((key, _, true)) = self.pointer.dragged_row.take() else {
+            return false;
+        };
+        let target = self
+            .size
+            .and_then(|(width, _)| self.chrome.strip_at(self.pointer_at(), width))
+            .filter(|_| self.grouped())
+            .and_then(|index| self.sessions.get(index).copied());
+        let own = self.tab_of(key).map(|index| self.tabs[index].session);
+        if self.outside() {
+            self.close_menu();
+            self.tab_to_window(key);
+        } else if let Some(session) = target.filter(|&target| Some(target) != own) {
+            self.close_menu();
+            let (_, count) = self.group(session);
+            self.move_tab_to(key, session, count);
+        }
+        true
+    }
+
+    /// The pointer is outside the window, as a drag takes it.
+    pub(super) fn outside(&self) -> bool {
+        let (x, y) = self.pointer.position;
+        self.size.is_none_or(|(width, height)| {
+            x < 0.0 || y < 0.0 || x >= f64::from(width) || y >= f64::from(height)
+        })
+    }
+
+    /// Gives `session` a window of its own, leaving this one.
+    fn session_to_window(&mut self, session: SessionId) {
+        if self.sessions.len() > 1 {
+            self.open_window(vec!["--session".into(), session.0.to_string()]);
+            self.detach_session(session);
+        }
+    }
+
+    /// Moves `key`'s tab to a new session, in a window of its own.
+    pub(super) fn tab_to_window(&mut self, key: TerminalId) {
+        if self.server.version < 2 || self.tabs.len() < 2 {
+            return;
+        }
+        let id = self.server.ask(Question::NewSession);
+        self.asked.insert(id, Asked::Window(key));
+    }
+
+    /// Moves `key`'s tab into `session`, new, and opens a window on it.
+    pub(super) fn tab_into_window(&mut self, key: TerminalId, session: SessionId) {
+        self.move_tab_to(key, session, 0);
+        self.open_window(vec!["--session".into(), session.0.to_string()]);
     }
 }

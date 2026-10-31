@@ -389,8 +389,7 @@ impl App {
         self.retitle();
     }
 
-    /// Moves `terminal`'s tab to where `x` is in the strip, as it is dragged there: among
-    /// its session's tabs, or into another session's.
+    /// Moves `terminal`'s tab to where `x` is in the strip, as it is dragged there.
     pub(super) fn drag_tab(&mut self, terminal: TerminalId, x: f64) {
         let (Some(from), Some((width, _))) = (self.tab_of(terminal), self.size) else {
             return;
@@ -404,24 +403,38 @@ impl App {
         };
         let session = self.tabs[target].session;
         let (start, _) = self.group(session);
-        let index = target - start;
+        self.move_tab_to(terminal, session, target - start);
+    }
+
+    /// Puts `terminal`'s tab at `index` of `session`'s tabs, which the window may not
+    /// show.
+    pub(super) fn move_tab_to(&mut self, terminal: TerminalId, session: SessionId, index: usize) {
+        let Some(from) = self.tab_of(terminal) else {
+            return;
+        };
         self.server.send(&Request::MoveTab {
             terminal,
             session,
             index: u32::try_from(index).unwrap_or(u32::MAX),
         });
-        if self.tabs[from].session != session {
-            // The server tells only the other clients of a tab moved between sessions.
-            let shown = self.tabs.get(self.selected).map(|tab| tab.key);
-            let mut tab = self.tabs.remove(from);
-            tab.session = session;
-            let (start, count) = self.group(session);
-            self.tabs.insert(start + index.min(count), tab);
-            if let Some(index) = shown.and_then(|shown| self.tab_of(shown)) {
-                self.selected = index;
-            }
-            self.retitle();
+        if self.tabs[from].session == session {
+            return;
         }
+        // The server tells only the other clients of a tab moved between sessions.
+        if !self.sessions.contains(&session) {
+            self.tab_closed(terminal);
+            self.retitle();
+            return;
+        }
+        let shown = self.tabs.get(self.selected).map(|tab| tab.key);
+        let mut tab = self.tabs.remove(from);
+        tab.session = session;
+        let (start, count) = self.group(session);
+        self.tabs.insert(start + index.min(count), tab);
+        if let Some(index) = shown.and_then(|shown| self.tab_of(shown)) {
+            self.selected = index;
+        }
+        self.retitle();
     }
 
     pub(super) fn tab_named(&mut self, terminal: TerminalId, name: Option<String>) {
