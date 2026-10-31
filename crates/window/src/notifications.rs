@@ -4,12 +4,17 @@
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use caret_protocol::TerminalId;
 use gettextrs::gettext;
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
 use zbus::blocking::{Connection, Proxy};
 use zbus::zvariant::Value;
+
+/// The time between notifications. A program can send them as fast as it can write, and
+/// each goes to the desktop's notification server.
+const PAUSE: Duration = Duration::from_millis(100);
 
 pub struct Notice {
     pub terminal: TerminalId,
@@ -70,32 +75,46 @@ fn send(notices: &mpsc::Receiver<Notice>, clicked: Sender<Clicked>) -> zbus::Res
         ("desktop-entry", Value::from(crate::APP_ID)),
         ("urgency", Value::from(1u8)),
     ]);
-    for notice in notices {
-        let replaces = shown
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .last
-            .get(&notice.terminal)
-            .copied()
-            .unwrap_or(0);
-        let id: u32 = server.call(
-            "Notify",
-            &(
-                "Caret",
-                replaces,
-                crate::APP_ID,
-                &notice.title,
-                &notice.body,
-                ["default", gettext("Show").as_str()].as_slice(),
-                &hints,
-                -1i32,
-            ),
-        )?;
-        let mut shown = shown.lock().unwrap_or_else(PoisonError::into_inner);
-        shown.terminals.insert(id, notice.terminal);
-        shown.last.insert(notice.terminal, id);
+    while let Ok(first) = notices.recv() {
+        std::thread::sleep(PAUSE);
+        for notice in newest(first, notices) {
+            let replaces = shown
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .last
+                .get(&notice.terminal)
+                .copied()
+                .unwrap_or(0);
+            let id: u32 = server.call(
+                "Notify",
+                &(
+                    "Caret",
+                    replaces,
+                    crate::APP_ID,
+                    &notice.title,
+                    &notice.body,
+                    ["default", gettext("Show").as_str()].as_slice(),
+                    &hints,
+                    -1i32,
+                ),
+            )?;
+            let mut shown = shown.lock().unwrap_or_else(PoisonError::into_inner);
+            shown.terminals.insert(id, notice.terminal);
+            shown.last.insert(notice.terminal, id);
+        }
     }
     Ok(())
+}
+
+/// `first` and those waiting after it, only the last for each tab: a tab's next
+/// notification replaces the one before, so the others would never be read.
+fn newest(first: Notice, waiting: &mpsc::Receiver<Notice>) -> Vec<Notice> {
+    let mut notices = vec![first];
+    for notice in waiting.try_iter() {
+        notices.retain(|earlier| earlier.terminal != notice.terminal);
+        notices.push(notice);
+    }
+    notices
 }
 
 /// Follows clicks on the notifications in `shown` on a thread of its own, telling
@@ -164,4 +183,33 @@ fn follow_clicks(
         tracing::warn!("starting to follow notification clicks: {error}");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn notice(terminal: u32, body: &str) -> Notice {
+        Notice {
+            terminal: TerminalId(terminal),
+            title: String::new(),
+            body: body.to_owned(),
+        }
+    }
+
+    #[test]
+    fn only_the_last_notification_waiting_for_a_tab_is_sent() {
+        let (sender, waiting) = mpsc::channel();
+        for body in ["a", "b", "c"] {
+            sender.send(notice(1, body)).unwrap();
+        }
+        sender.send(notice(2, "d")).unwrap();
+        sender.send(notice(1, "e")).unwrap();
+        let sent = newest(notice(1, "first"), &waiting);
+        let sent: Vec<(u32, &str)> = sent
+            .iter()
+            .map(|notice| (notice.terminal.0, notice.body.as_str()))
+            .collect();
+        assert_eq!(sent, [(2, "d"), (1, "e")]);
+    }
 }
