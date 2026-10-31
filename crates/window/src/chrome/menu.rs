@@ -3,8 +3,8 @@
 //! compositor keeps it on the screen, and it scrolls where it is given too little height.
 
 use super::{
-    BUTTON, Drawing, GpuGlyph, Icon, OUTLINE, Painter, Part, Quad, SHADOW, centred, circle, entry,
-    halves, offset, rounded,
+    BUTTON, Drawing, GpuGlyph, Icon, OUTLINE, Painter, Part, Quad, SHADOW_BACKDROP, centred,
+    circle, entry, halves, offset, rounded,
 };
 
 /// The room around the items, their height, the room either side of their text, and
@@ -379,7 +379,14 @@ impl Painter<'_> {
         let (x, y) = (margin, margin);
         quads.push(Quad {
             blur: 8.0 * scale,
-            ..rounded(x, y + scale, width, menu_height, RADIUS * scale, SHADOW)
+            ..rounded(
+                x,
+                y + scale,
+                width,
+                menu_height,
+                RADIUS * scale,
+                SHADOW_BACKDROP,
+            )
         });
         quads.push(rounded(
             x - scale,
