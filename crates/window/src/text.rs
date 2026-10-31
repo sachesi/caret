@@ -5,6 +5,7 @@
 //! split, close and zoom panes, and detach. The mouse focuses panes, picks tabs, drags
 //! dividers and, with Alt or in control mode, moves panes.
 
+mod canvas;
 mod host;
 
 use std::collections::HashMap;
@@ -17,8 +18,8 @@ use std::time::Duration;
 use caret_protocol::encode::{self, Key, Modifiers, MouseAction, MouseButton, Press};
 use caret_protocol::layout::Node;
 use caret_protocol::{
-    Answer, BOLD, Bytes, Cell, Command, Frame, GlyphText, ITALIC, Message, Mode, Point, Question,
-    Request, Rgb, Scroll, SessionId, Size, Tab, TerminalId,
+    Answer, Bytes, Cell, Command, Frame, GlyphText, Message, Mode, Point, Question, Request, Rgb,
+    Scroll, SessionId, Size, Tab, TerminalId,
 };
 use rustix::termios::{self, OptionalActions};
 
@@ -27,7 +28,12 @@ use gettextrs::gettext;
 use crate::config::Config;
 use crate::i18n::gettext_f;
 use crate::panes::{self, Direction, Divider, Rect};
+use canvas::{Canvas, Pen};
 use host::{Host, Input, Mouse};
+
+/// The most events taken in before a frame is drawn, so that a busy server cannot keep
+/// the screen from being written.
+const EVENTS_PER_FRAME: usize = 256;
 
 /// Shows `session` in this terminal until it is detached or ends.
 ///
@@ -122,6 +128,10 @@ struct Client {
     /// The pane taken out to a tab of its own, to show once the tab is there.
     moved: Option<TerminalId>,
     drag: Option<Drag>,
+    /// What the terminal shows, and the frame being made from what is known now.
+    shown: Canvas,
+    next: Canvas,
+    shown_cursor: Option<(i32, i32)>,
 }
 
 /// What a held mouse button moves.
@@ -170,6 +180,9 @@ fn show(stream: &mut UnixStream, session: SessionId, host: &Host) -> Result<(), 
         opened: None,
         moved: None,
         drag: None,
+        shown: Canvas::default(),
+        next: Canvas::default(),
+        shown_cursor: None,
     };
     client.send(&look(host));
     client.send(&Request::Attach { session });
@@ -177,19 +190,8 @@ fn show(stream: &mut UnixStream, session: SessionId, host: &Host) -> Result<(), 
         client.typed(&host.typed);
     }
     loop {
-        match received.recv_timeout(Duration::from_millis(250)) {
-            Ok(Event::Message(message)) => {
-                if !client.message(message) {
-                    return Ok(());
-                }
-            }
-            Ok(Event::Typed(bytes)) => {
-                if !client.typed(&bytes) {
-                    client.send(&Request::Detach { session });
-                    return Ok(());
-                }
-            }
-            Ok(Event::Closed) => return Err("the server closed the connection".to_owned()),
+        let first = match received.recv_timeout(Duration::from_millis(250)) {
+            Ok(event) => event,
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 let size = window_size();
                 if size != client.size {
@@ -199,6 +201,13 @@ fn show(stream: &mut UnixStream, session: SessionId, host: &Host) -> Result<(), 
                 continue;
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
+        };
+        // All that has come goes into one frame, however many events it took.
+        let waiting = std::iter::from_fn(|| received.try_recv().ok()).take(EVENTS_PER_FRAME);
+        for event in std::iter::once(first).chain(waiting) {
+            if !client.event(event)? {
+                return Ok(());
+            }
         }
         client.draw();
     }
@@ -766,35 +775,38 @@ impl Client {
         self.send(&Request::Ask { id, question });
     }
 
-    /// Draws the panes of the tab shown, the lines between them and the line of tabs.
-    fn draw(&mut self) {
-        let placed = self.placed();
+    /// Puts the panes of the tab shown, the lines between them and the line of tabs on
+    /// the canvas of the next frame.
+    fn compose(&mut self, placed: &panes::Placed) {
         let (columns, lines, ..) = self.size;
-        let mut out = String::from("\x1b[?2026h\x1b[0m\x1b[2J");
+        let mut next = std::mem::take(&mut self.next);
+        next.reset(usize::from(columns), usize::from(lines));
         for &(terminal, rect) in &placed.panes {
             let Some(screen) = self.screens.get(&terminal) else {
                 continue;
             };
             for line in 0..rect.height {
-                let _ = write!(out, "\x1b[{};{}H", rect.y + line + 1, rect.x + 1);
                 let row = screen
                     .rows
                     .get(usize::try_from(line).unwrap_or(usize::MAX))
                     .map_or(&[][..], Vec::as_slice);
-                draw_row(&mut out, row, rect.width, screen.background);
+                next.put_row((rect.x, rect.y + line), row, rect.width, screen.background);
             }
         }
-        out.push_str("\x1b[0m\x1b[2m");
+        let dim = Pen {
+            style: canvas::DIM,
+            ..Pen::default()
+        };
         for divider in &placed.dividers {
             let gap = divider.gap;
+            let c = if divider.vertical { '│' } else { '─' };
             for line in 0..gap.height {
                 for column in 0..gap.width {
-                    let _ = write!(out, "\x1b[{};{}H", gap.y + line + 1, gap.x + column + 1);
-                    out.push(if divider.vertical { '│' } else { '─' });
+                    let text = Some(GlyphText::Char(c));
+                    next.put(gap.x + column, gap.y + line, text, dim, false);
                 }
             }
         }
-        let _ = write!(out, "\x1b[0m\x1b[{lines};1H\x1b[7m");
         let status = if self.control {
             format!(
                 " {} ",
@@ -811,26 +823,82 @@ impl Client {
             let control = gettext_f("{key} control", &[("key", key)]);
             format!("{}  {control}", self.tab_labels().concat())
         };
-        let status: String = status.chars().take(usize::from(columns)).collect();
-        let _ = write!(out, "{status:<width$}\x1b[0m", width = usize::from(columns));
-        if let Some(tab) = self.tab()
-            && let (Some(rect), Some(screen)) =
-                (placed.rect(tab.focused), self.screens.get(&tab.focused))
-            && let Some(cursor) = screen.cursor
-        {
-            let _ = write!(
-                out,
-                "\x1b[{};{}H\x1b[?25h",
-                rect.y + i32::from(cursor.line) + 1,
-                rect.x + i32::from(cursor.column) + 1
-            );
-        } else {
-            out.push_str("\x1b[?25l");
+        let reverse = Pen {
+            style: canvas::REVERSE,
+            ..Pen::default()
+        };
+        let mut letters = status.chars();
+        for column in 0..i32::from(columns) {
+            let text = letters.next().map(GlyphText::Char);
+            next.put(column, i32::from(lines) - 1, text, reverse, false);
         }
-        out.push_str("\x1b[?2026l");
+        self.next = next;
+    }
+
+    /// Where the focused pane has its cursor, if it shows one.
+    fn cursor(&self, placed: &panes::Placed) -> Option<(i32, i32)> {
+        let tab = self.tab()?;
+        let rect = placed.rect(tab.focused)?;
+        let cursor = self.screens.get(&tab.focused)?.cursor?;
+        Some((
+            rect.y + i32::from(cursor.line) + 1,
+            rect.x + i32::from(cursor.column) + 1,
+        ))
+    }
+
+    /// Writes what changed on the screen since the last time.
+    fn draw(&mut self) {
+        let placed = self.placed();
+        self.compose(&placed);
+        let cursor = self.cursor(&placed);
+        let mut out = String::new();
+        if self.shown.size() != self.next.size() {
+            let (columns, lines) = self.next.size();
+            self.shown.reset(columns, lines);
+            out.push_str("\x1b[0m\x1b[2J");
+        }
+        self.next.write_changes(&self.shown, &mut out);
+        if out.is_empty() && cursor == self.shown_cursor {
+            std::mem::swap(&mut self.next, &mut self.shown);
+            return;
+        }
+        // The cursor stays hidden while it runs over the cells written.
+        let mut frame = String::with_capacity(out.len() + 32);
+        if !out.is_empty() {
+            frame.push_str("\x1b[?2026h\x1b[?25l");
+            frame.push_str(&out);
+        }
+        match cursor {
+            Some((line, column)) => {
+                let _ = write!(frame, "\x1b[{line};{column}H\x1b[?25h");
+            }
+            None => frame.push_str("\x1b[?25l"),
+        }
+        if !out.is_empty() {
+            frame.push_str("\x1b[?2026l");
+        }
         let mut stdout = io::stdout();
-        let _ = stdout.write_all(out.as_bytes());
+        let _ = stdout.write_all(frame.as_bytes());
         let _ = stdout.flush();
+        std::mem::swap(&mut self.next, &mut self.shown);
+        self.shown_cursor = cursor;
+    }
+
+    /// Takes in one event; false once the client should end.
+    fn event(&mut self, event: Event) -> Result<bool, String> {
+        match event {
+            Event::Message(message) => Ok(self.message(message)),
+            Event::Typed(bytes) => {
+                let going_on = self.typed(&bytes);
+                if !going_on {
+                    self.send(&Request::Detach {
+                        session: self.session,
+                    });
+                }
+                Ok(going_on)
+            }
+            Event::Closed => Err("the server closed the connection".to_owned()),
+        }
     }
 }
 
@@ -853,49 +921,6 @@ fn arrow(sequence: &[u8]) -> Option<(Direction, u8)> {
             .ok()?,
     };
     Some((direction, modifier))
-}
-
-/// A line of cells, `width` wide, blank where it has no cell.
-fn draw_row(out: &mut String, row: &[Cell], width: i32, background: Rgb) {
-    let mut column = 0;
-    let mut cells = row.iter().peekable();
-    while column < width {
-        let cell = cells
-            .peek()
-            .filter(|cell| i32::from(cell.column) == column)
-            .copied();
-        let Some(cell) = cell else {
-            let _ = write!(
-                out,
-                "\x1b[0;48;2;{};{};{}m ",
-                background.r, background.g, background.b
-            );
-            column += 1;
-            continue;
-        };
-        cells.next();
-        let style = cell.glyph.as_ref().map_or(0, |glyph| glyph.style);
-        let (fg, bg) = (cell.fg, cell.bg);
-        let _ = write!(
-            out,
-            "\x1b[0{}{};38;2;{};{};{};48;2;{};{};{}m",
-            if style & BOLD != 0 { ";1" } else { "" },
-            if style & ITALIC != 0 { ";3" } else { "" },
-            fg.r,
-            fg.g,
-            fg.b,
-            bg.r,
-            bg.g,
-            bg.b,
-        );
-        match cell.glyph.as_ref().map(|glyph| &glyph.text) {
-            Some(GlyphText::Char(c)) => out.push(*c),
-            Some(GlyphText::Cluster(text)) => out.push_str(text),
-            None => out.push(' '),
-        }
-        let wide = cell.glyph.as_ref().is_some_and(|glyph| glyph.wide);
-        column += if wide { 2 } else { 1 };
-    }
 }
 
 fn base64(bytes: &[u8]) -> String {
