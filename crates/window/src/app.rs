@@ -115,6 +115,10 @@ enum Asked {
     Session,
     /// A session for the tab with this key to move to, in a window of its own.
     Window(TerminalId),
+    /// A session to show in the window, with a tab of its own.
+    SessionHere,
+    /// The sessions, to offer those the window does not show from its + button.
+    NewMenu,
     /// A tab, opened at this size.
     Tab(Size),
     /// What a new tab runs, or a new pane, beside the focused one or under it.
@@ -691,6 +695,12 @@ impl App {
             (Some(Asked::Window(key)), Answer::Session { session }) => {
                 self.tab_into_window(key, session);
             }
+            (Some(Asked::SessionHere), Answer::Session { session }) => {
+                self.sessions.push(session);
+                self.server.send(&Request::Attach { session });
+                self.open_tab_in(session, Command::default());
+            }
+            (Some(Asked::NewMenu), Answer::SessionList { sessions }) => self.new_menu(&sessions),
             (Some(Asked::NextCommand(None)), Answer::Command { command }) => {
                 self.open_tab(command);
             }

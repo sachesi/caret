@@ -103,6 +103,12 @@ impl Menu {
         (right, bottom + 2.0)
     }
 
+    /// Where the + button's menu opens: under the button, at its left edge.
+    pub fn under_new_tab_button() -> (f32, f32) {
+        let bottom = super::HEADER as f32 - (super::HEADER as f32 - super::FLAT_BUTTON.1) / 2.0;
+        (super::FLAT_BUTTON.0, bottom + 2.0)
+    }
+
     pub fn items(&self) -> impl Iterator<Item = &Item> {
         self.sections.iter().flatten()
     }

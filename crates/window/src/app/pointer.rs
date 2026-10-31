@@ -31,6 +31,9 @@ pub(super) const BUTTON_MIDDLE: u32 = 0x112;
 /// Clicks this close together count as a double or triple click.
 const MULTI_CLICK: Duration = Duration::from_millis(400);
 
+/// How long the + button is held for its menu rather than a tab.
+const LONG_PRESS: Duration = Duration::from_millis(500);
+
 /// Lines a notch of the wheel scrolls.
 const NOTCH: f64 = 3.0;
 
@@ -46,6 +49,8 @@ pub struct Pointer {
     cell: Option<Point>,
     /// The last click on the header bar, which a second soon after maximizes the window.
     header_click: Option<Instant>,
+    /// When the + button was pressed.
+    new_tab_pressed: Option<Instant>,
     /// Logical pixels from the surface's corner.
     pub(super) position: (f64, f64),
     /// Selecting with the left button held.
@@ -272,6 +277,9 @@ impl App {
                 if let Part::MenuItem(index) = part {
                     self.hold_listed(index);
                 }
+                if part == Part::NewTab {
+                    self.pointer.new_tab_pressed = Some(Instant::now());
+                }
                 self.chrome.pressed = Some(part);
                 self.dirty = true;
                 self.draw();
@@ -280,6 +288,10 @@ impl App {
             (Part::Tab(index), BUTTON_LEFT) => {
                 self.show(index);
                 self.pointer.dragged_tab = self.tabs.get(index).map(|tab| tab.key);
+                return;
+            }
+            (Part::NewTab, BUTTON_RIGHT) => {
+                self.open_new_menu();
                 return;
             }
             (Part::SearchField, BUTTON_LEFT) => {
@@ -341,7 +353,14 @@ impl App {
         if self.chrome.hovered == Some(pressed) {
             match pressed {
                 Part::Close => self.close(),
-                Part::NewTab => self.new_tab(),
+                Part::NewTab => {
+                    let held = self.pointer.new_tab_pressed.take();
+                    if held.is_some_and(|at| at.elapsed() >= LONG_PRESS) {
+                        self.open_new_menu();
+                    } else {
+                        self.new_tab();
+                    }
+                }
                 Part::CloseTab(index) => self.close_tab(index),
                 Part::FindUp => self.find(true),
                 Part::FindDown => self.find(false),

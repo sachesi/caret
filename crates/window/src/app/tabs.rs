@@ -664,8 +664,15 @@ impl App {
 
     /// Asks the server to start `command` in a tab after the shown one: the custom
     /// command or the shell, in this program's environment unless it has its own.
-    pub(super) fn open_tab(&mut self, mut command: Command) {
-        let (Some(session), Some(size)) = (self.shown_session(), self.grid_size) else {
+    pub(super) fn open_tab(&mut self, command: Command) {
+        if let Some(session) = self.shown_session() {
+            self.open_tab_in(session, command);
+        }
+    }
+
+    /// Opens a tab in `session`: after the shown one if it is the session's, else last.
+    pub(super) fn open_tab_in(&mut self, session: SessionId, mut command: Command) {
+        let Some(size) = self.grid_size else {
             return;
         };
         if command.directory.is_none() && self.tabs.is_empty() {

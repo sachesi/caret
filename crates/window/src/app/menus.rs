@@ -28,6 +28,8 @@ pub enum Choice {
     SessionWindow(SessionId),
     /// A tab of a session's list of tabs, by its key.
     ShowTab(TerminalId),
+    /// A session of its own in this window.
+    NewSession,
     NewTabIn(SessionId),
     Preferences,
     About,
@@ -245,6 +247,10 @@ impl App {
                     self.show(index);
                 }
             }
+            Some(Choice::NewSession) => {
+                let id = self.server.ask(Question::NewSession);
+                self.asked.insert(id, Asked::SessionHere);
+            }
             Some(Choice::NewTabIn(session)) => {
                 self.show_session_tab(session);
                 self.new_tab();
@@ -323,6 +329,47 @@ impl App {
             .collect();
         let at = self.keyed_menu_at();
         self.show_menu(vec![items], at, false);
+    }
+
+    /// Asks for the sessions, to offer from the + button with a new one.
+    pub(super) fn open_new_menu(&mut self) {
+        if self.server.version < 2 {
+            return;
+        }
+        let id = self.server.ask(Question::SessionList);
+        self.asked.insert(id, Asked::NewMenu);
+    }
+
+    /// The + button's menu: a new session in this window, and the sessions it does not
+    /// show, to show them here.
+    pub(super) fn new_menu(&mut self, sessions: &[SessionEntry]) {
+        for entry in sessions {
+            if let Some(name) = &entry.name {
+                self.session_names.insert(entry.session, name.clone());
+            }
+        }
+        let others: Vec<(Item, Choice)> = sessions
+            .iter()
+            .filter(|entry| !self.sessions.contains(&entry.session))
+            .map(|entry| {
+                let title = entry.tabs.first().map_or("", |tab| {
+                    tab.name
+                        .as_deref()
+                        .filter(|name| !name.is_empty())
+                        .unwrap_or(&tab.title)
+                });
+                let label = format!("Show {} · {title}", self.session_label(entry.session));
+                let mut item = self.item(&label, Choice::ShowSession(entry.session), true);
+                item.0.dot = self.session_color(entry.session);
+                item
+            })
+            .collect();
+        let sections = vec![
+            vec![self.item("New Session", Choice::NewSession, true)],
+            others,
+        ];
+        let at = Menu::under_new_tab_button();
+        self.show_menu(sections, at, false);
     }
 
     /// What can be done with `session`.
