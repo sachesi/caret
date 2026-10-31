@@ -5,12 +5,19 @@ use std::ffi::OsString;
 use std::os::unix::ffi::OsStringExt;
 use std::path::PathBuf;
 
-use super::{Event, Report, Term};
+use super::{Event, MAX_LINK_BYTES, MAX_TEXT_BYTES, Report, Term};
 use crate::palette::{self, BACKGROUND, CURSOR, FOREGROUND};
 use crate::parser::Params;
 
 /// Bytes of a device control string kept; the ones answered are short.
 const MAX_DCS: usize = 1024;
+
+/// Bytes of the name of the tool that runs a container.
+const MAX_RUNTIME_BYTES: usize = 64;
+
+fn shortened(text: &str) -> String {
+    text[..text.floor_char_boundary(MAX_TEXT_BYTES)].to_owned()
+}
 
 /// A device control string being read.
 pub(super) struct Dcs {
@@ -140,7 +147,7 @@ impl Term {
                     .join(";");
                 self.events.push(Event::Report(Report::Notification {
                     title: String::new(),
-                    body,
+                    body: shortened(&body),
                 }));
             }
             b"777" => self.extension(fields),
@@ -181,7 +188,7 @@ impl Term {
             .map(|field| String::from_utf8_lossy(field))
             .collect::<Vec<_>>()
             .join(";");
-        if uri.is_empty() {
+        if uri.is_empty() || uri.len() + params.len() > MAX_LINK_BYTES {
             self.cursor.style.link = 0;
             return;
         }
@@ -220,10 +227,12 @@ impl Term {
             .collect();
         let report = match text.iter().map(String::as_str).collect::<Vec<_>>()[..] {
             ["notify", title, ref body @ ..] => Report::Notification {
-                title: title.to_owned(),
-                body: body.join(";"),
+                title: shortened(title),
+                body: shortened(&body.join(";")),
             },
-            ["container", "push", name, runtime, ..] if container_name(name) => {
+            ["container", "push", name, runtime, ..]
+                if container_name(name) && runtime.len() <= MAX_RUNTIME_BYTES =>
+            {
                 Report::ContainerEntered {
                     name: name.to_owned(),
                     runtime: runtime.to_owned(),

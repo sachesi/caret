@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::grid::{Grid, Row, Text};
+use crate::grid::{Grid, MAX_CLUSTER_BYTES, Row, Text};
 use crate::history::{History, Line};
 use crate::palette::Palette;
 use crate::parser::{Params, Parser, Perform};
@@ -245,15 +245,14 @@ struct Saved {
 struct Links {
     /// Index 0 is no link.
     uris: Vec<Box<str>>,
-    /// Links a program named, so that its separate pieces of text share one.
+    /// Links by what a program named them, if it did, and address: its separate pieces of
+    /// text share one, and a program listing the same addresses again takes no more numbers.
     named: HashMap<(Box<str>, Box<str>), LinkId>,
 }
 
 impl Links {
     fn add(&mut self, id: &str, uri: &str) -> LinkId {
-        if !id.is_empty()
-            && let Some(&link) = self.named.get(&(id.into(), uri.into()))
-        {
+        if let Some(&link) = self.named.get(&(id.into(), uri.into())) {
             return link;
         }
         if self.uris.is_empty() {
@@ -264,9 +263,7 @@ impl Links {
             return 0;
         };
         self.uris.push(uri.into());
-        if !id.is_empty() {
-            self.named.insert((id.into(), uri.into()), link);
-        }
+        self.named.insert((id.into(), uri.into()), link);
         link
     }
 }
@@ -275,6 +272,12 @@ impl Links {
 const MAX_KEYBOARD_STACK: usize = 16;
 /// Titles a program pushed to restore later.
 const MAX_TITLES: usize = 16;
+/// Bytes of a title or of a notification's text kept, which clients have to lay out and the
+/// server to send on each change. Commands can be far longer, for copies to the clipboard.
+const MAX_TEXT_BYTES: usize = 4096;
+/// Bytes of a link's address: every one is kept for as long as the terminal lives, so a
+/// longer one is shown as text without a link.
+const MAX_LINK_BYTES: usize = 4096;
 
 pub struct Term {
     parser: Parser,
@@ -698,6 +701,9 @@ impl Term {
         if text.graphemes(true).count() > 1 {
             return false;
         }
+        if text.len() > MAX_CLUSTER_BYTES {
+            return true;
+        }
         let narrow = !row.cells[column].style.flags.contains(Flags::WIDE);
         let columns = self.columns();
         let widen = narrow && cluster_width(&text) == 2 && column + 1 < columns;
@@ -841,6 +847,9 @@ impl Term {
         }
         let columns = self.columns();
         for _ in 0..count {
+            if self.cursor.column == columns - 1 {
+                break;
+            }
             let next = (self.cursor.column + 1..columns).find(|&column| self.tabs[column]);
             self.cursor.column = next.unwrap_or(columns - 1);
         }
@@ -849,6 +858,9 @@ impl Term {
 
     fn back_tab(&mut self, count: usize) {
         for _ in 0..count {
+            if self.cursor.column == 0 {
+                break;
+            }
             let previous = (0..self.cursor.column)
                 .rev()
                 .find(|&column| self.tabs[column]);
@@ -1164,6 +1176,9 @@ impl Perform for Term {
 
     fn execute(&mut self, byte: u8) {
         match byte {
+            // Only one of a run in the same read reaches anyone, and a byte each would add
+            // up to tens of megabytes before it is taken.
+            0x07 if self.events.last() == Some(&Event::Bell) => {}
             0x07 => self.events.push(Event::Bell),
             0x08 => {
                 self.cursor.column = self.cursor.column.saturating_sub(1);

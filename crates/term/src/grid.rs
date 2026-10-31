@@ -2,6 +2,11 @@
 
 use crate::style::{Cell, Flags, Style};
 
+/// Bytes of text one cell keeps. Marks past it are dropped: a program could otherwise pile
+/// them on a cell without end, each copying all those before, and clients would have to
+/// shape the result. The longest emoji sequences take 35.
+pub const MAX_CLUSTER_BYTES: usize = 64;
+
 #[derive(Debug, Clone, Default)]
 pub struct Row {
     pub cells: Vec<Cell>,
@@ -69,6 +74,7 @@ impl Row {
                 .clusters
                 .iter_mut()
                 .find(|(at, _)| usize::from(*at) == column)
+                .filter(|(_, text)| text.len() + mark.len_utf8() <= MAX_CLUSTER_BYTES)
             {
                 let mut longer = String::from(&**text);
                 longer.push(mark);
@@ -165,8 +171,10 @@ impl Row {
             return;
         }
         let count = count.min(len - column);
+        // The blank left at the end of a row for a wide character that did not fit can
+        // have been moved to the first column.
         if self.cells[column].style.flags.contains(Flags::SPACER) {
-            self.clear(column - 1, column + 1, style);
+            self.clear(column.saturating_sub(1), column + 1, style);
         }
         let kept = len - count;
         // A wide character whose second half would be pushed off goes whole.

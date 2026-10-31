@@ -373,3 +373,97 @@ fn writing_over_the_blank_before_a_wrapped_wide_character_keeps_its_neighbour() 
     let term = fed(3, 2, "ab日\x1b[1;3Hc");
     assert_eq!(screen(&term), ["abc", "日"]);
 }
+
+#[test]
+fn marks_stop_adding_to_a_cell_past_its_limit() {
+    let mark = "\u{301}";
+    let mut flooded = term(10, 2);
+    flooded.advance(format!("a{}b", mark.repeat(100_000)).as_bytes());
+    let row = flooded.screen().row(0);
+    let Text::Cluster(cluster) = row.text(0) else {
+        panic!("{:?}", row.text(0));
+    };
+    assert!(cluster.starts_with('a') && cluster.len() <= MAX_CLUSTER_BYTES);
+    assert_eq!(row.cells[1].c, 'b');
+
+    let mut joined = term(10, 2);
+    joined.advance(b"\x1b[?2027h");
+    joined.advance(format!("👍{}b", "\u{200d}".repeat(100_000)).as_bytes());
+    let row = joined.screen().row(0);
+    let Text::Cluster(cluster) = row.text(0) else {
+        panic!("{:?}", row.text(0));
+    };
+    assert!(cluster.len() <= MAX_CLUSTER_BYTES);
+}
+
+#[test]
+fn the_cell_limit_keeps_the_longest_emoji_whole() {
+    let family = "👩🏽\u{200d}❤\u{fe0f}\u{200d}💋\u{200d}👨🏿";
+    let mut term = term(10, 2);
+    term.advance(b"\x1b[?2027h");
+    term.advance(family.as_bytes());
+    assert_eq!(term.screen().row(0).text(0), Text::Cluster(family));
+}
+
+#[test]
+fn repeating_a_character_writes_a_screenful_at_most() {
+    let mut term = term(10, 3);
+    term.advance(b"a\x1b[65535b");
+    assert!(term.history().rows() <= 4, "{}", term.history().rows());
+}
+
+#[test]
+fn tabbing_stops_at_the_edge() {
+    let mut term = term(80, 2);
+    term.advance(b"\x1b[65535I");
+    assert_eq!(term.cursor_at(), (0, 79));
+    term.advance(b"\x1b[65535Z");
+    assert_eq!(term.cursor_at(), (0, 0));
+}
+
+#[test]
+fn a_run_of_bells_is_one_event() {
+    let mut term = term(10, 2);
+    term.advance(&[0x07; 1000]);
+    assert_eq!(term.take_events(), [Event::Bell]);
+}
+
+#[test]
+fn long_titles_are_cut_between_characters() {
+    let mut term = term(10, 2);
+    term.advance(format!("\x1b]0;{}\x07", "日".repeat(10_000)).as_bytes());
+    assert!(term.title().len() <= MAX_TEXT_BYTES);
+    assert!(term.title().ends_with('日'));
+}
+
+#[test]
+fn a_very_long_address_is_not_kept_as_a_link() {
+    let mut term = term(10, 2);
+    let long = "a".repeat(MAX_LINK_BYTES);
+    term.advance(format!("\x1b]8;;http://{long}\x07x").as_bytes());
+    assert_eq!(term.screen().row(0).cells[0].style.link, 0);
+    assert_eq!(term.screen().row(0).cells[0].c, 'x');
+}
+
+#[test]
+fn listing_the_same_addresses_again_takes_no_more_link_numbers() {
+    let mut term = term(10, 2);
+    for round in 0..70_000 {
+        let name = round % 3;
+        term.advance(format!("\x1b]8;;file:///{name}\x07x\x1b]8;;\x07\r").as_bytes());
+    }
+    term.advance(b"\x1b]8;;file:///other\x07y");
+    assert_eq!(
+        term.link(term.screen().row(0).cells[0].style.link),
+        Some("file:///other")
+    );
+}
+
+#[test]
+fn inserting_where_a_short_rows_blank_moved_to_the_first_column_is_safe() {
+    let mut term = term(3, 2);
+    // The wide character leaves a blank at the end of the first row, which deleting the
+    // cells before it brings to the first column.
+    term.advance("ab日\x1b[A\x1b[1G\x1b[2P\x1b[@".as_bytes());
+    assert_eq!(term.screen().row(0).len(), 3);
+}

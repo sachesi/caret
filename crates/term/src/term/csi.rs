@@ -1,7 +1,8 @@
 //! Control sequences: CSI, its parameters and final byte.
 
 use super::{
-    CursorShape, CursorStyle, MAX_KEYBOARD_STACK, MAX_TITLES, MouseEncoding, MouseMode, Term,
+    CursorShape, CursorStyle, MAX_KEYBOARD_STACK, MAX_TEXT_BYTES, MAX_TITLES, MouseEncoding,
+    MouseMode, Term,
 };
 use crate::parser::Params;
 use crate::style::{Cell, Color, Flags, Style, Underline};
@@ -120,7 +121,9 @@ impl Term {
             return;
         };
         let width = unicode_width::UnicodeWidthChar::width(c).unwrap_or(1);
-        for _ in 0..count {
+        // More than a screenful shows nothing more, and each of these takes six bytes: a
+        // megabyte of them would otherwise write cells for a minute with the keyboard waiting.
+        for _ in 0..count.min(self.columns() * self.lines()) {
             self.place(c, width);
         }
     }
@@ -546,7 +549,8 @@ impl Term {
         }
     }
 
-    pub(super) fn set_title(&mut self, title: String) {
+    pub(super) fn set_title(&mut self, mut title: String) {
+        title.truncate(title.floor_char_boundary(MAX_TEXT_BYTES));
         if title != self.title {
             self.title.clone_from(&title);
             self.events.push(super::Event::Title(title));
