@@ -190,6 +190,7 @@ impl App {
     /// round, and the rest edit the field while it has the keys.
     pub(super) fn dialog_key(&mut self, event: &KeyEvent) -> bool {
         let typed = self.typed(event);
+        let modifiers = self.modifiers;
         let Some(dialog) = &mut self.chrome.dialog else {
             return false;
         };
@@ -218,7 +219,8 @@ impl App {
                 self.draw();
             }
             (key, None, Some(field)) => {
-                field.key(key, typed.as_deref());
+                let edit = field.key(key, typed.as_deref(), modifiers);
+                self.field_clipboard(edit);
                 self.dirty = true;
                 self.draw();
             }

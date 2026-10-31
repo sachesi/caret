@@ -58,7 +58,10 @@ impl App {
         let Some(search) = &mut self.chrome.search else {
             return true;
         };
-        if search.field.key(event.keysym, typed.as_deref()) == Edit::Changed {
+        let edit = search
+            .field
+            .key(event.keysym, typed.as_deref(), self.modifiers);
+        if self.field_clipboard(edit) {
             // A new text is found from the bottom up again.
             self.select(Select::Clear);
             self.find(true);
@@ -66,6 +69,44 @@ impl App {
         self.dirty = true;
         self.draw();
         true
+    }
+
+    /// Does what a field's key leaves to the window, saying whether the text changed.
+    pub(super) fn field_clipboard(&mut self, edit: Edit) -> bool {
+        match edit {
+            Edit::Changed => true,
+            Edit::Cut(text) => {
+                self.copy(text, false);
+                true
+            }
+            Edit::Copy(text) => {
+                self.copy(text, false);
+                false
+            }
+            Edit::Paste => {
+                self.paste(false);
+                false
+            }
+            Edit::Moved | Edit::Passed => false,
+        }
+    }
+
+    /// Types `typed` into the dialog's or the find bar's field if one has the keys,
+    /// saying whether it took it.
+    pub(super) fn type_in_field(&mut self, typed: &str) -> bool {
+        if let Some(field) = self
+            .chrome
+            .dialog
+            .as_mut()
+            .filter(|dialog| dialog.focused.is_none())
+            .and_then(|dialog| dialog.field.as_mut())
+        {
+            field.type_text(typed);
+            self.dirty = true;
+            self.draw();
+            return true;
+        }
+        self.search_type(typed)
     }
 
     /// Types `typed` into the field if it has the keys, saying whether it took it.

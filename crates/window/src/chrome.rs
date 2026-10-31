@@ -6,10 +6,11 @@ use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_toplev
 use smithay_client_toolkit::seat::keyboard::Keysym;
 use swash::zeno::{Cap, Mask, PathBuilder, Stroke};
 
+use caret_protocol::encode::Modifiers;
 use gettextrs::gettext;
 
 use crate::atlas::GpuGlyph;
-use crate::fonts::Raster;
+use crate::fonts::{Fonts, Raster};
 
 mod dialog;
 mod menu;
@@ -226,8 +227,12 @@ pub struct Field {
     pub text: String,
     /// Where typing goes in the text, in bytes.
     pub cursor: usize,
+    /// The selection's other end, in bytes; the cursor is the end that moves.
+    pub anchor: Option<usize>,
     /// How far the cursor is from the start of the text, in device pixels.
     pub caret: f32,
+    /// How far the selection's other end is from the start of the text, in device pixels.
+    pub anchor_x: f32,
 }
 
 /// What a key did to a field.
@@ -235,6 +240,12 @@ pub struct Field {
 pub enum Edit {
     Changed,
     Moved,
+    /// The text to put on the clipboard.
+    Copy(String),
+    /// The text taken out, to put on the clipboard.
+    Cut(String),
+    /// The clipboard is to be typed.
+    Paste,
     /// The key is not one a field takes.
     Passed,
 }
@@ -245,58 +256,144 @@ impl Field {
         Self {
             text: text.to_owned(),
             cursor: text.len(),
-            caret: 0.0,
+            ..Self::default()
         }
     }
 
-    /// Edits the text as `key` does, `typed` being the text it types if any.
-    pub fn key(&mut self, key: Keysym, typed: Option<&str>) -> Edit {
-        let (text, cursor) = (&mut self.text, &mut self.cursor);
-        let before = text[..*cursor]
-            .chars()
-            .next_back()
-            .map_or(0, char::len_utf8);
-        let after = text[*cursor..].chars().next().map_or(0, char::len_utf8);
-        match key {
-            Keysym::BackSpace if before > 0 => {
-                *cursor -= before;
-                text.remove(*cursor);
-                Edit::Changed
-            }
-            Keysym::Delete | Keysym::KP_Delete if after > 0 => {
-                text.remove(*cursor);
-                Edit::Changed
-            }
-            Keysym::BackSpace | Keysym::Delete | Keysym::KP_Delete => Edit::Moved,
-            Keysym::Left | Keysym::KP_Left => {
-                *cursor -= before;
-                Edit::Moved
-            }
-            Keysym::Right | Keysym::KP_Right => {
-                *cursor += after;
-                Edit::Moved
-            }
-            Keysym::Home | Keysym::KP_Home => {
-                *cursor = 0;
-                Edit::Moved
-            }
-            Keysym::End | Keysym::KP_End => {
-                *cursor = text.len();
-                Edit::Moved
-            }
-            _ => match typed {
-                Some(typed) => {
-                    self.type_text(typed);
-                    Edit::Changed
+    /// Edits the text as `key` does with `modifiers` held, `typed` being the text it
+    /// types if any.
+    pub fn key(&mut self, key: Keysym, typed: Option<&str>, modifiers: Modifiers) -> Edit {
+        let Modifiers { ctrl, shift, .. } = modifiers;
+        if ctrl {
+            match key {
+                Keysym::a | Keysym::A => {
+                    self.cursor = self.text.len();
+                    self.anchor = (!self.text.is_empty()).then_some(0);
+                    return Edit::Moved;
                 }
-                None => Edit::Passed,
-            },
+                Keysym::c | Keysym::C => {
+                    return self
+                        .selected()
+                        .map_or(Edit::Passed, |text| Edit::Copy(text.to_owned()));
+                }
+                Keysym::x | Keysym::X => {
+                    let Some(text) = self.selected().map(str::to_owned) else {
+                        return Edit::Passed;
+                    };
+                    self.remove_selection();
+                    return Edit::Cut(text);
+                }
+                Keysym::v | Keysym::V => return Edit::Paste,
+                _ => {}
+            }
         }
+        let collapsing = self.selection().filter(|_| !shift && !ctrl);
+        let target = match key {
+            Keysym::Left | Keysym::KP_Left => Some(match collapsing {
+                Some(selection) => selection.start,
+                None if ctrl => self.word_before(),
+                None => self.char_before(),
+            }),
+            Keysym::Right | Keysym::KP_Right => Some(match collapsing {
+                Some(selection) => selection.end,
+                None if ctrl => self.word_after(),
+                None => self.char_after(),
+            }),
+            Keysym::Home | Keysym::KP_Home => Some(0),
+            Keysym::End | Keysym::KP_End => Some(self.text.len()),
+            _ => None,
+        };
+        if let Some(target) = target {
+            let anchor = shift.then(|| self.anchor.unwrap_or(self.cursor));
+            self.anchor = anchor.filter(|&anchor| anchor != target);
+            self.cursor = target;
+            return Edit::Moved;
+        }
+        let end = match key {
+            Keysym::BackSpace if ctrl => self.word_before(),
+            Keysym::BackSpace => self.char_before(),
+            Keysym::Delete | Keysym::KP_Delete if ctrl => self.word_after(),
+            Keysym::Delete | Keysym::KP_Delete => self.char_after(),
+            _ => {
+                return match typed {
+                    Some(typed) => {
+                        self.type_text(typed);
+                        Edit::Changed
+                    }
+                    None => Edit::Passed,
+                };
+            }
+        };
+        if self.remove_selection() {
+            return Edit::Changed;
+        }
+        if end == self.cursor {
+            return Edit::Moved;
+        }
+        let start = end.min(self.cursor);
+        self.text.replace_range(start..end.max(self.cursor), "");
+        self.cursor = start;
+        Edit::Changed
     }
 
     pub fn type_text(&mut self, typed: &str) {
+        self.remove_selection();
         self.text.insert_str(self.cursor, typed);
         self.cursor += typed.len();
+    }
+
+    /// Finds where the cursor and the selection's other end are drawn.
+    pub fn measure(&mut self, fonts: &Fonts) {
+        self.caret = fonts.label_advance(&self.text[..self.cursor], false);
+        let anchor = self.anchor.unwrap_or(self.cursor);
+        self.anchor_x = fonts.label_advance(&self.text[..anchor], false);
+    }
+
+    /// The selected bytes of the text, if any are.
+    pub fn selection(&self) -> Option<std::ops::Range<usize>> {
+        let anchor = self.anchor?;
+        Some(anchor.min(self.cursor)..anchor.max(self.cursor))
+    }
+
+    fn selected(&self) -> Option<&str> {
+        self.selection().map(|selection| &self.text[selection])
+    }
+
+    /// Takes the selected text out, saying whether there was any.
+    fn remove_selection(&mut self) -> bool {
+        let Some(selection) = self.selection() else {
+            return false;
+        };
+        self.cursor = selection.start;
+        self.text.replace_range(selection, "");
+        self.anchor = None;
+        true
+    }
+
+    fn char_before(&self) -> usize {
+        self.text[..self.cursor]
+            .chars()
+            .next_back()
+            .map_or(self.cursor, |letter| self.cursor - letter.len_utf8())
+    }
+
+    fn char_after(&self) -> usize {
+        self.text[self.cursor..]
+            .chars()
+            .next()
+            .map_or(self.cursor, |letter| self.cursor + letter.len_utf8())
+    }
+
+    /// Where the word before the cursor starts.
+    fn word_before(&self) -> usize {
+        let before = self.text[..self.cursor].trim_end_matches(|c: char| !c.is_alphanumeric());
+        before.trim_end_matches(char::is_alphanumeric).len()
+    }
+
+    /// Where the word after the cursor ends.
+    fn word_after(&self) -> usize {
+        let after = self.text[self.cursor..].trim_start_matches(|c: char| !c.is_alphanumeric());
+        self.text.len() - after.trim_start_matches(char::is_alphanumeric).len()
     }
 }
 
@@ -1265,6 +1362,17 @@ impl Painter<'_> {
             bold: false,
         };
         let (start, middle) = (x + padding, y + height / 2.0);
+        if field.selection().is_some() {
+            let [from, to] = [field.anchor_x, field.caret].map(|end| end.min(room));
+            quads.push(Quad {
+                x: (start + from.min(to)).round(),
+                y: (middle - self.line as f32 / 2.0).floor(),
+                width: (to - from).abs().round(),
+                height: self.line as f32,
+                color: chrome.dim((colors.focus & !0xff) | 0x60),
+                ..Quad::default()
+            });
+        }
         if let Some((index, glyph)) = draw(&label) {
             let (left, top) = offset(glyph);
             let y = (middle - self.line as f32 / 2.0).floor() + top as f32;
@@ -1446,6 +1554,92 @@ pub fn icon(icon: Icon, scale: f32) -> Raster {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const PLAIN: Modifiers = Modifiers {
+        shift: false,
+        alt: false,
+        ctrl: false,
+    };
+    const CTRL: Modifiers = Modifiers {
+        ctrl: true,
+        ..PLAIN
+    };
+    const SHIFT: Modifiers = Modifiers {
+        shift: true,
+        ..PLAIN
+    };
+
+    #[test]
+    fn ctrl_a_selects_the_text_and_typing_replaces_it() {
+        let mut field = Field::holding("old name");
+        assert_eq!(field.key(Keysym::a, None, CTRL), Edit::Moved);
+        assert_eq!(field.selection(), Some(0..8));
+        field.key(Keysym::n, Some("n"), PLAIN);
+        assert_eq!((field.text.as_str(), field.cursor), ("n", 1));
+        assert_eq!(field.selection(), None);
+    }
+
+    #[test]
+    fn the_selection_is_copied_and_cut_for_the_clipboard() {
+        let mut field = Field::holding("old name");
+        assert_eq!(field.key(Keysym::c, None, CTRL), Edit::Passed);
+        field.key(
+            Keysym::Left,
+            None,
+            Modifiers {
+                ctrl: true,
+                shift: true,
+                ..PLAIN
+            },
+        );
+        assert_eq!(
+            field.key(Keysym::c, None, CTRL),
+            Edit::Copy("name".to_owned())
+        );
+        assert_eq!(
+            field.key(Keysym::x, None, CTRL),
+            Edit::Cut("name".to_owned())
+        );
+        assert_eq!(field.text, "old ");
+        assert_eq!(field.key(Keysym::v, None, CTRL), Edit::Paste);
+    }
+
+    #[test]
+    fn ctrl_moves_and_deletes_by_word() {
+        let mut field = Field::holding("rust — new tab");
+        field.key(Keysym::Left, None, CTRL);
+        assert_eq!(&field.text[field.cursor..], "tab");
+        field.key(Keysym::BackSpace, None, CTRL);
+        assert_eq!(field.text, "rust — tab");
+        field.key(Keysym::Home, None, PLAIN);
+        field.key(Keysym::Right, None, CTRL);
+        assert_eq!(field.cursor, 4);
+        field.key(Keysym::Delete, None, CTRL);
+        assert_eq!(field.text, "rust");
+    }
+
+    #[test]
+    fn shift_extends_the_selection_and_a_plain_arrow_leaves_it_at_its_edge() {
+        let mut field = Field::holding("héllo");
+        field.cursor = 0;
+        field.key(Keysym::Right, None, SHIFT);
+        field.key(Keysym::Right, None, SHIFT);
+        assert_eq!(field.selection(), Some(0..3));
+        field.key(Keysym::Left, None, SHIFT);
+        field.key(Keysym::Left, None, SHIFT);
+        assert_eq!(field.selection(), None);
+        field.key(Keysym::End, None, SHIFT);
+        field.key(Keysym::Left, None, PLAIN);
+        assert_eq!((field.cursor, field.selection()), (0, None));
+    }
+
+    #[test]
+    fn backspace_takes_out_the_selection_alone() {
+        let mut field = Field::holding("old name");
+        field.key(Keysym::Left, None, SHIFT);
+        assert_eq!(field.key(Keysym::BackSpace, None, PLAIN), Edit::Changed);
+        assert_eq!(field.text, "old nam");
+    }
 
     fn label(title: &str) -> TabLabel {
         TabLabel {

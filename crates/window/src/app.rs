@@ -1173,8 +1173,7 @@ impl App {
     fn frame_quads(&mut self, size: (u32, u32)) -> (Vec<chrome::Quad>, usize) {
         let scale = self.factor() as f32;
         if let Some(search) = &mut self.chrome.search {
-            let field = &mut search.field;
-            field.caret = self.fonts.label_advance(&field.text[..field.cursor], false);
+            search.field.measure(&self.fonts);
         }
         if let Some(menu) = &mut self.chrome.menu {
             let fonts = &self.fonts;
@@ -1186,7 +1185,7 @@ impl App {
             .as_mut()
             .and_then(|dialog| dialog.field.as_mut())
         {
-            field.caret = self.fonts.label_advance(&field.text[..field.cursor], false);
+            field.measure(&self.fonts);
         }
         if let Some(dialog) = &mut self.chrome.dialog {
             let fonts = &self.fonts;

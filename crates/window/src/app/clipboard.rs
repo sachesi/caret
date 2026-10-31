@@ -163,12 +163,24 @@ impl App {
 
     /// Types text read from a selection, marked as pasted for a program that asks.
     pub(super) fn pasted(&mut self, bytes: &[u8]) {
+        if self.type_in_field(&one_line(bytes)) {
+            return;
+        }
         let Some(terminal) = self.terminal() else {
             return;
         };
         let bracketed = self.grid.mode.contains(Mode::BRACKETED_PASTE);
         self.paste_into(terminal, bytes, bracketed);
     }
+}
+
+/// `bytes` as a field can hold them: a line, with spaces for what breaks it.
+fn one_line(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes)
+        .trim_end_matches(['\r', '\n'])
+        .chars()
+        .map(|letter| if letter.is_control() { ' ' } else { letter })
+        .collect()
 }
 
 /// The first of the text types an offer has, as Caret prefers them.
@@ -419,6 +431,11 @@ impl PrimarySelectionSourceHandler for App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_paste_into_a_field_stays_on_one_line() {
+        assert_eq!(one_line(b"two\nlines\r\n"), "two lines");
+    }
 
     #[test]
     fn dropped_files_become_their_quoted_paths() {
