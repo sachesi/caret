@@ -71,6 +71,7 @@ pub struct Grid {
     pub lines: usize,
     pub cells: Vec<GpuCell>,
     pub cursor: Option<Cursor>,
+    pub cursor_blinks: bool,
     pub background: Rgb,
     pub cursor_color: Rgb,
     pub mode: Mode,
@@ -200,6 +201,7 @@ impl Grid {
                 }
             }
         }
+        self.cursor_blinks = frame.cursor_blinks;
         self.cursor_color = frame.cursor_color;
         self.mode = frame.mode;
         self.hovered = frame.hovered;

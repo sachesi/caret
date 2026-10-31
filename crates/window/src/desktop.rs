@@ -18,6 +18,8 @@ pub struct Desktop {
     pub dark: bool,
     /// The desktop's monospace font, as a family and a size.
     pub monospace: Option<String>,
+    /// The desktop has cursors not blink.
+    pub steady_cursor: bool,
 }
 
 /// Follows the desktop's preferences on a thread of their own, sending them to `changes`
@@ -52,6 +54,8 @@ fn listen(first: &mpsc::SyncSender<Desktop>, changes: &Sender<Desktop>) -> zbus:
         dark: read(&portal, APPEARANCE, "color-scheme").is_some_and(prefers_dark),
         monospace: read(&portal, INTERFACE, "monospace-font-name")
             .and_then(|font| String::try_from(font).ok()),
+        steady_cursor: read(&portal, INTERFACE, "cursor-blink")
+            .is_some_and(|value| bool::try_from(value).is_ok_and(|blinks| !blinks)),
     };
     // The window may have stopped waiting, so the reading goes on as a change too.
     let _ = first.send(desktop.clone());
@@ -67,6 +71,10 @@ fn listen(first: &mpsc::SyncSender<Desktop>, changes: &Sender<Desktop>) -> zbus:
             },
             (INTERFACE, "monospace-font-name") => Desktop {
                 monospace: String::try_from(value).ok(),
+                ..desktop.clone()
+            },
+            (INTERFACE, "cursor-blink") => Desktop {
+                steady_cursor: bool::try_from(value).is_ok_and(|blinks| !blinks),
                 ..desktop.clone()
             },
             _ => continue,

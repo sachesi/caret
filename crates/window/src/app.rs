@@ -98,6 +98,7 @@ const PADDING: u32 = 6;
 
 mod activation;
 mod attention;
+mod blink;
 mod clipboard;
 mod confirm;
 mod control;
@@ -249,6 +250,7 @@ struct App {
     modifiers: Modifiers,
     /// The serial of the last key or button press, which taking a selection needs.
     serial: u32,
+    blink: blink::Blink,
     pointer: pointer::Pointer,
     touch: touch::Touch,
     clipboard: clipboard::Clipboard,
@@ -436,6 +438,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         text_input: None,
         modifiers: Modifiers::default(),
         serial: 0,
+        blink: blink::Blink::default(),
         pointer: pointer::Pointer::default(),
         touch: touch::Touch::default(),
         clipboard,
@@ -586,7 +589,7 @@ pub(crate) fn options(config: &Config) -> Options {
     Options {
         scrollback: config.scrollback_lines,
         cursor_shape: config.cursor_shape,
-        cursor_blinks: false,
+        cursor_blinks: true,
         copy_from_programs: config.program_clipboard,
         scroll_on_output: config.scroll_on_output,
     }
@@ -614,6 +617,7 @@ fn listen(
                 let before = app.style();
                 app.desktop = desktop;
                 app.restyle(&before);
+                app.restart_blink();
             }
         })
         .map_err(|error| AppError::Loop(error.error))?;
@@ -1006,11 +1010,15 @@ impl App {
                 if focused && self.focused && !typing_in_bar {
                     shape |= CURSOR_FOCUSED;
                 }
-                (
-                    i32::from(cursor.point.column),
-                    i32::from(cursor.point.line),
-                    shape,
-                )
+                if shape & CURSOR_FOCUSED != 0 && grid.cursor_blinks && self.blink.hidden {
+                    (-1, -1, 0)
+                } else {
+                    (
+                        i32::from(cursor.point.column),
+                        i32::from(cursor.point.line),
+                        shape,
+                    )
+                }
             }
             None => (-1, -1, 0),
         };
@@ -1279,6 +1287,9 @@ impl App {
     }
 
     fn key(&mut self, event: &KeyEvent, press: Press) {
+        if press != Press::Up {
+            self.restart_blink();
+        }
         let latin = self.in_latin(event);
         let event = latin.as_ref().unwrap_or(event);
         if press != Press::Up {
@@ -1444,6 +1455,7 @@ impl App {
         if !focused {
             self.close_menu();
         }
+        self.restart_blink();
         if let Some(terminal) = self.terminal() {
             self.server.send(&Request::Focus { terminal, focused });
         }

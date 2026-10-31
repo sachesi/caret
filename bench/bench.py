@@ -353,7 +353,7 @@ def latency(session, caret, out) -> dict:
 def idle(session, caret, out) -> dict:
     run = Caret(session, caret, out / "idle.timings", ["sleep", "60"])
     # The first frames and the fonts' loading are over by then.
-    time.sleep(2)
+    time.sleep(11)  # past the cursor's blinking after the window takes the keys
     pid, server = run.caret_pid(), run.server_pid()
     if pid is None or server is None:
         run.stop()

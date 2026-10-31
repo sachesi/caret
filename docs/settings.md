@@ -57,6 +57,10 @@ in `~/.config/caret/schemes`, `"mine"` for `schemes/mine.toml`:
                "#7cafc2", "#ba8baf", "#86c1b9", "#f8f8f8"]
     selection = "#383838"     # optional
 
+Programs can change the cursor's shape and ask for it to blink or not; `cursor-shape` is
+the shape they start with. A cursor that blinks does so for ten seconds after the last key,
+unless the desktop has cursors not blink (`cursor-blink` in `org.gnome.desktop.interface`).
+
 `custom-command` runs in new tabs in place of the shell. `close-detaches` makes closing a
 window leave its programs running, to attach to again with `caret --attach`.
 `server-side-decorations` off has Caret draw its own frame and header bar even where the
