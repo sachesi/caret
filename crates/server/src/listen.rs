@@ -6,7 +6,7 @@
     reason = "the descriptor systemd passes and the peer's credentials are only reached through libc"
 )]
 
-use std::fs;
+use std::fs::{self, File};
 use std::io::{self, Write};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::fs::PermissionsExt;
@@ -134,6 +134,10 @@ pub fn bind(path: &Path) -> io::Result<UnixListener> {
         fs::create_dir_all(directory)?;
         fs::set_permissions(directory, fs::Permissions::from_mode(0o700))?;
     }
+    // Two servers starting at once over a socket left behind would otherwise each remove
+    // it, the second removing the one the first has just made and leaving it unreachable.
+    let lock = File::create(path.with_extension("lock"))?;
+    lock.lock()?;
     if path.exists() {
         if UnixStream::connect(path).is_ok() {
             return Err(io::Error::new(
@@ -278,6 +282,39 @@ mod tests {
     use std::io::Read;
 
     use super::*;
+
+    #[test]
+    fn servers_starting_at_once_over_a_stale_socket_leave_one_listening() {
+        let directory = std::env::temp_dir().join(format!("caret-bind-{}", std::process::id()));
+        fs::create_dir_all(&directory).expect("a directory");
+        let path = directory.join("server");
+        let mut started = 0;
+        for _ in 0..50 {
+            drop(UnixListener::bind(&path).expect("a socket left behind"));
+            let barrier = Arc::new(std::sync::Barrier::new(8));
+            let starting: Vec<_> = (0..8)
+                .map(|_| {
+                    let (path, barrier) = (path.clone(), barrier.clone());
+                    std::thread::spawn(move || {
+                        barrier.wait();
+                        bind(&path)
+                    })
+                })
+                .collect();
+            let listening: Vec<UnixListener> = starting
+                .into_iter()
+                .filter_map(|thread| thread.join().expect("binding does not panic").ok())
+                .collect();
+            // None at times: a program another test is starting has a copy of the socket
+            // just dropped until its exec, so that it still seems to listen.
+            assert!(listening.len() <= 1, "{} listening", listening.len());
+            started += listening.len();
+            drop(listening);
+            fs::remove_file(&path).expect("the socket");
+        }
+        assert!(started > 0);
+        fs::remove_dir_all(&directory).expect("the directory");
+    }
 
     #[test]
     fn a_client_too_far_behind_is_hung_up_on() {
