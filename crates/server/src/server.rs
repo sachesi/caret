@@ -10,7 +10,7 @@ use std::process::ExitStatus;
 use std::sync::mpsc;
 use std::time::Instant;
 
-use caret_protocol::layout::{Node, Plan, WHOLE};
+use caret_protocol::layout::{MOST_PANES, Node, Plan, WHOLE};
 use caret_protocol::{
     Answer, Bytes, Command, CursorShape, Message, Options, Palette, Question, Request, Scroll,
     SessionEntry, SessionId, SessionInfo, Size, Tab, TerminalId,
@@ -955,7 +955,7 @@ impl Server {
     ) {
         let Some(place) = self.find_tab(at).filter(|&place| {
             self.tab_state(place)
-                .is_some_and(|tab| tab.root.contains(at))
+                .is_some_and(|tab| tab.root.contains(at) && tab.root.panes().len() < MOST_PANES)
         }) else {
             self.answer(client, id, Answer::Gone);
             return;
@@ -1014,7 +1014,7 @@ impl Server {
         let Some(place) = self
             .find_tab(terminal)
             .filter(|&place| self.tab_state(place).is_some_and(|tab| tab.root == alone))
-            .filter(|_| plan.kept() == 1)
+            .filter(|_| plan.kept() == 1 && plan.panes() <= MOST_PANES)
         else {
             self.answer(client, id, Answer::Gone);
             return;

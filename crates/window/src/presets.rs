@@ -4,10 +4,14 @@
 use std::collections::{HashMap, HashSet};
 
 use caret_protocol::TerminalId;
-use caret_protocol::layout::{Node, WHOLE};
+use caret_protocol::layout::{MOST_PANES, Node, WHOLE};
 use toml_edit::{Item, TableLike};
 
 use crate::shortcuts::Shortcut;
+
+/// How deep a layout's parentheses may go, which reading them recurses into: a line of the
+/// settings must not be able to run the window out of stack.
+const DEEPEST_PARENTHESES: usize = 64;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Preset {
@@ -285,10 +289,14 @@ fn parse_layout(layout: &str) -> Result<Shape, String> {
         tokens: &tokens,
         at: 0,
         names: HashSet::new(),
+        depth: 0,
     };
     let shape = parser.group()?;
     if parser.at < parser.tokens.len() {
         return Err("`layout` has a `)` without its `(`".to_owned());
+    }
+    if parser.names.len() > MOST_PANES {
+        return Err(format!("`layout` has more than {MOST_PANES} panes"));
     }
     Ok(shape)
 }
@@ -297,6 +305,8 @@ struct Parser<'a> {
     tokens: &'a [Token<'a>],
     at: usize,
     names: HashSet<&'a str>,
+    /// How many parentheses are open, which the parser recurses into.
+    depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -342,7 +352,12 @@ impl<'a> Parser<'a> {
                 })
             }
             Some(Token::Open) => {
+                if self.depth == DEEPEST_PARENTHESES {
+                    return Err("`layout` nests its parentheses too deep".to_owned());
+                }
+                self.depth += 1;
                 let shape = self.group()?;
+                self.depth -= 1;
                 if self.next() != Some(&Token::Close) {
                     return Err("`layout` has a `(` without its `)`".to_owned());
                 }
@@ -476,6 +491,16 @@ mod tests {
     fn read(text: &str) -> Result<Preset, String> {
         let document = text.parse::<DocumentMut>().unwrap();
         Preset::read("dev", document.as_table())
+    }
+
+    #[test]
+    fn a_layout_past_what_a_tab_or_the_stack_takes_is_refused() {
+        let nested = format!("{}a{}", "(".repeat(200_000), ")".repeat(200_000));
+        assert!(parse_layout(&nested).is_err());
+        let names: Vec<String> = (0..=MOST_PANES).map(|at| format!("p{at}")).collect();
+        assert!(parse_layout(&names.join(" | ")).is_err());
+        let names = &names[..MOST_PANES];
+        assert!(parse_layout(&names.join(" | ")).is_ok());
     }
 
     fn names(preset: &Preset) -> Vec<&str> {

@@ -7,6 +7,10 @@ use crate::wire::variants;
 /// What a `share` is out of.
 pub const WHOLE: u16 = 10_000;
 
+/// The panes a tab may have, few enough that its tree, however lopsided, nests no deeper
+/// than a message may.
+pub const MOST_PANES: usize = crate::wire::DEEPEST;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Node {
     Pane {
@@ -50,6 +54,15 @@ variants!(Plan {
 });
 
 impl Plan {
+    /// How many panes it makes.
+    #[must_use]
+    pub fn panes(&self) -> usize {
+        match self {
+            Self::Kept | Self::Run { .. } => 1,
+            Self::Split { first, second, .. } => first.panes() + second.panes(),
+        }
+    }
+
     /// How many times it keeps the pane there is, which only once makes sense.
     #[must_use]
     pub fn kept(&self) -> usize {
@@ -294,6 +307,30 @@ mod tests {
             [TerminalId(2), TerminalId(4), TerminalId(3), TerminalId(1)]
         );
         assert!(!root.beside(TerminalId(9), TerminalId(5), Side::Left));
+    }
+
+    fn nested(depth: usize) -> Vec<u8> {
+        // Each level: the tag of a split, which way, its share, and then its first side.
+        let mut bytes = [2, 1, 1].repeat(depth);
+        bytes.push(0);
+        // Each second side, as the levels close: a pane that is kept.
+        bytes.extend(std::iter::repeat_n(0, depth));
+        bytes
+    }
+
+    #[test]
+    fn a_plan_nested_past_what_a_stack_takes_is_refused() {
+        let plan = crate::wire::decode::<Plan>(&nested(crate::wire::DEEPEST)).unwrap();
+        assert_eq!(plan.panes(), crate::wire::DEEPEST + 1);
+        assert_eq!(
+            crate::wire::decode::<Plan>(&nested(crate::wire::DEEPEST + 1)),
+            Err(crate::wire::DecodeError::TooDeep)
+        );
+        // Far past any stack, in a thread with no more of it than a client's.
+        assert_eq!(
+            crate::wire::decode::<Plan>(&nested(10_000_000)),
+            Err(crate::wire::DecodeError::TooDeep)
+        );
     }
 
     #[test]

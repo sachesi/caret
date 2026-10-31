@@ -2,7 +2,17 @@
 //! zigzagged first), strings and lists as their length then their items, options and
 //! enums as a tag byte then their fields.
 
+use std::cell::Cell;
 use std::fmt;
+
+/// How deep values may nest in [`Box`]es. Reading them recurses, and a message of a few
+/// megabytes could nest deep enough to run a thread out of stack, which ends the process
+/// and every terminal in it.
+pub const DEEPEST: usize = 256;
+
+thread_local! {
+    static DEPTH: Cell<usize> = const { Cell::new(0) };
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DecodeError {
@@ -18,6 +28,8 @@ pub enum DecodeError {
     NotChar(u32),
     #[error("{0} bytes left over after the message")]
     LeftOver(usize),
+    #[error("values nested deeper than {DEEPEST}")]
+    TooDeep,
 }
 
 pub trait Wire: Sized {
@@ -227,7 +239,14 @@ impl<T: Wire> Wire for Box<T> {
     }
 
     fn take(input: &mut &[u8]) -> Result<Self, DecodeError> {
-        T::take(input).map(Box::new)
+        let depth = DEPTH.get();
+        if depth >= DEEPEST {
+            return Err(DecodeError::TooDeep);
+        }
+        DEPTH.set(depth + 1);
+        let value = T::take(input);
+        DEPTH.set(depth);
+        value.map(Box::new)
     }
 }
 
