@@ -195,19 +195,23 @@ impl App {
     fn popup_menu(&mut self, session: SessionId, at: (f32, f32), filter: &str) -> chrome::Menu {
         let shown = self.tabs.get(self.selected).map(|tab| tab.key);
         let needle = filter.to_lowercase();
+        if self.config.tab_previews {
+            self.ask_session_frames(session);
+        }
         let tabs: Vec<(Item, Choice)> = self
             .tabs
             .iter()
-            .filter(|tab| tab.session == session)
-            .filter(|tab| tab.label().to_lowercase().contains(&needle))
-            .map(|tab| {
+            .enumerate()
+            .filter(|(_, tab)| tab.session == session)
+            .filter(|(_, tab)| tab.label().to_lowercase().contains(&needle))
+            .map(|(index, tab)| {
                 let item = Item {
                     label: tab.label().to_owned(),
                     enabled: true,
                     dot: tab.attention.then_some(chrome::ACCENT),
                     current: Some(tab.key) == shown,
                     closes: true,
-                    preview: None,
+                    preview: self.config.tab_previews.then(|| self.tab_preview(index)),
                     shortcut: None,
                 };
                 (item, Choice::ShowTab(tab.key))

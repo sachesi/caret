@@ -403,6 +403,7 @@ impl Painter<'_> {
             preview_quads(
                 quads,
                 preview,
+                scale,
                 [
                     x + inset + padding,
                     top + ITEM * scale,
@@ -434,14 +435,28 @@ impl Painter<'_> {
     }
 }
 
-/// `preview` fitted into `[x, y, width, height]`, keeping the blocks' shape.
-fn preview_quads(quads: &mut Vec<Quad>, preview: &Preview, [x, y, width, height]: [f32; 4]) {
+/// `preview` fitted into `[x, y, width, height]`, keeping the blocks' shape, outlined
+/// so a terminal of the menu's colour still stands apart from it.
+fn preview_quads(
+    quads: &mut Vec<Quad>,
+    preview: &Preview,
+    scale: f32,
+    [x, y, width, height]: [f32; 4],
+) {
     if preview.columns == 0 || preview.rows == 0 {
         return;
     }
     // Cells are about twice as high as wide.
     let block = (width / preview.columns as f32).min(height / preview.rows as f32 / 2.0);
     let (block_width, block_height) = (block, 2.0 * block);
+    quads.push(Quad {
+        x: x.round() - scale,
+        y: y.round() - scale,
+        width: (preview.columns as f32 * block_width).ceil() + 2.0 * scale,
+        height: (preview.rows as f32 * block_height).ceil() + 2.0 * scale,
+        color: OUTLINE,
+        ..Quad::default()
+    });
     for (index, &color) in preview.colors.iter().enumerate() {
         let (row, column) = (index / preview.columns, index % preview.columns);
         quads.push(Quad {

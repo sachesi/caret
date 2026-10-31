@@ -13,7 +13,7 @@ mod dialog;
 mod menu;
 
 pub use dialog::{Appearance, Dialog, wrap};
-pub use menu::{Item, Menu};
+pub use menu::{Item, Menu, Preview};
 
 /// The header bar's height, in logical pixels as all sizes here are.
 pub const HEADER: u32 = 47;

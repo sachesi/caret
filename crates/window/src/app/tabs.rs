@@ -8,12 +8,16 @@ use caret_protocol::layout::Node;
 use caret_protocol::{Bytes, Command, Frame, Question, Request, SessionId, Size, TerminalId};
 
 use super::{App, Asked};
-use crate::chrome::TabLabel;
-use crate::grid::{Grid, Unresolved};
+use crate::chrome::{Preview, TabLabel};
+use crate::grid::{self, Grid, Unresolved};
 use crate::panes::{self, Direction, Placed, Rect};
 
 /// The first protocol version with split panes.
 const PANES: u16 = 2;
+
+/// A tab's preview in blocks across and down, each about a cell's shape.
+const PREVIEW_COLUMNS: i32 = 64;
+const PREVIEW_LINES: i32 = 20;
 
 pub struct Pane {
     /// The program's title.
@@ -467,6 +471,11 @@ impl App {
         if index != self.selected {
             // Its glyphs are looked up when it is shown.
             pane.grid.apply(frame, Unresolved);
+            if self.popup.is_some() && self.config.tab_previews {
+                self.refresh_popup();
+                self.dirty = true;
+                self.draw();
+            }
             return;
         }
         if focused {
@@ -479,6 +488,9 @@ impl App {
         }
         self.renew_full_atlas();
         self.show_link();
+        if self.config.tab_previews {
+            self.refresh_popup();
+        }
         self.dirty = true;
         self.draw();
     }
@@ -490,6 +502,73 @@ impl App {
             for (terminal, pane) in &mut tab.panes {
                 if *terminal != tab.focused {
                     pane.grid.refill(self.atlas.lookup(&mut self.fonts));
+                }
+            }
+        }
+    }
+
+    /// The tab at `index` seen from afar: each pane's cells averaged into blocks where
+    /// the pane is.
+    pub(super) fn tab_preview(&self, index: usize) -> Preview {
+        let tab = &self.tabs[index];
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: PREVIEW_COLUMNS,
+            height: PREVIEW_LINES,
+        };
+        let placed = if tab.zoomed {
+            vec![(tab.focused, area)]
+        } else {
+            panes::place(&tab.root, area, 0).panes
+        };
+        let columns = PREVIEW_COLUMNS as usize;
+        let background = grid::packed(self.grid.background) << 8 | 0xff;
+        let mut colors = vec![background; columns * PREVIEW_LINES as usize];
+        for (terminal, rect) in placed {
+            let grid = if index == self.selected && terminal == tab.focused {
+                &self.grid
+            } else if let Some(pane) = tab.panes.get(&terminal) {
+                &pane.grid
+            } else {
+                continue;
+            };
+            // The cells under block `at` of `blocks`, one at least.
+            let under = |at: i32, blocks: i32, cells: usize| {
+                let start = at as usize * cells / blocks as usize;
+                start..((at + 1) as usize * cells / blocks as usize).max(start + 1)
+            };
+            for line in 0..rect.height {
+                for column in 0..rect.width {
+                    let at = (rect.y + line) as usize * columns + (rect.x + column) as usize;
+                    if let Some(color) = colors.get_mut(at) {
+                        *color = grid.shade(
+                            under(column, rect.width, grid.columns),
+                            under(line, rect.height, grid.lines),
+                        );
+                    }
+                }
+            }
+        }
+        Preview {
+            columns,
+            rows: PREVIEW_LINES as usize,
+            colors,
+        }
+    }
+
+    /// Asks for the next frame of each pane of `session`'s tabs out of sight, for their
+    /// previews.
+    pub(super) fn ask_session_frames(&mut self, session: SessionId) {
+        let selected = self.selected;
+        for (index, tab) in self.tabs.iter_mut().enumerate() {
+            if index == selected || tab.session != session {
+                continue;
+            }
+            for (&terminal, pane) in &mut tab.panes {
+                if !pane.frame_asked {
+                    self.server.send(&Request::Frame { terminal });
+                    pane.frame_asked = true;
                 }
             }
         }

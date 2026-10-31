@@ -2,6 +2,7 @@
 //! cells of one size that index the glyph atlas, and which rows each copy on the GPU
 //! still lacks.
 
+use std::ops::Range;
 use std::rc::Rc;
 
 use caret_protocol::{
@@ -85,6 +86,37 @@ pub struct Grid {
 impl Grid {
     pub fn has_selection(&self) -> bool {
         self.selection.is_some()
+    }
+
+    /// The cells of `columns` on `lines` seen from afar, as 0xRRGGBBAA: a cell with a
+    /// glyph shows half its glyph's colour, half its background.
+    pub fn shade(&self, columns: Range<usize>, lines: Range<usize>) -> u32 {
+        let mut sum = [0; 3];
+        let mut add = |color: Rgb, weight: u32| {
+            for (sum, part) in sum.iter_mut().zip([color.r, color.g, color.b]) {
+                *sum += u32::from(part) * weight;
+            }
+        };
+        let mut drawn = 0;
+        for row in self.rows.get(lines.clone()).unwrap_or_default() {
+            for cell in row
+                .iter()
+                .filter(|cell| columns.contains(&usize::from(cell.column)))
+            {
+                match &cell.glyph {
+                    Some(glyph) if !matches!(glyph.text, GlyphText::Char(' ')) => {
+                        add(cell.fg, 1);
+                        add(cell.bg, 1);
+                    }
+                    _ => add(cell.bg, 2),
+                }
+                drawn += 1;
+            }
+        }
+        let cells = (columns.len() * lines.len()) as u32;
+        add(self.background, 2 * cells.saturating_sub(drawn));
+        let [r, g, b] = sum.map(|sum| sum / (2 * cells).max(1));
+        (r << 24) | (g << 16) | (b << 8) | 0xff
     }
 
     /// Takes in what changed, as the server sent it, with `glyphs` giving each glyph's
@@ -429,5 +461,15 @@ mod tests {
         assert_eq!(glyphs(&grid)[..4], [1, 1, 1, 0]);
         grid.apply(frame(Vec::new(), None), Arrows);
         assert_eq!(glyphs(&grid)[..4], [1, 9, 0, 0]);
+    }
+
+    #[test]
+    fn from_afar_a_glyph_s_cell_is_half_its_glyph_and_blank_ones_their_background() {
+        let mut grid = Grid::default();
+        grid.apply(frame(vec![row(0, "a b")], None), Unresolved);
+        assert_eq!(grid.shade(0..1, 0..1), 0x8787_87ff);
+        assert_eq!(grid.shade(1..2, 0..1), 0x1010_10ff);
+        assert_eq!(grid.shade(0..2, 0..1), 0x4b4b_4bff);
+        assert_eq!(grid.shade(0..4, 2..3), 0x1010_10ff);
     }
 }
