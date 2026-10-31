@@ -27,6 +27,8 @@ pub enum Action {
     SplitRight,
     SplitDown,
     ClosePane,
+    /// The preset at this place in the settings.
+    Preset(usize),
     FocusLeft,
     FocusRight,
     FocusUp,
@@ -241,8 +243,12 @@ pub struct Shortcuts {
 }
 
 impl Shortcuts {
-    /// Caret's shortcuts, with those of the actions in `bound` replaced.
-    pub fn new(bound: &HashMap<Action, Vec<Shortcut>>) -> Self {
+    /// Caret's shortcuts, with those of the actions in `bound` replaced, and the keys of
+    /// the presets in the settings' order, which go before any other's.
+    pub fn new(
+        bound: &HashMap<Action, Vec<Shortcut>>,
+        presets: impl IntoIterator<Item = Option<Shortcut>>,
+    ) -> Self {
         let mut actions = HashMap::new();
         let mut first = HashMap::new();
         for (action, _, keys) in ACTIONS {
@@ -254,6 +260,12 @@ impl Shortcuts {
                 first.insert(*action, key);
             }
             actions.extend(keys.into_iter().map(|shortcut| (shortcut, *action)));
+        }
+        for (at, key) in presets.into_iter().enumerate() {
+            if let Some(key) = key {
+                first.insert(Action::Preset(at), key);
+                actions.insert(key, Action::Preset(at));
+            }
         }
         Self { actions, first }
     }
@@ -290,7 +302,7 @@ mod tests {
 
     #[test]
     fn letters_match_in_either_case_and_symbols_without_their_shift() {
-        let shortcuts = Shortcuts::new(&HashMap::new());
+        let shortcuts = Shortcuts::new(&HashMap::new(), []);
         assert_eq!(shortcuts.action(Keysym::C, CTRL_SHIFT), Some(Action::Copy));
         assert_eq!(shortcuts.action(Keysym::c, Modifiers::default()), None);
         assert_eq!(
@@ -314,7 +326,7 @@ mod tests {
 
     #[test]
     fn the_history_scrolls_by_the_page_and_between_prompts() {
-        let shortcuts = Shortcuts::new(&HashMap::new());
+        let shortcuts = Shortcuts::new(&HashMap::new(), []);
         let shift = Modifiers {
             shift: true,
             ..Modifiers::default()
@@ -339,7 +351,7 @@ mod tests {
 
     #[test]
     fn sessions_are_stepped_with_shift_and_picked_with_alt() {
-        let shortcuts = Shortcuts::new(&HashMap::new());
+        let shortcuts = Shortcuts::new(&HashMap::new(), []);
         assert_eq!(
             shortcuts.action(Keysym::Page_Down, CTRL_SHIFT),
             Some(Action::NextSession)
@@ -357,7 +369,7 @@ mod tests {
 
     #[test]
     fn an_action_is_shown_by_its_first_shortcut() {
-        let shortcuts = Shortcuts::new(&HashMap::new());
+        let shortcuts = Shortcuts::new(&HashMap::new(), []);
         assert_eq!(
             shortcuts.label(Action::Copy).as_deref(),
             Some("Ctrl+Shift+C")
@@ -383,7 +395,7 @@ mod tests {
             Action::Copy,
             vec![Shortcut::parse("Ctrl+Insert").expect("a key")],
         )]);
-        let shortcuts = Shortcuts::new(&bound);
+        let shortcuts = Shortcuts::new(&bound, []);
         let ctrl = Modifiers {
             ctrl: true,
             ..Modifiers::default()

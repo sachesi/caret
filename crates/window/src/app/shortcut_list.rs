@@ -46,6 +46,15 @@ impl App {
                 ],
             ),
             section(
+                gettext("Presets"),
+                self.config
+                    .presets
+                    .iter()
+                    .enumerate()
+                    .map(|(at, preset)| line(preset.name.clone(), Action::Preset(at)))
+                    .collect(),
+            ),
+            section(
                 gettext("Sessions"),
                 vec![
                     line(gettext("Sessions…"), Action::Sessions),

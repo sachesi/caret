@@ -81,6 +81,42 @@ the main menu or with `caret --profile NAME`:
     font = "Adwaita Mono 13"
     custom-command = "ssh work"
 
+## Split presets
+
+A split preset is a layout of panes under a name, offered by Presets in the terminal's
+menu and the main menu, and by `caret --preset NAME` for a new window:
+
+    [split-presets.dev]
+    layout = "editor 60% | (logs / shell)"
+    shortcut = "Ctrl+Alt+P"
+
+    [split-presets.dev.panes.editor]
+    command = "nvim"
+    directory = "~/src/app"
+
+    [split-presets.dev.panes.logs]
+    command = "journalctl -f"
+
+    [split-presets.dev.panes.shell]
+    keep = true
+
+`layout` draws the panes by name: `|` puts them side by side and `/` one under another,
+with parentheses around a group where the two meet. A percent after a pane or group is
+its part of its row; those without one share what is left.
+
+A pane's table is optional. `command` is what it runs, the shell or `custom-command`
+without one, and `directory` is where, starting with `~` for the home directory or
+relative to the current pane; without one it starts where the current pane is.
+
+A tab with one pane takes the layout, and its running program stays, moved to the pane
+with `keep = true`, or else to the first without a command. A kept pane cannot have a
+command. A tab with several panes is left as it is and the layout opens in a new tab,
+where the kept pane starts a shell in its `directory`.
+
+A preset that cannot be used is left out of the menu, with a warning in the log saying
+why. Save Layout as Preset, under Presets in a tab with several panes, writes the tab's
+layout here, with each pane's directory and the command line running in it.
+
 ## Keys
 
 The `[keys]` table binds an action to other keys: one key, a list of them, or `[]` for

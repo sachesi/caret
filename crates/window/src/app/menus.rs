@@ -32,6 +32,10 @@ pub enum Choice {
     CloseDetached(Vec<SessionId>),
     /// A line naming the items after it.
     Title,
+    /// Opens the submenu of split presets beside the item.
+    Presets,
+    /// Asks for a name to save the tab's layout under.
+    SavePreset,
     ShowSession(SessionId),
     SessionWindow(SessionId),
     /// A tab of a session's list of tabs, by its key.
@@ -69,6 +73,8 @@ impl App {
         at: (f32, f32),
         main: bool,
     ) {
+        self.chrome.submenu = None;
+        self.submenu_choices.clear();
         self.chrome.menu = Some(self.menu(sections, at, main));
         self.popup = None;
         self.hover();
@@ -101,6 +107,7 @@ impl App {
             self.act_item(&gettext("New Tab"), Action::NewTab),
             self.act_item(&gettext("New Session"), Action::NewSession),
         ]];
+        sections[0].extend(self.presets_item());
         if !self.config.profiles.is_empty() {
             let profiles = self.config.profiles.iter().map(|profile| {
                 let label = gettext_f("New “{profile}” Window", &[("profile", profile)]);
@@ -193,6 +200,7 @@ impl App {
             self.act_item(&gettext("Split Right"), Action::SplitRight),
             self.act_item(&gettext("Split Down"), Action::SplitDown),
         ];
+        panes.extend(self.presets_item());
         if self
             .tabs
             .get(self.selected)
@@ -228,6 +236,8 @@ impl App {
 
     pub(super) fn close_menu(&mut self) {
         self.popup = None;
+        self.chrome.submenu = None;
+        self.submenu_choices.clear();
         if self.chrome.menu.take().is_some() {
             self.choices.clear();
             self.hover();
@@ -248,8 +258,31 @@ impl App {
             return;
         }
         let choice = self.choices.get(index).cloned();
+        if choice == Some(Choice::Presets) {
+            self.open_submenu(index, true);
+            return;
+        }
         let at = self.chrome.menu.as_ref().map(|menu| menu.at);
         self.close_menu();
+        self.do_choice(choice, at);
+    }
+
+    /// Closes the menus and does what the submenu's item at `index` does.
+    pub(super) fn choose_in_submenu(&mut self, index: usize) {
+        let enabled = self
+            .chrome
+            .submenu
+            .as_ref()
+            .and_then(|menu| menu.items().nth(index))
+            .is_some_and(|item| item.enabled);
+        if enabled {
+            let choice = self.submenu_choices.get(index).cloned();
+            self.close_menu();
+            self.do_choice(choice, None);
+        }
+    }
+
+    fn do_choice(&mut self, choice: Option<Choice>, at: Option<(f32, f32)>) {
         match choice {
             Some(Choice::Act(action)) => {
                 self.act(action);
@@ -289,7 +322,8 @@ impl App {
             }
             Some(Choice::About) => self.about(),
             Some(Choice::MainMenu) => self.open_main_menu(at),
-            Some(Choice::Title) | None => {}
+            Some(Choice::SavePreset) => self.ask_preset_name(),
+            Some(Choice::Title | Choice::Presets) | None => {}
         }
     }
 
@@ -600,7 +634,18 @@ impl App {
 
     /// Scrolls a menu taller than the screen by what the wheel or touchpad turned.
     pub(super) fn scroll_menu(&mut self, value120: i32, discrete: i32, absolute: f64) {
-        let Some(menu) = &mut self.chrome.menu else {
+        let over_submenu = matches!(self.chrome.hovered, Some(Part::SubmenuItem(_)));
+        if !over_submenu {
+            // The item it opened from moves with the rest.
+            self.chrome.submenu = None;
+            self.submenu_choices.clear();
+        }
+        let menu = if over_submenu {
+            &mut self.chrome.submenu
+        } else {
+            &mut self.chrome.menu
+        };
+        let Some(menu) = menu else {
             return;
         };
         let turned = if value120 != 0 {
@@ -655,6 +700,9 @@ impl App {
         if self.popup.is_some() && self.popup_key(event) {
             return true;
         }
+        if self.submenu_key(event) {
+            return true;
+        }
         let Some(menu) = &mut self.chrome.menu else {
             return false;
         };
@@ -677,8 +725,12 @@ impl App {
             }
             Keysym::Right | Keysym::KP_Right | Keysym::Menu => {
                 if let Some(focused) = menu.focused {
-                    let at = self.keyed_menu_at();
-                    self.listed_menu(focused, at);
+                    if self.choices.get(focused) == Some(&Choice::Presets) {
+                        self.open_submenu(focused, true);
+                    } else {
+                        let at = self.keyed_menu_at();
+                        self.listed_menu(focused, at);
+                    }
                 }
             }
             _ => {}

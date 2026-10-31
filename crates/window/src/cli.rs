@@ -16,6 +16,7 @@ Usage: caret [OPTION…] [-e] [COMMAND [ARGUMENT…]]
 
   -w, --working-directory DIRECTORY   start in DIRECTORY
       --profile NAME                  open with the settings of profile NAME
+      --preset NAME                   lay out the first tab as split preset NAME
       --attach                        show the windows that were detached
       --version                       print the version and exit
   -h, --help                          print this and exit";
@@ -28,6 +29,8 @@ pub struct Start {
     pub attach: Attach,
     /// The profile whose settings the window takes over the others.
     pub profile: Option<String>,
+    /// The split preset the first tab takes.
+    pub preset: Option<String>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -88,6 +91,10 @@ pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Parsed, St
                 let profile = arguments.next().ok_or("--profile needs a profile's name")?;
                 start.profile = Some(lossy(profile));
             }
+            "--preset" => {
+                let preset = arguments.next().ok_or("--preset needs a preset's name")?;
+                start.preset = Some(lossy(preset));
+            }
             "-w" | "--working-directory" => {
                 let directory = arguments
                     .next()
@@ -115,6 +122,9 @@ pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Parsed, St
                 }
             }
         }
+    }
+    if start.preset.is_some() && start.attach != Attach::No {
+        return Err("--preset opens a new session, which --attach and --session do not".to_owned());
     }
     Ok(Parsed::Start(start))
 }

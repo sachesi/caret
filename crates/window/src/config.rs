@@ -10,10 +10,14 @@ use std::process::Command;
 use caret_protocol::CursorShape;
 use harfrust::Feature;
 use rustix::fs::inotify;
-use toml_edit::{DocumentMut, Item, TableLike, Value};
+use toml_edit::{DocumentMut, Item, Table, TableLike, Value};
 
 use crate::palette;
+use crate::presets::{Preset, SavedPane};
 use crate::shortcuts::{self, Action, Shortcut};
+
+/// The table of split presets.
+const PRESETS: &str = "split-presets";
 
 /// The font size when neither the settings nor the desktop name one.
 const POINTS: f32 = 11.0;
@@ -107,6 +111,8 @@ pub struct Config {
     /// The names of the profiles, sets of settings windows may be opened with, in the
     /// file's order.
     pub profiles: Vec<String>,
+    /// The layouts the window offers, in the file's order; those wrong are left out.
+    pub presets: Vec<Preset>,
 }
 
 impl Default for Config {
@@ -140,6 +146,7 @@ impl Default for Config {
             tab_previews: false,
             keys: HashMap::new(),
             profiles: Vec::new(),
+            presets: Vec::new(),
         }
     }
 }
@@ -179,6 +186,7 @@ impl Config {
             tracing::warn!("{}: `profiles` is not a table", path.display());
         }
         config.take(path, "", document.as_table());
+        config.read_presets(path, &document);
         let Some(profile) = profile else {
             return config;
         };
@@ -198,11 +206,34 @@ impl Config {
             match key {
                 "keys" => self.bind(path, prefix, item),
                 // Read apart, by `parse`.
-                "profiles" if prefix.is_empty() => {}
+                "profiles" | PRESETS if prefix.is_empty() => {}
                 _ => {
                     if let Err(expected) = self.set(key, item) {
                         tracing::warn!("{}: `{prefix}{key}` is not {expected}", path.display());
                     }
+                }
+            }
+        }
+    }
+
+    /// Takes the valid presets of `document`, warning of each of the others.
+    fn read_presets(&mut self, path: &Path, document: &DocumentMut) {
+        let Some(item) = document.get(PRESETS) else {
+            return;
+        };
+        let Some(presets) = item.as_table_like() else {
+            tracing::warn!("{}: `{PRESETS}` is not a table", path.display());
+            return;
+        };
+        for (name, item) in presets.iter() {
+            let preset = item
+                .as_table_like()
+                .ok_or_else(|| "it is not a table".to_owned())
+                .and_then(|table| Preset::read(name, table));
+            match preset {
+                Ok(preset) => self.presets.push(preset),
+                Err(why) => {
+                    tracing::warn!("{}: `{PRESETS}.{name}`: {why}", path.display());
                 }
             }
         }
@@ -429,6 +460,19 @@ const STARTER: &str = r##"# Caret's settings. Take the # off a setting to change
 # Whether a session's list of tabs shows a small picture of each.
 #tab-previews = false
 
+# Split presets lay out a tab: one with a single pane keeps its program in the pane
+# with `keep`, or the first without a command, and otherwise a new tab opens. In
+# `layout`, | is side by side, / is one under another, and a percent is a size. They
+# are in the terminal's menu and the main menu, and with caret --preset NAME.
+# [split-presets.dev]
+# layout = "editor 60% | (logs / shell)"
+# shortcut = "Ctrl+Alt+P"
+# [split-presets.dev.panes.editor]
+# command = "nvim"
+# directory = "~/src/app"
+# [split-presets.dev.panes.shell]
+# keep = true
+
 # Profiles are settings of their own for the windows opened with them, from the
 # main menu or with caret --profile NAME. Each is a table of the settings above,
 # such as:
@@ -546,32 +590,80 @@ fn quoted(value: &str) -> Option<String> {
 
 /// Sets `key` to `value` in `config.toml`, keeping the rest of the file as it is.
 pub fn write(key: &str, value: impl Into<Value>) {
+    let value = toml_edit::value(value);
+    edit(|document| document[key] = value);
+}
+
+/// Adds the preset `name` to `config.toml`, keeping the rest of the file as it is; whether
+/// it is there now.
+pub fn add_preset(name: &str, layout: &str, panes: &[SavedPane]) -> bool {
+    edit(|document| add_preset_to(document, name, layout, panes))
+}
+
+fn add_preset_to(document: &mut DocumentMut, name: &str, layout: &str, panes: &[SavedPane]) {
+    let mut preset = Table::new();
+    preset["layout"] = toml_edit::value(layout);
+    let mut tables = Table::new();
+    tables.set_implicit(true);
+    for pane in panes {
+        let mut table = Table::new();
+        if let Some(command) = &pane.command {
+            table["command"] = toml_edit::value(command);
+        }
+        if let Some(directory) = &pane.directory {
+            table["directory"] = toml_edit::value(directory);
+        }
+        if pane.keep {
+            table["keep"] = toml_edit::value(true);
+        }
+        if !table.is_empty() {
+            tables[&pane.name] = Item::Table(table);
+        }
+    }
+    if !tables.is_empty() {
+        preset["panes"] = Item::Table(tables);
+    }
+    let presets = document.entry(PRESETS).or_insert_with(|| {
+        let mut presets = Table::new();
+        presets.set_implicit(true);
+        Item::Table(presets)
+    });
+    if let Some(presets) = presets.as_table_mut() {
+        presets[name] = Item::Table(preset);
+    }
+}
+
+/// Changes `config.toml` with `change`, keeping the rest of the file as it is; whether it
+/// was changed.
+fn edit(change: impl FnOnce(&mut DocumentMut)) -> bool {
     let Some(path) = path() else {
-        return;
+        return false;
     };
     let text = match std::fs::read_to_string(&path) {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(error) => {
             tracing::warn!("reading {}: {error}", path.display());
-            return;
+            return false;
         }
     };
     let mut document = match text.parse::<DocumentMut>() {
         Ok(document) => document,
         Err(error) => {
             tracing::warn!("not changing {}: {error}", path.display());
-            return;
+            return false;
         }
     };
-    document[key] = toml_edit::value(value);
+    change(&mut document);
     // Written beside it and renamed over it, so that no reader sees half a file.
     let written = path.with_extension("toml.new");
     let saved = std::fs::write(&written, document.to_string())
         .and_then(|()| std::fs::rename(&written, &path));
     if let Err(error) = saved {
         tracing::warn!("writing {}: {error}", path.display());
+        return false;
     }
+    true
 }
 
 /// The file of the colour scheme `name`.
@@ -785,6 +877,52 @@ mod tests {
         assert_eq!(config.keys[&Action::Paste].len(), 2);
         assert!(config.keys[&Action::Fullscreen].is_empty());
         assert!(!config.keys.contains_key(&Action::ZoomIn));
+    }
+
+    #[test]
+    fn valid_presets_are_taken_in_the_file_s_order_and_a_saved_one_reads_back() {
+        let mut config = parse(
+            "[split-presets.two]\nlayout = \"a | b\"\n\
+             [split-presets.wrong]\nlayout = \"a\"\n\
+             [split-presets.one]\nlayout = \"a / b\"\n",
+        );
+        let names = |config: &Config| {
+            config
+                .presets
+                .iter()
+                .map(|preset| preset.name.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(&config), ["two", "one"]);
+
+        let mut document = "font = \"Mono 11\"\n# Mine.\n[split-presets.two]\nlayout = \"a | b\"\n"
+            .parse::<DocumentMut>()
+            .unwrap();
+        add_preset_to(
+            &mut document,
+            "my layout",
+            "pane1 60% | pane2 40%",
+            &[
+                SavedPane {
+                    name: "pane1".to_owned(),
+                    command: Some("top".to_owned()),
+                    directory: None,
+                    keep: false,
+                },
+                SavedPane {
+                    name: "pane2".to_owned(),
+                    command: None,
+                    directory: Some("/tmp".to_owned()),
+                    keep: true,
+                },
+            ],
+        );
+        let text = document.to_string();
+        assert!(text.contains("# Mine."), "{text}");
+        config = parse(&text);
+        assert_eq!(names(&config), ["two", "my layout"]);
+        assert_eq!(config.presets[1].kept().name, "pane2");
+        assert_eq!(config.presets[1].shape.panes()[0].command, ["top"]);
     }
 
     #[test]

@@ -26,6 +26,12 @@ const DOT: f32 = 8.0;
 const DOT_ROOM: f32 = 18.0;
 const CHECK_ROOM: f32 = 22.0;
 const PREVIEW: f32 = 64.0;
+/// A layout's picture before a label, and the room it takes with the gap after it.
+const PICTURE: (f32, f32) = (24.0, 16.0);
+const PICTURE_ROOM: f32 = 34.0;
+const PICTURE_GAP: f32 = 1.0;
+/// What an item that opens a submenu keeps at its end for the arrow.
+const NEXT_ROOM: f32 = 20.0;
 
 #[derive(Debug, Clone, Default)]
 #[expect(
@@ -48,6 +54,10 @@ pub struct Item {
     /// It names the items after it and cannot be chosen.
     pub title: bool,
     pub preview: Option<Preview>,
+    /// It opens a submenu beside it.
+    pub opens: bool,
+    /// A drawing of a layout before the label: rectangles in a square of side 1.
+    pub picture: Option<Vec<[f32; 4]>>,
 }
 
 /// A small picture of what an item stands for: a colour for each block of cells.
@@ -82,11 +92,15 @@ pub struct Menu {
     /// Text typed to narrow the items down, shown in the heading; none where typing does
     /// not.
     pub filter: Option<String>,
+    /// It opens beside an item of another menu.
+    pub submenu: bool,
 }
 
 impl Menu {
     /// An item's height, the step a wheel's notch scrolls by.
     pub const ITEM: f32 = ITEM;
+    /// The room between its edge and its items.
+    pub const PADDING: f32 = PADDING;
 
     pub fn new(sections: Vec<Vec<Item>>, at: (f32, f32), main: bool) -> Self {
         Self {
@@ -103,6 +117,7 @@ impl Menu {
             main,
             heading: None,
             filter: None,
+            submenu: false,
         }
     }
 
@@ -162,6 +177,12 @@ impl Menu {
                         .as_deref()
                         .map_or(0.0, |shortcut| SHORTCUT_GAP + measure(shortcut, false))
                     + if item.dot.is_some() { DOT_ROOM } else { 0.0 }
+                    + if item.opens { NEXT_ROOM } else { 0.0 }
+                    + if item.picture.is_some() {
+                        PICTURE_ROOM
+                    } else {
+                        0.0
+                    }
                     + self.check_room()
                     + end)
                     .max(preview)
@@ -290,6 +311,13 @@ impl Menu {
                     Some(this)
                 },
             )
+    }
+
+    /// Where the item at `index` is, in logical pixels from the menu's corner as shown: its
+    /// top and its height.
+    pub fn item_place(&self, index: usize) -> Option<(f32, f32)> {
+        let top = self.tops().nth(index)?;
+        Some((top - self.scroll, item_height(self.items().nth(index)?)))
     }
 
     /// The part at `(x, y)` from the window's corner: an item, the menu between them, or
@@ -431,7 +459,11 @@ impl Painter<'_> {
         let colors = chrome.colors();
         let (inset, padding) = (PADDING * scale, ITEM_PADDING * scale);
         let item_height = self::item_height(item) * scale;
-        let part = Part::MenuItem(index);
+        let part = if menu.submenu {
+            Part::SubmenuItem(index)
+        } else {
+            Part::MenuItem(index)
+        };
         let lit = item.enabled
             && (menu.focused == Some(index)
                 || chrome.over(part, false)
@@ -475,7 +507,17 @@ impl Painter<'_> {
             quads.push(circle(start + DOT * scale / 2.0, middle, DOT * scale, dot));
             start += DOT_ROOM * scale;
         }
-        let end = if item.closes { BUTTON * scale } else { 0.0 };
+        if let Some(rects) = &item.picture {
+            picture_quads(quads, rects, scale, [start, middle], color);
+            start += PICTURE_ROOM * scale;
+        }
+        let end = if item.closes {
+            BUTTON * scale
+        } else if item.opens {
+            NEXT_ROOM * scale
+        } else {
+            0.0
+        };
         let room = width - (start - x) - inset - padding - end;
         let shortcut = item.shortcut.as_ref().and_then(|shortcut| {
             draw(&Drawing::Label {
@@ -495,6 +537,34 @@ impl Painter<'_> {
         if let Some(glyph) = draw(&label) {
             quads.push(self.left_label(start, middle, glyph, color));
         }
+        self.item_extras(quads, item, index, lit, [x, top, width, middle], draw);
+        if let Some(glyph) = shortcut {
+            let (glyph_width, _) = halves(glyph.1.size);
+            let right = x + width - inset - padding - glyph_width as f32;
+            let dim = (colors.foreground & !0xff) | 0x8c;
+            quads.push(self.left_label(right, middle, glyph, dim));
+        }
+    }
+
+    /// What the item at `index` has besides its text: a button that closes it, an arrow to
+    /// its submenu, or a picture of what it stands for under its label.
+    fn item_extras(
+        &self,
+        quads: &mut Vec<Quad>,
+        item: &Item,
+        index: usize,
+        lit: bool,
+        [x, top, width, middle]: [f32; 4],
+        draw: &mut impl FnMut(&Drawing) -> Option<(u32, GpuGlyph)>,
+    ) {
+        let (chrome, scale) = (self.chrome, self.scale);
+        let colors = chrome.colors();
+        let (inset, padding) = (PADDING * scale, ITEM_PADDING * scale);
+        let color = if item.enabled {
+            colors.foreground
+        } else {
+            (colors.foreground & !0xff) | 0x60
+        };
         if item.closes {
             let centre = x + width - inset - padding - BUTTON * scale / 2.0 + padding / 2.0;
             let close = Part::MenuClose(index);
@@ -505,6 +575,12 @@ impl Painter<'_> {
             if lit && let Some(icon) = draw(&Drawing::Icon(Icon::Close)) {
                 quads.push(centred(centre, middle, icon, colors.foreground));
             }
+        }
+        if item.opens
+            && let Some(icon) = draw(&Drawing::Icon(Icon::Next))
+        {
+            let centre = x + width - inset - padding - NEXT_ROOM * scale / 2.0 + padding / 2.0;
+            quads.push(centred(centre, middle, icon, color));
         }
         if let Some(preview) = &item.preview {
             preview_quads(
@@ -518,12 +594,6 @@ impl Painter<'_> {
                     (PREVIEW - PADDING) * scale,
                 ],
             );
-        }
-        if let Some(glyph) = shortcut {
-            let (glyph_width, _) = halves(glyph.1.size);
-            let right = x + width - inset - padding - glyph_width as f32;
-            let dim = (colors.foreground & !0xff) | 0x8c;
-            quads.push(self.left_label(right, middle, glyph, dim));
         }
     }
 
@@ -557,6 +627,36 @@ impl Painter<'_> {
         let (_, top) = offset(glyph);
         let y = (middle - self.line as f32 / 2.0).floor() + top as f32;
         entry(x.round(), y, index, glyph, color)
+    }
+}
+
+/// The drawing of a layout's `rects`, its left at `start`, centred on `middle`.
+fn picture_quads(
+    quads: &mut Vec<Quad>,
+    rects: &[[f32; 4]],
+    scale: f32,
+    [start, middle]: [f32; 2],
+    color: u32,
+) {
+    let (width, height) = (PICTURE.0 * scale, PICTURE.1 * scale);
+    let top = middle - height / 2.0;
+    let gap = (PICTURE_GAP * scale).round().max(1.0);
+    let shade = (color & !0xff) | 0x70;
+    for &[x, y, across, down] in rects {
+        let left = (start + x * width).round();
+        let up = (top + y * height).round();
+        let right = (start + (x + across) * width).round();
+        let bottom = (top + (y + down) * height).round();
+        // A gap only between panes, so that the drawing keeps its outer size.
+        let inner = |edge: f32| if edge < 0.999 { gap } else { 0.0 };
+        quads.push(rounded(
+            left,
+            up,
+            (right - left - inner(x + across)).max(1.0),
+            (bottom - up - inner(y + down)).max(1.0),
+            scale,
+            shade,
+        ));
     }
 }
 

@@ -60,6 +60,7 @@ use crate::grid::{Grid, packed};
 use crate::notifications::Notifier;
 use crate::palette::Palette;
 use crate::panes::{Direction, Placed};
+use crate::presets::Preset;
 use crate::render::{RenderThread, Rendered, Scaling, Target};
 use crate::renderer::{CURSOR_FOCUSED, CURSOR_WIDE, Constants, Job, PaneJob};
 use crate::shortcuts::{Action, Shortcuts};
@@ -107,6 +108,7 @@ mod control;
 mod menus;
 mod pointer;
 mod popup;
+mod presets;
 mod scale;
 mod screen_reader;
 mod search;
@@ -130,12 +132,19 @@ enum Asked {
     DetachedHint,
     /// How many programs run in these detached sessions, to ask before closing them.
     CloseDetached(Vec<SessionId>),
-    /// A tab, opened at this size.
-    Tab(Size),
+    /// A tab, opened at this size, and the preset it is to take.
+    Tab(Size, Option<Box<presets::Arrival>>),
+    /// Where to start the panes of this preset.
+    PresetBase(Preset),
+    /// A pane's directory, and the command line running in it, for a layout being saved.
+    SavedDirectory(TerminalId),
+    SavedCommand(TerminalId),
     /// What a new tab runs, or a new pane, beside the focused one or under it.
     NextCommand(Option<bool>),
     /// A pane split from the focused one.
     Pane,
+    /// A tab laid out by a preset.
+    Arranged,
     /// Whether the text of the search this counts was found.
     Find(u32),
     /// The selected text, to offer as the clipboard or the primary selection.
@@ -215,6 +224,13 @@ struct App {
     closing_tab: Option<confirm::TabClosing>,
     /// What the window's first tab runs, from the command line, until that is asked for.
     first: Option<Command>,
+    /// The preset the window's first tab takes, from the command line.
+    first_preset: Option<String>,
+    /// The item of the menu the submenu opened from, and what each of its items does.
+    submenu_row: usize,
+    submenu_choices: Vec<menus::Choice>,
+    /// A layout being saved, while its panes are asked about.
+    saving: Option<presets::Saving>,
     /// The profile whose settings the window has over the others.
     profile: Option<String>,
     /// Counts searches, so that answers to ones the window moved past are dropped.
@@ -381,6 +397,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
     )?;
     let palette = palette(&config, &desktop);
     server.send(&look(&config, &palette));
+    let first_preset = start.preset.clone();
     let (asked, first) = begin(&mut server, start);
 
     let mut events: EventLoop<App> = EventLoop::try_new()?;
@@ -425,6 +442,10 @@ pub fn run(start: Start) -> Result<(), AppError> {
         control: false,
         closing_tab: None,
         first: Some(first),
+        first_preset,
+        submenu_row: 0,
+        submenu_choices: Vec::new(),
+        saving: None,
         profile,
         searches: 0,
         confirming: None,
@@ -435,7 +456,10 @@ pub fn run(start: Start) -> Result<(), AppError> {
         closing: None,
         fonts,
         zoom: 0,
-        shortcuts: Shortcuts::new(&config.keys),
+        shortcuts: Shortcuts::new(
+            &config.keys,
+            config.presets.iter().map(|preset| preset.shortcut),
+        ),
         atlas: Atlas::default(),
         grid: Grid::default(),
         palette,
@@ -820,8 +844,22 @@ impl App {
                     self.copy(text, primary);
                 }
             }
-            (Some(Asked::Tab(size)), Answer::Opened { terminal }) => {
+            (Some(Asked::PresetBase(preset)), answer) => {
+                let base = match answer {
+                    Answer::Command { command } => command,
+                    _ => Command::default(),
+                };
+                self.preset_from(&preset, base);
+            }
+            (Some(Asked::SavedDirectory(terminal)), answer) => {
+                self.saved_directory(terminal, answer);
+            }
+            (Some(Asked::SavedCommand(terminal)), answer) => self.saved_command(terminal, answer),
+            (Some(Asked::Tab(size, arrival)), Answer::Opened { terminal }) => {
                 self.opened = Some(terminal);
+                if let Some(arrival) = arrival {
+                    self.arrange(terminal, &arrival.preset, &arrival.base);
+                }
                 // The window may have changed size while the tab was opening.
                 if let Some(now) = self.grid_size.filter(|&now| now != size) {
                     self.server.send(&Request::Resize {
@@ -853,7 +891,12 @@ impl App {
             // The session may have closed before the server took the question up.
             (
                 Some(
-                    Asked::Copy { .. } | Asked::Find(_) | Asked::Link | Asked::Pane | Asked::Tab(_),
+                    Asked::Copy { .. }
+                    | Asked::Find(_)
+                    | Asked::Link
+                    | Asked::Pane
+                    | Asked::Tab(..)
+                    | Asked::Arranged,
                 )
                 | None,
                 _,
@@ -894,7 +937,10 @@ impl App {
                 }));
         }
         self.chrome.header_bar = self.config.title_bar;
-        self.shortcuts = Shortcuts::new(&self.config.keys);
+        self.shortcuts = Shortcuts::new(
+            &self.config.keys,
+            self.config.presets.iter().map(|preset| preset.shortcut),
+        );
         self.restyle(&before);
     }
 
@@ -977,7 +1023,10 @@ impl App {
             return;
         }
         if let Some(first) = self.first.take() {
-            self.open_tab(first);
+            match self.first_preset.take() {
+                Some(name) => self.open_first_preset(&name, first),
+                None => self.open_tab(first),
+            }
         }
     }
 
@@ -1468,6 +1517,7 @@ impl App {
             Action::Sessions => self.ask_sessions(),
             Action::NextTab => self.step_tab(1),
             Action::PreviousTab => self.step_tab(-1),
+            Action::Preset(at) => self.use_preset(at),
             Action::ShowTab(number) => {
                 let keys = self.session_keys();
                 if let Some(index) = usize::from(number)

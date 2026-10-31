@@ -194,6 +194,8 @@ pub enum Icon {
     Down,
     Menu,
     Check,
+    /// That a menu's item opens another beside it.
+    Next,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -459,6 +461,8 @@ pub enum Part {
     MenuClose(usize),
     Menu,
     OffMenu,
+    /// An item of the submenu open beside the menu.
+    SubmenuItem(usize),
     /// The list of shortcuts, and the window around it.
     ShortcutList,
     OffShortcutList,
@@ -576,6 +580,8 @@ pub struct Chrome {
     pub dialog: Option<Dialog>,
     /// A menu over the window, which takes all input while it is open.
     pub menu: Option<Menu>,
+    /// The menu open beside `menu`'s item that opens it.
+    pub submenu: Option<Menu>,
     /// The list of shortcuts over the window, which takes all input while it is open.
     pub shortcut_list: Option<ShortcutList>,
     /// A short message over the bottom of the window.
@@ -652,6 +658,15 @@ impl Chrome {
     pub fn part_at(&self, (x, y): (f64, f64), size: (u32, u32)) -> Option<Part> {
         let margin = f64::from(self.margin());
         let (x, y) = (x - margin, y - margin);
+        if let Some(submenu) = &self.submenu {
+            match submenu.part_at((x, y)) {
+                Part::MenuItem(index) | Part::MenuClose(index) => {
+                    return Some(Part::SubmenuItem(index));
+                }
+                Part::OffMenu => {}
+                part => return Some(part),
+            }
+        }
         if let Some(menu) = &self.menu {
             return Some(menu.part_at((x, y)));
         }
@@ -767,16 +782,18 @@ impl Chrome {
         (0..self.tabs.len()).map(move |index| (TAB_INSET + index as f32 * share, share))
     }
 
-    /// The open menu on a surface of its own at `scale`: its quads in the order they are
-    /// drawn, how many are its box, and where the rest stay.
+    /// The open menu or its submenu on a surface of its own at `scale`: its quads in the
+    /// order they are drawn, how many are its box, and where the rest stay.
     pub fn menu_quads(
         &self,
+        submenu: bool,
         scale: f32,
         line: i32,
         mut draw: impl FnMut(&Drawing) -> Option<(u32, GpuGlyph)>,
     ) -> (Vec<Quad>, usize, [f32; 4]) {
         let mut quads = Vec::new();
-        let Some(menu) = &self.menu else {
+        let menu = if submenu { &self.submenu } else { &self.menu };
+        let Some(menu) = menu else {
             return (quads, 0, [0.0; 4]);
         };
         let painter = Painter {
@@ -1617,7 +1634,9 @@ pub fn themed_icon(icon: Icon, scale: f32, theme: &str) -> Option<Raster> {
         Icon::Minimize => "window-minimize-symbolic",
         Icon::Maximize => "window-maximize-symbolic",
         Icon::Restore => "window-restore-symbolic",
-        Icon::NewTab | Icon::Check | Icon::Up | Icon::Down | Icon::Menu => return None,
+        Icon::NewTab | Icon::Check | Icon::Up | Icon::Down | Icon::Menu | Icon::Next => {
+            return None;
+        }
     };
     crate::icon_theme::symbolic(theme, name, (ICON * scale).round() as u32)
 }
@@ -1648,6 +1667,7 @@ pub fn icon(icon: Icon, scale: f32) -> Raster {
         Icon::Check => &[&[[3.0, 8.5], [6.5, 12.0], [13.0, 4.5]]],
         Icon::Up => &[&[[3.0, 10.5], [8.0, 5.5], [13.0, 10.5]]],
         Icon::Down => &[&[[3.0, 5.5], [8.0, 10.5], [13.0, 5.5]]],
+        Icon::Next => &[&[[5.5, 3.0], [10.5, 8.0], [5.5, 13.0]]],
         Icon::Menu => &[
             &[[2.5, 4.0], [13.5, 4.0]],
             &[[2.5, 8.0], [13.5, 8.0]],

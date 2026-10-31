@@ -18,11 +18,16 @@ pub enum Confirm {
     CloseTab(TerminalId),
     ClosePane(TerminalId),
     CloseWindow,
-    Paste { terminal: TerminalId, text: Vec<u8> },
+    Paste {
+        terminal: TerminalId,
+        text: Vec<u8>,
+    },
     Rename(TerminalId),
     RenameSession(SessionId),
     CloseSessions(Vec<SessionId>),
     CloseSession(SessionId),
+    /// A name to save the tab's layout under.
+    SavePreset,
     About,
 }
 
@@ -41,7 +46,7 @@ pub struct TabClosing {
 }
 
 impl App {
-    fn confirm(&mut self, dialog: Dialog, confirm: Confirm) {
+    pub(super) fn confirm(&mut self, dialog: Dialog, confirm: Confirm) {
         // A menu would stand over the dialog and take its clicks.
         self.close_menu();
         self.chrome.dialog = Some(dialog);
@@ -104,6 +109,10 @@ impl App {
                 for session in sessions {
                     self.server.send(&Request::CloseSession { session });
                 }
+            }
+            Some(Confirm::SavePreset) if accepted => {
+                let name = field.map(|field| field.text.trim().to_owned());
+                self.save_preset(name.unwrap_or_default());
             }
             Some(Confirm::RenameSession(session)) if accepted => {
                 let name = field

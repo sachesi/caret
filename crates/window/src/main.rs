@@ -20,6 +20,7 @@ mod notifications;
 mod paint;
 mod palette;
 mod panes;
+mod presets;
 mod render;
 mod renderer;
 mod shortcuts;

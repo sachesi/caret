@@ -10,6 +10,7 @@ use smithay_client_toolkit::reexports::protocols::wp::viewporter::client::wp_vie
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_positioner::{
     Anchor, ConstraintAdjustment, Gravity,
 };
+use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surface::XdgSurface as XdgSurfaceProxy;
 use smithay_client_toolkit::shell::xdg::XdgPositioner;
 use smithay_client_toolkit::shell::xdg::XdgSurface;
 use smithay_client_toolkit::shell::xdg::popup::{Popup, PopupConfigure, PopupHandler};
@@ -18,7 +19,7 @@ use smithay_client_toolkit::shm::{Shm, ShmHandler};
 
 use super::App;
 use crate::atlas::{COLOR, GpuGlyph};
-use crate::chrome::{self, Drawing, Quad};
+use crate::chrome::{self, Drawing, Menu, Quad};
 use crate::fonts::{Fonts, Raster};
 use crate::paint;
 
@@ -31,6 +32,8 @@ struct Placement {
 }
 
 pub struct MenuPopup {
+    /// First, as a popup has to go before the one it opened from.
+    submenu: Option<Box<MenuPopup>>,
     popup: Popup,
     placement: Placement,
     configured: bool,
@@ -81,19 +84,99 @@ impl App {
             self.open_popup(placement);
             return;
         }
-        self.draw_popup();
+        self.paint_popup(false);
+        self.sync_submenu();
+    }
+
+    /// Makes the submenu's popup match it, beside the item that opened it.
+    fn sync_submenu(&mut self) {
+        let scale = self.factor() as f32;
+        let fonts = &self.fonts;
+        let Some(open) = &mut self.menu_popup else {
+            return;
+        };
+        let Some(submenu) = &mut self.chrome.submenu else {
+            open.submenu = None;
+            return;
+        };
+        if !open.configured {
+            return;
+        }
+        submenu.fit(|text, bold| fonts.label_advance(text, bold) / scale);
+        let (width, height) = submenu.size();
+        let Some((top, _)) = self
+            .chrome
+            .menu
+            .as_ref()
+            .and_then(|menu| menu.item_place(self.submenu_row))
+        else {
+            return;
+        };
+        let placement = Placement {
+            at: (0.0, top),
+            main: false,
+            size: (width.ceil() as i32, height.ceil() as i32),
+        };
+        if open
+            .submenu
+            .as_ref()
+            .is_none_or(|popup| popup.placement != placement)
+        {
+            open.submenu = None;
+            submenu.placed = None;
+            self.open_submenu_popup(placement);
+            return;
+        }
+        self.paint_popup(true);
+    }
+
+    fn open_submenu_popup(&mut self, placement: Placement) {
+        let Some(menu) = &self.chrome.menu else {
+            return;
+        };
+        let Some((top, height)) = menu.item_place(self.submenu_row) else {
+            return;
+        };
+        let width = menu.shown_size().0.ceil() as i32;
+        let Ok(positioner) = XdgPositioner::new(&self.shell).inspect_err(|error| {
+            tracing::warn!("placing a menu: {error}");
+        }) else {
+            return;
+        };
+        positioner.set_size(placement.size.0, placement.size.1);
+        positioner.set_anchor_rect(0, top.round() as i32, width, (height as i32).max(1));
+        positioner.set_anchor(Anchor::TopRight);
+        positioner.set_gravity(Gravity::BottomRight);
+        // Its first item level with the one that opened it.
+        positioner.set_offset(0, -(Menu::PADDING as i32));
+        positioner.set_constraint_adjustment(
+            ConstraintAdjustment::FlipX
+                | ConstraintAdjustment::SlideY
+                | ConstraintAdjustment::ResizeY,
+        );
+        let Some(parent) = self
+            .menu_popup
+            .as_ref()
+            .map(|open| open.popup.xdg_surface().clone())
+        else {
+            return;
+        };
+        // No grab: it would need a click's serial, and the hover that opens this has none.
+        // A client's grabbing popup hands the pointer to all of the client's surfaces.
+        let submenu = self.make_popup(&parent, &positioner, placement, false);
+        if let Some(open) = &mut self.menu_popup {
+            open.submenu = submenu.map(Box::new);
+        }
     }
 
     fn open_popup(&mut self, placement: Placement) {
         let Some((window_width, window_height)) = self.size else {
             return;
         };
-        let positioner = match XdgPositioner::new(&self.shell) {
-            Ok(positioner) => positioner,
-            Err(error) => {
-                tracing::warn!("placing a menu: {error}");
-                return;
-            }
+        let Ok(positioner) = XdgPositioner::new(&self.shell).inspect_err(|error| {
+            tracing::warn!("placing a menu: {error}");
+        }) else {
+            return;
         };
         // The anchor has to touch the window.
         let x = (placement.at.0 as i32).clamp(0, window_width.saturating_sub(1) as i32);
@@ -113,24 +196,30 @@ impl App {
                 | ConstraintAdjustment::SlideY
                 | ConstraintAdjustment::ResizeY,
         );
-        let popup = match Popup::new(
-            self.window.xdg_surface(),
-            &positioner,
-            &self.qh,
-            &self.compositor,
-            &self.shell,
-        ) {
+        let parent = self.window.xdg_surface().clone();
+        self.menu_popup = self.make_popup(&parent, &positioner, placement, true);
+    }
+
+    /// A popup of `parent`, placed by `positioner`, ready for its first configure.
+    fn make_popup(
+        &self,
+        parent: &XdgSurfaceProxy,
+        positioner: &XdgPositioner,
+        placement: Placement,
+        grab: bool,
+    ) -> Option<MenuPopup> {
+        let popup = match Popup::new(parent, positioner, &self.qh, &self.compositor, &self.shell) {
             Ok(popup) => popup,
             Err(error) => {
                 tracing::warn!("opening a menu: {error}");
-                return;
+                return None;
             }
         };
         let room = chrome::MENU_SHADOW as i32;
         popup
             .xdg_surface()
             .set_window_geometry(room, room, placement.size.0, placement.size.1);
-        if let Some(seat) = &self.seat {
+        if grab && let Some(seat) = &self.seat {
             popup.xdg_popup().grab(seat, self.serial);
         }
         let viewport = self.fractional.as_ref().map(|fractional| {
@@ -139,7 +228,8 @@ impl App {
                 .get_viewport(popup.wl_surface(), &self.qh, super::scale::Objects)
         });
         popup.wl_surface().commit();
-        self.menu_popup = Some(MenuPopup {
+        Some(MenuPopup {
+            submenu: None,
             popup,
             placement,
             configured: false,
@@ -148,16 +238,26 @@ impl App {
             rasters: Vec::new(),
             buffer: None,
             painted: (Vec::new(), (0, 0)),
-        });
+        })
     }
 
-    /// Paints the menu into a new buffer of the popup's surface.
-    fn draw_popup(&mut self) {
+    /// Paints the menu or its submenu into a new buffer of its popup's surface.
+    fn paint_popup(&mut self, submenu: bool) {
         let factor = self.factor();
         let scale = factor as f32;
-        let (Some(popup), Some(menu), Some(shm)) =
-            (&mut self.menu_popup, &self.chrome.menu, &self.shm)
-        else {
+        let popup = self.menu_popup.as_mut().and_then(|open| {
+            if submenu {
+                open.submenu.as_deref_mut()
+            } else {
+                Some(open)
+            }
+        });
+        let menu = if submenu {
+            &self.chrome.submenu
+        } else {
+            &self.chrome.menu
+        };
+        let (Some(popup), Some(menu), Some(shm)) = (popup, menu, &self.shm) else {
             return;
         };
         if !popup.configured {
@@ -174,7 +274,7 @@ impl App {
             &mut popup.rasters,
         );
         let line = fonts.label_height();
-        let (quads, clipped_from, clip) = self.chrome.menu_quads(scale, line, |drawing| {
+        let (quads, clipped_from, clip) = self.chrome.menu_quads(submenu, scale, line, |drawing| {
             let index = if let Some(&index) = known.get(drawing) {
                 index
             } else {
@@ -236,30 +336,38 @@ impl App {
 
     /// `position` on `surface` in the window's coordinates, where the surface is the menu's.
     pub(super) fn in_window(&self, surface: &WlSurface, position: (f64, f64)) -> (f64, f64) {
-        let on_menu = self
-            .menu_popup
-            .as_ref()
-            .is_some_and(|popup| popup.popup.wl_surface() == surface);
-        match (
-            on_menu,
-            self.chrome.menu.as_ref().and_then(|menu| menu.placed),
-        ) {
-            (true, Some((x, y))) => {
+        let menu = match self.popup_of(surface) {
+            Some(false) => &self.chrome.menu,
+            Some(true) => &self.chrome.submenu,
+            None => return position,
+        };
+        match menu.as_ref().and_then(|menu| menu.placed) {
+            Some((x, y)) => {
                 let shift = f64::from(self.chrome.margin()) - f64::from(chrome::MENU_SHADOW);
                 (
                     position.0 + f64::from(x) + shift,
                     position.1 + f64::from(y) + shift,
                 )
             }
-            _ => position,
+            None => position,
         }
     }
 
-    /// Whether `surface` is the open menu's.
+    /// Whether `surface` is the open menu's or its submenu's.
     pub(super) fn is_popup(&self, surface: &WlSurface) -> bool {
-        self.menu_popup
+        self.popup_of(surface).is_some()
+    }
+
+    /// Whether `surface` is the submenu's, or else the menu's; none if neither.
+    fn popup_of(&self, surface: &WlSurface) -> Option<bool> {
+        let open = self.menu_popup.as_ref()?;
+        if open.popup.wl_surface() == surface {
+            return Some(false);
+        }
+        open.submenu
             .as_ref()
-            .is_some_and(|popup| popup.popup.wl_surface() == surface)
+            .filter(|submenu| submenu.popup.wl_surface() == surface)
+            .map(|_| true)
     }
 }
 
@@ -298,22 +406,43 @@ impl PopupHandler for App {
         popup: &Popup,
         config: PopupConfigure,
     ) {
-        let (Some(open), Some(menu)) = (&mut self.menu_popup, &mut self.chrome.menu) else {
-            return;
-        };
-        if open.popup.wl_surface() != popup.wl_surface() {
-            return;
+        let position = (config.position.0 as f32, config.position.1 as f32);
+        match self.popup_of(popup.wl_surface()) {
+            Some(false) => {
+                if let (Some(open), Some(menu)) = (&mut self.menu_popup, &mut self.chrome.menu) {
+                    open.configured = true;
+                    menu.placed = Some(position);
+                    menu.limit_height(config.height as f32);
+                }
+                self.paint_popup(false);
+                self.sync_submenu();
+            }
+            Some(true) => {
+                // A popup's position is told from its parent's corner.
+                let parent = self.chrome.menu.as_ref().and_then(|menu| menu.placed);
+                if let (Some(open), Some(submenu), Some(parent)) = (
+                    self.menu_popup
+                        .as_mut()
+                        .and_then(|open| open.submenu.as_mut()),
+                    &mut self.chrome.submenu,
+                    parent,
+                ) {
+                    open.configured = true;
+                    submenu.placed = Some((parent.0 + position.0, parent.1 + position.1));
+                    submenu.limit_height(config.height as f32);
+                }
+                self.paint_popup(true);
+            }
+            None => return,
         }
-        open.configured = true;
-        menu.placed = Some((config.position.0 as f32, config.position.1 as f32));
-        menu.limit_height(config.height as f32);
-        self.draw_popup();
         self.hover();
     }
 
     fn done(&mut self, _: &Connection, _: &QueueHandle<Self>, popup: &Popup) {
-        if self.is_popup(popup.wl_surface()) {
-            self.close_menu();
+        match self.popup_of(popup.wl_surface()) {
+            Some(false) => self.close_menu(),
+            Some(true) => self.close_submenu(),
+            None => {}
         }
     }
 }

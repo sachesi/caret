@@ -171,6 +171,7 @@ impl App {
         let redraw = Chrome::hover_shows(self.chrome.hovered, part);
         self.chrome.hovered = part;
         self.set_cursor();
+        self.follow_submenu();
         if redraw {
             self.dirty = true;
             self.draw();
@@ -273,9 +274,7 @@ impl App {
 
     fn pressed_frame(&mut self, part: Part, button: u32, serial: u32) {
         // A press outside the menu closes it and goes no further, unless it resizes.
-        if self.chrome.menu.is_some()
-            && !matches!(part, Part::MenuItem(_) | Part::MenuClose(_) | Part::Menu)
-        {
+        if self.chrome.menu.is_some() && !in_menus(part) {
             self.close_menu();
             if part == Part::OffMenu {
                 return;
@@ -306,7 +305,8 @@ impl App {
                 | Part::ToastButton
                 | Part::Swatch(_)
                 | Part::MenuItem(_)
-                | Part::MenuClose(_),
+                | Part::MenuClose(_)
+                | Part::SubmenuItem(_),
                 BUTTON_LEFT,
             ) => {
                 if let Part::MenuItem(index) = part {
@@ -414,6 +414,7 @@ impl App {
                 Part::Swatch(index) => self.pick_swatch(index),
                 Part::MenuItem(index) => self.choose(index),
                 Part::MenuClose(index) => self.close_listed(index),
+                Part::SubmenuItem(index) => self.choose_in_submenu(index),
                 _ => {}
             }
         }
@@ -451,7 +452,7 @@ impl App {
         self.pointer.dragged_row = None;
         if matches!(
             self.chrome.pressed,
-            Some(Part::MenuItem(_) | Part::MenuClose(_))
+            Some(Part::MenuItem(_) | Part::MenuClose(_) | Part::SubmenuItem(_))
         ) {
             self.chrome.pressed = None;
             self.dirty = true;
@@ -729,6 +730,7 @@ impl PointerHandler for App {
                     self.pointer.entered = serial;
                     self.pointer.shown = None;
                     self.chrome.hovered = self.part();
+                    self.follow_submenu();
                     self.hover_cell();
                 }
                 PointerEventKind::Leave { .. } => {
@@ -860,6 +862,7 @@ fn cursor(part: Part) -> Shape {
         | Part::MainMenu
         | Part::MenuItem(_)
         | Part::MenuClose(_)
+        | Part::SubmenuItem(_)
         | Part::Menu
         | Part::OffMenu
         | Part::ShortcutList
@@ -875,4 +878,12 @@ fn cursor(part: Part) -> Shape {
             _ => Shape::SeResize,
         },
     }
+}
+
+/// Whether `part` is of the open menu or its submenu.
+fn in_menus(part: Part) -> bool {
+    matches!(
+        part,
+        Part::MenuItem(_) | Part::MenuClose(_) | Part::Menu | Part::SubmenuItem(_)
+    )
 }

@@ -7,6 +7,7 @@
     caret -e htop                      # running a command instead of the shell
     caret -- ssh host                  # the same
     caret --profile work               # with the settings of a profile
+    caret --preset dev                 # its first tab laid out by a split preset
 
 Everything after `-e` or `-x` is the command and its arguments, as launchers such as
 xdg-terminal-exec expect. The shell is `$SHELL`, or the one in your passwd entry;
@@ -67,6 +68,10 @@ Ctrl+Shift+E splits the pane with a new one to its right, Ctrl+Shift+O with one 
 and the terminal's menu has both. Alt and the arrows go to the pane that way, a click
 goes to the one clicked, and dragging the gap between two panes moves it. Ctrl+Shift+W
 closes the pane, and the tab with its last one.
+
+Presets in the terminal's menu lays out a tab by a layout from the settings, with its
+programs and directories, as described under [split presets](settings.md#split-presets).
+Under it, Save Layout as Preset keeps the layout of the tab shown.
 
 Control mode (Ctrl+Shift+Space) arranges panes from the keys: it rings the pane it acts
 on and names its keys at the bottom of the window, as listed in

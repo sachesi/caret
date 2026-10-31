@@ -1,6 +1,7 @@
 //! The window's tabs: each a tree of split panes of the session's terminals, opened,
 //! shown, closed and named as the server tells.
 
+use super::presets;
 use std::collections::HashMap;
 use std::os::unix::ffi::OsStrExt;
 use std::time::Duration;
@@ -135,7 +136,7 @@ impl App {
         self.device(2 * super::PADDING) as i32
     }
 
-    fn lay_out(&self, root: &Node) -> Placed {
+    pub(super) fn lay_out(&self, root: &Node) -> Placed {
         self.area()
             .map(|area| panes::place(root, area, self.gap()))
             .unwrap_or_default()
@@ -161,7 +162,7 @@ impl App {
     }
 
     /// The size of a grid filling `rect`.
-    fn size_of(&self, rect: Rect) -> Size {
+    pub(super) fn size_of(&self, rect: Rect) -> Size {
         let cell = self.fonts.cell();
         let fit = |pixels: i32, cell: i32| {
             u16::try_from((pixels / cell.max(1)).max(1)).unwrap_or(u16::MAX)
@@ -811,7 +812,7 @@ impl App {
     }
 
     /// A program, as its window's command line gives it unless it has its own.
-    fn filled(&self, mut command: Command) -> Command {
+    pub(super) fn filled(&self, mut command: Command) -> Command {
         if command.argv.is_empty() {
             command.argv = self.config.argv();
         }
@@ -857,7 +858,17 @@ impl App {
     }
 
     /// Opens a tab in `session`: after the shown one if it is the session's, else last.
-    pub(super) fn open_tab_in(&mut self, session: SessionId, mut command: Command) {
+    pub(super) fn open_tab_in(&mut self, session: SessionId, command: Command) {
+        self.ask_tab(session, command, None);
+    }
+
+    /// Opens a tab in `session`, to take the layout of `arrival` if there is one.
+    pub(super) fn ask_tab(
+        &mut self,
+        session: SessionId,
+        mut command: Command,
+        arrival: Option<Box<presets::Arrival>>,
+    ) {
         let Some(size) = self.grid_size else {
             return;
         };
@@ -883,7 +894,7 @@ impl App {
             command,
             size,
         });
-        self.asked.insert(id, Asked::Tab(size));
+        self.asked.insert(id, Asked::Tab(size, arrival));
     }
 
     pub(super) fn tab_title(&self, terminal: TerminalId) -> String {
