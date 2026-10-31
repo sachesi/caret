@@ -23,6 +23,11 @@ use crate::chrome::{self, Drawing, Menu, Quad};
 use crate::fonts::{Fonts, Raster};
 use crate::paint;
 
+/// The room between a menu and the submenu beside it, which the submenu's window geometry
+/// takes on both sides: the compositor then leaves it on whichever side it opens, where an
+/// x offset comes out differently from one compositor to another when the popup flips.
+const SUBMENU_GAP: i32 = 4;
+
 /// What was asked of the compositor, which needs a new popup when it changes.
 #[derive(Clone, Copy, PartialEq)]
 struct Placement {
@@ -143,7 +148,7 @@ impl App {
         }) else {
             return;
         };
-        positioner.set_size(placement.size.0, placement.size.1);
+        positioner.set_size(placement.size.0 + 2 * SUBMENU_GAP, placement.size.1);
         positioner.set_anchor_rect(0, top.round() as i32, width, (height as i32).max(1));
         positioner.set_anchor(Anchor::TopRight);
         positioner.set_gravity(Gravity::BottomRight);
@@ -163,7 +168,7 @@ impl App {
         };
         // No grab: it would need a click's serial, and the hover that opens this has none.
         // A client's grabbing popup hands the pointer to all of the client's surfaces.
-        let submenu = self.make_popup(&parent, &positioner, placement, false);
+        let submenu = self.make_popup(&parent, &positioner, placement, false, SUBMENU_GAP);
         if let Some(open) = &mut self.menu_popup {
             open.submenu = submenu.map(Box::new);
         }
@@ -197,7 +202,7 @@ impl App {
                 | ConstraintAdjustment::ResizeY,
         );
         let parent = self.window.xdg_surface().clone();
-        self.menu_popup = self.make_popup(&parent, &positioner, placement, true);
+        self.menu_popup = self.make_popup(&parent, &positioner, placement, true, 0);
     }
 
     /// A popup of `parent`, placed by `positioner`, ready for its first configure.
@@ -207,6 +212,7 @@ impl App {
         positioner: &XdgPositioner,
         placement: Placement,
         grab: bool,
+        gap: i32,
     ) -> Option<MenuPopup> {
         let popup = match Popup::new(parent, positioner, &self.qh, &self.compositor, &self.shell) {
             Ok(popup) => popup,
@@ -216,9 +222,12 @@ impl App {
             }
         };
         let room = chrome::MENU_SHADOW as i32;
-        popup
-            .xdg_surface()
-            .set_window_geometry(room, room, placement.size.0, placement.size.1);
+        popup.xdg_surface().set_window_geometry(
+            room - gap,
+            room,
+            placement.size.0 + 2 * gap,
+            placement.size.1,
+        );
         if grab && let Some(seat) = &self.seat {
             popup.xdg_popup().grab(seat, self.serial);
         }
@@ -428,7 +437,8 @@ impl PopupHandler for App {
                     parent,
                 ) {
                     open.configured = true;
-                    submenu.placed = Some((parent.0 + position.0, parent.1 + position.1));
+                    let x = parent.0 + position.0 + SUBMENU_GAP as f32;
+                    submenu.placed = Some((x, parent.1 + position.1));
                     submenu.limit_height(config.height as f32);
                 }
                 self.paint_popup(true);
