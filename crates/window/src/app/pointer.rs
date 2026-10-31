@@ -44,6 +44,8 @@ const NOTCH: f64 = 3.0;
 pub struct Pointer {
     pub proxy: Option<WlPointer>,
     pub shape: Option<WpCursorShapeDeviceV1>,
+    /// It is over the window or its menu.
+    here: bool,
     /// The serial of the pointer's entering the window, which setting its shape needs,
     /// and the shape set since.
     entered: u32,
@@ -444,6 +446,19 @@ impl App {
         }
     }
 
+    /// Lets go of what the button held of a menu, without doing what a release would.
+    fn let_go_of_menu(&mut self) {
+        self.pointer.dragged_row = None;
+        if matches!(
+            self.chrome.pressed,
+            Some(Part::MenuItem(_) | Part::MenuClose(_))
+        ) {
+            self.chrome.pressed = None;
+            self.dirty = true;
+            self.draw();
+        }
+    }
+
     /// Whether the program gets the mouse: it asked, and Shift is not held to select
     /// anyway.
     fn reporting(&self) -> bool {
@@ -709,13 +724,24 @@ impl PointerHandler for App {
             let position = self.in_window(&event.surface, event.position);
             match event.kind {
                 PointerEventKind::Enter { serial } => {
+                    self.pointer.here = true;
                     self.pointer.position = position;
                     self.pointer.entered = serial;
                     self.pointer.shown = None;
                     self.chrome.hovered = self.part();
                     self.hover_cell();
                 }
-                PointerEventKind::Leave { .. } => self.leave(),
+                PointerEventKind::Leave { .. } => {
+                    self.leave();
+                    self.pointer.here = false;
+                    // Gone from the menu and not on to the window, where the compositor may not
+                    // tell of the button's release. An enter comes with a leave between them.
+                    self.events.insert_idle(|app| {
+                        if !app.pointer.here {
+                            app.let_go_of_menu();
+                        }
+                    });
+                }
                 PointerEventKind::Motion { .. } => self.pointer_moved(position),
                 PointerEventKind::Press { button, serial, .. } => {
                     self.pointer_pressed(position, button, serial);

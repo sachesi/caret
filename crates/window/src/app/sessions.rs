@@ -447,7 +447,9 @@ impl App {
         };
         let margin = f64::from(self.chrome.margin());
         let (x, y) = self.pointer.position;
-        let Part::MenuItem(index) = menu.part_at((x - margin, y - margin)) else {
+        let (Part::MenuItem(index) | Part::MenuClose(index)) =
+            menu.part_at((x - margin, y - margin))
+        else {
             return;
         };
         let Some(&Choice::ShowTab(other)) = self.choices.get(index) else {
@@ -499,7 +501,12 @@ impl App {
             .filter(|_| self.grouped())
             .and_then(|index| self.sessions.get(index).copied());
         let own = self.tab_of(key).map(|index| self.tabs[index].session);
-        if self.outside() {
+        // The menu may pass the window's edges.
+        let over_menu = matches!(
+            self.part(),
+            Some(Part::MenuItem(_) | Part::MenuClose(_) | Part::Menu)
+        );
+        if self.outside() && !over_menu {
             self.close_menu();
             self.tab_to_window(key);
         } else if let Some(session) = target.filter(|&target| Some(target) != own) {
