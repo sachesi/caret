@@ -106,6 +106,14 @@ impl Menu {
         }
     }
 
+    /// Stands where `old` stands, which the compositor tells only once for a popup.
+    pub fn keep_place(&mut self, old: &Self) {
+        self.placed = old.placed;
+        self.limit = old.limit;
+        self.scroll = old.scroll;
+        self.scroll_by(0.0);
+    }
+
     /// The line over its items, with the filter typed after it.
     fn heading_text(&self) -> Option<String> {
         let (heading, _) = self.heading.as_ref()?;
@@ -635,6 +643,19 @@ mod tests {
         let y = 20.0 + f64::from(PADDING) + 5.0;
         assert_eq!(menu.part_at((20.0, y)), Part::MenuItem(0));
         assert_eq!(menu.part_at((500.0, 500.0)), Part::OffMenu);
+    }
+
+    #[test]
+    fn a_menu_listed_again_stays_where_the_compositor_put_the_old_one() {
+        let mut old = menu();
+        old.placed = Some((10.0, 20.0));
+        old.limit_height(ITEM + 2.0 * PADDING);
+        old.scroll_by(ITEM);
+        let mut again = menu();
+        again.keep_place(&old);
+        assert_eq!(again.placed, Some((10.0, 20.0)));
+        assert!((again.shown_size().1 - old.shown_size().1).abs() < 0.1);
+        assert!((again.scroll - old.scroll).abs() < 0.1);
     }
 
     #[test]

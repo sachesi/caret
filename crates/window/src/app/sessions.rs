@@ -316,13 +316,13 @@ impl App {
         let Some(session) = self.popup else {
             return;
         };
-        let Some(old) = self.chrome.menu.as_ref() else {
-            return;
-        };
         if !self.sessions.contains(&session) {
             self.close_menu();
             return;
         }
+        let Some(old) = self.chrome.menu.take() else {
+            return;
+        };
         let (at, filter) = (old.at, old.filter.clone().unwrap_or_default());
         // The focus stays with what it was on, wherever that is listed now.
         let focused = old
@@ -331,6 +331,7 @@ impl App {
         let mut menu = self.popup_menu(session, at, &filter);
         menu.focused =
             focused.and_then(|focused| self.choices.iter().position(|choice| *choice == focused));
+        menu.keep_place(&old);
         self.chrome.menu = Some(menu);
     }
 
