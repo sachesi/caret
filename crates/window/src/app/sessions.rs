@@ -147,7 +147,8 @@ impl App {
             (Part::Tab(_), BUTTON_LEFT) => {
                 self.pointer.dragged_session = Some((session, self.pointer.position, false));
             }
-            (_, BUTTON_LEFT | BUTTON_RIGHT) => self.session_popup(session),
+            (_, BUTTON_LEFT) => self.session_popup(session),
+            (_, BUTTON_RIGHT) => self.session_popup_at(session, self.pointer_at()),
             (_, BUTTON_MIDDLE) if self.config.middle_click_detach => {
                 self.detach_session(session);
             }
@@ -216,6 +217,11 @@ impl App {
             .zip(self.size)
             .and_then(|(index, (width, _))| self.chrome.under_tab(index, width))
             .unwrap_or_else(|| self.keyed_menu_at());
+        self.session_popup_at(session, at);
+    }
+
+    /// Lists `session`'s tabs at `at`, with what can be done with it.
+    fn session_popup_at(&mut self, session: SessionId, at: (f32, f32)) {
         let mut menu = self.popup_menu(session, at, "");
         let current = menu.items().position(|item| item.current);
         menu.focused = current;
