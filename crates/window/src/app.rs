@@ -32,7 +32,7 @@ use smithay_client_toolkit::reexports::client::protocol::{
 use smithay_client_toolkit::reexports::client::{Connection, Proxy, QueueHandle};
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
 use smithay_client_toolkit::seat::keyboard::{
-    KeyEvent, KeyboardHandler, Keysym, Modifiers as KeyModifiers, RawModifiers,
+    KeyEvent, KeyboardHandler, Keymap, Keysym, Modifiers as KeyModifiers, RawModifiers,
 };
 use smithay_client_toolkit::seat::{Capability, SeatHandler, SeatState};
 use smithay_client_toolkit::shell::WaylandSurface;
@@ -239,6 +239,8 @@ struct App {
     /// The size of the grid the window fits, as last told to the server.
     grid_size: Option<Size>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
+    /// The layouts of the keyboard's keymap.
+    layouts: Option<crate::keys::Layouts>,
     offered: Offered,
     /// Sends desktop notifications, from the first on.
     notifier: Option<Notifier>,
@@ -428,6 +430,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         fractional,
         grid_size: None,
         keyboard: None,
+        layouts: None,
         text_input: None,
         modifiers: Modifiers::default(),
         serial: 0,
@@ -1273,6 +1276,8 @@ impl App {
     }
 
     fn key(&mut self, event: &KeyEvent, press: Press) {
+        let latin = self.in_latin(event);
+        let event = latin.as_ref().unwrap_or(event);
         if press != Press::Up {
             if self.dialog_key(event) || self.menu_key(event) || self.shortcut_list_key(event) {
                 return;
@@ -1318,6 +1323,22 @@ impl App {
                 crate::timings::key();
             }
         }
+    }
+
+    /// `event` as the Latin letter its key types in another layout, where Ctrl is held
+    /// and it types a letter of another script: Ctrl+C then interrupts, and shortcuts
+    /// work, whatever the layout.
+    fn in_latin(&self, event: &KeyEvent) -> Option<KeyEvent> {
+        let typed = event.keysym.key_char()?;
+        if !self.modifiers.ctrl || typed.is_ascii() || typed.is_control() {
+            return None;
+        }
+        let keysym = self.layouts.as_ref()?.latin(event.raw_code)?;
+        Some(KeyEvent {
+            keysym,
+            utf8: keysym.key_char().map(String::from),
+            ..event.clone()
+        })
     }
 
     /// Does what `action` says; false when it does nothing here and its keys go to the
@@ -1542,6 +1563,16 @@ impl KeyboardHandler for App {
         _: u32,
     ) {
         self.set_focus(false);
+    }
+
+    fn update_keymap(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        keymap: Keymap<'_>,
+    ) {
+        self.layouts = crate::keys::Layouts::new(keymap.as_string());
     }
 
     fn press_key(
