@@ -1112,11 +1112,14 @@ impl App {
             self.renew_full_atlas();
             (quads, under) = self.frame_quads((width, height));
         }
-        let mut dividers = self.dividers(&placed);
-        dividers.extend(self.control_ring(&placed));
+        let dividers = self.dividers(&placed);
         let count = dividers.len();
         quads.splice(under..under, dividers);
         under += count;
+        // Over the panes, and under the bars and dialogs.
+        if let Some(ring) = self.control_ring(&placed) {
+            quads.insert(under, ring);
+        }
         quads.extend(self.landing_quad(&placed));
         // Around the window's frame, the surface is clear; without one, it is the
         // terminal's to its edges.

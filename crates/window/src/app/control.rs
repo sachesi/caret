@@ -11,6 +11,9 @@ use super::App;
 use crate::chrome::{self, Quad};
 use crate::panes::{self, Direction, Placed, Rect};
 
+/// The radius of the corners inside the ring around the focused pane, in logical pixels.
+const PANE_RING_RADIUS: u32 = 8;
+
 impl App {
     pub(super) fn enter_control(&mut self) {
         self.control = true;
@@ -72,7 +75,8 @@ impl App {
         }
     }
 
-    /// The ring around the focused pane while in control mode.
+    /// The ring around the focused pane while in control mode. It goes over the panes, as
+    /// its rounded corners cross the pane's square ones.
     pub(super) fn control_ring(&self, placed: &Placed) -> Option<Quad> {
         if !self.control {
             return None;
@@ -85,13 +89,21 @@ impl App {
         let ring = self.device(2) as f32;
         let (x, y) = (rect.x as f32, rect.y as f32);
         let (width, height) = (rect.width as f32, rect.height as f32);
+        let radius = if self.config.rounded_pane_ring {
+            self.device(PANE_RING_RADIUS) as f32
+        } else {
+            0.0
+        };
         Some(Quad {
             x: x - ring,
             y: y - ring,
             width: width + 2.0 * ring,
             height: height + 2.0 * ring,
             color,
+            radius: radius + ring,
+            corners: chrome::ALL_CORNERS,
             cut: [x, y, width, height],
+            cut_radius: radius,
             ..Quad::default()
         })
     }

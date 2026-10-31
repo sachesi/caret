@@ -135,7 +135,7 @@ pub const TOP_LEFT: u32 = 1;
 pub const TOP_RIGHT: u32 = 2;
 pub const BOTTOM_RIGHT: u32 = 4;
 pub const BOTTOM_LEFT: u32 = 8;
-const ALL_CORNERS: u32 = TOP_LEFT | TOP_RIGHT | BOTTOM_RIGHT | BOTTOM_LEFT;
+pub const ALL_CORNERS: u32 = TOP_LEFT | TOP_RIGHT | BOTTOM_RIGHT | BOTTOM_LEFT;
 
 /// A rectangle as the shaders read it, in device pixels: filled, rounded, blurred into a
 /// shadow, or showing an atlas entry.

@@ -84,6 +84,8 @@ pub struct Config {
     pub session_click: SessionClick,
     /// Each session has a colour of its own, on its tab and around the panes.
     pub session_colors: bool,
+    /// The ring around the focused pane in control mode has rounded corners.
+    pub rounded_pane_ring: bool,
     /// A middle click on a session's tab detaches the session.
     pub middle_click_detach: bool,
     /// A session's list of tabs shows what each one holds.
@@ -119,6 +121,7 @@ impl Default for Config {
             server_side_decorations: true,
             session_click: SessionClick::Switch,
             session_colors: true,
+            rounded_pane_ring: true,
             middle_click_detach: false,
             tab_previews: false,
             keys: HashMap::new(),
@@ -295,6 +298,7 @@ impl Config {
                 };
             }
             "session-colors" => self.session_colors = boolean()?,
+            "rounded-pane-ring" => self.rounded_pane_ring = boolean()?,
             "middle-click-detach" => self.middle_click_detach = boolean()?,
             "tab-previews" => self.tab_previews = boolean()?,
             _ => return Err("a setting Caret knows"),
@@ -390,6 +394,8 @@ const STARTER: &str = r##"# Caret's settings. Take the # off a setting to change
 # Whether each session has a colour of its own, on its tab, its list of tabs and
 # the ring of control mode.
 #session-colors = true
+# Whether the ring of control mode has rounded corners.
+#rounded-pane-ring = true
 # Whether a middle click on a session's tab detaches the session.
 #middle-click-detach = false
 # Whether a session's list of tabs shows a small picture of each.

@@ -30,6 +30,7 @@ cannot be read is skipped with a warning on stderr, and the rest still apply.
 | `server-side-decorations` | bool | true |
 | `session-click` | `"switch"`, `"popup"` | `"switch"` |
 | `session-colors` | bool | true |
+| `rounded-pane-ring` | bool | true |
 | `middle-click-detach` | bool | false |
 | `tab-previews` | bool | false |
 
