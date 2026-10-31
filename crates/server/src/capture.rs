@@ -182,6 +182,27 @@ pub fn capture(
     Screen { frame }
 }
 
+/// Bytes of a frame's rows, about, past which the rest wait for the next frame. A client
+/// is hung up on for a message past [`caret_protocol::LONGEST`], which a large screen of
+/// long clusters would be, and the rows of a smaller message arrive just as well.
+const FRAME_BYTES: usize = 16 << 20;
+
+/// About what `row` takes in a message.
+fn row_bytes(row: &Row) -> usize {
+    let glyphs: usize = row
+        .cells
+        .iter()
+        .map(|cell| match &cell.glyph {
+            Some(Glyph {
+                text: GlyphText::Cluster(text),
+                ..
+            }) => text.len(),
+            _ => 0,
+        })
+        .sum();
+    row.cells.len() * 24 + glyphs
+}
+
 /// What a client was last sent of a screen.
 #[derive(Debug, Default)]
 pub struct Sent {
@@ -191,23 +212,45 @@ pub struct Sent {
 
 impl Screen {
     /// The frame for a client that was last sent `sent`, which becomes this screen's rows:
-    /// only the rows that differ, or all of them after the size changed.
-    pub fn changes(self, sent: &mut Sent, hovered: Option<Hovered>) -> Frame {
+    /// only the rows that differ, or all of them after the size changed. And whether that
+    /// is all of them: past [`FRAME_BYTES`], the rest go in the next frame.
+    pub fn changes(self, sent: &mut Sent, hovered: Option<Hovered>) -> (Frame, bool) {
+        self.changes_within(sent, hovered, FRAME_BYTES)
+    }
+
+    fn changes_within(
+        self,
+        sent: &mut Sent,
+        hovered: Option<Hovered>,
+        limit: usize,
+    ) -> (Frame, bool) {
         let Self { mut frame } = self;
-        let rows = std::mem::take(&mut frame.rows);
+        let mut rows = std::mem::take(&mut frame.rows);
         let all = sent.columns != frame.columns || sent.rows.len() != rows.len();
-        frame.rows = rows
-            .iter()
-            .enumerate()
-            .filter(|&(line, row)| all || sent.rows[line] != *row)
-            .map(|(_, row)| row.clone())
-            .collect();
+        let mut bytes = 0;
+        let mut whole = true;
+        for (line, row) in rows.iter_mut().enumerate() {
+            if !all && sent.rows[line] == *row {
+                continue;
+            }
+            bytes += row_bytes(row);
+            if bytes > limit && !frame.rows.is_empty() {
+                whole = false;
+                // Differs from any row there is, so it is sent next time.
+                *row = Row {
+                    line: u16::MAX,
+                    cells: Vec::new(),
+                };
+            } else {
+                frame.rows.push(row.clone());
+            }
+        }
         *sent = Sent {
             columns: frame.columns,
             rows,
         };
         frame.hovered = hovered;
-        frame
+        (frame, whole)
     }
 }
 
@@ -240,7 +283,38 @@ mod tests {
     }
 
     fn frame(term: &Term, view: &View, sent: &mut Sent) -> Frame {
-        capture(term, view, &palette(), true, None).changes(sent, None)
+        capture(term, view, &palette(), true, None)
+            .changes(sent, None)
+            .0
+    }
+
+    #[test]
+    fn a_screen_past_what_a_frame_takes_goes_over_several() {
+        let (columns, lines) = (20, 10);
+        let limit = 2000;
+        let mut term = Term::new(columns, lines, Options::default());
+        let cell = "e\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}";
+        term.advance(cell.repeat(columns * lines - 1).as_bytes());
+        let view = View::default();
+        let mut sent = Sent::default();
+        let mut got = vec![false; lines];
+        let mut frames = 0;
+        loop {
+            let (frame, whole) = capture(&term, &view, &palette(), true, None)
+                .changes_within(&mut sent, None, limit);
+            frames += 1;
+            assert!(caret_protocol::wire::encode(&frame).len() < limit);
+            for row in &frame.rows {
+                assert!(!std::mem::replace(&mut got[usize::from(row.line)], true));
+            }
+            if whole {
+                break;
+            }
+        }
+        assert!(frames > 1);
+        assert!(got.iter().all(|&line| line), "every row arrived");
+        let (next, whole) = capture(&term, &view, &palette(), true, None).changes(&mut sent, None);
+        assert!(whole && next.rows.is_empty());
     }
 
     #[test]
@@ -306,7 +380,7 @@ mod tests {
         assert_eq!((frame.history, frame.offset), (2, 1));
         assert_eq!(frame.cursor.map(|cursor| cursor.point.line), None);
         view.scroll(&term, -1);
-        let frame =
+        let (frame, _) =
             capture(&term, &view, &palette(), false, None).changes(&mut Sent::default(), None);
         assert_eq!(
             frame.cursor.map(|cursor| (cursor.point.line, cursor.shape)),

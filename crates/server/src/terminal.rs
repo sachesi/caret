@@ -1026,14 +1026,15 @@ impl Worker {
             });
             let mut palette = term.palette().clone();
             palette.set_base(viewer.base.clone());
-            let frame = capture(term, &viewer.view, &palette, viewer.focused, link.as_ref())
-                .changes(&mut viewer.sent, hovered);
+            let (frame, whole) =
+                capture(term, &viewer.view, &palette, viewer.focused, link.as_ref())
+                    .changes(&mut viewer.sent, hovered);
             viewer.send(&Message::Frame {
                 terminal: self.id,
                 frame,
             });
             viewer.wants_frame = false;
-            viewer.dirty = false;
+            viewer.dirty = !whole;
         }
     }
 }
