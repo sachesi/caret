@@ -80,12 +80,13 @@ impl Dialog {
         }
     }
 
-    /// A dialog that asks for a line of text, starting as `text`, Enter accepting it.
+    /// A dialog that asks for a line of text, starting as `text` selected, Enter accepting
+    /// it.
     pub fn asking(heading: &str, body: &str, responses: [&str; 2], text: &str) -> Self {
         Self {
             appearance: Appearance::Suggested,
             focused: None,
-            field: Some(Field::holding(text)),
+            field: Some(Field::holding_selected(text)),
             ..Self::new(heading, body, responses)
         }
     }

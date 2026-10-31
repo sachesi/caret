@@ -260,6 +260,14 @@ impl Field {
         }
     }
 
+    /// A field holding `text`, all of it selected, so that typing replaces it.
+    pub fn holding_selected(text: &str) -> Self {
+        Self {
+            anchor: (!text.is_empty()).then_some(0),
+            ..Self::holding(text)
+        }
+    }
+
     /// Edits the text as `key` does with `modifiers` held, `typed` being the text it
     /// types if any.
     pub fn key(&mut self, key: Keysym, typed: Option<&str>, modifiers: Modifiers) -> Edit {
@@ -1581,6 +1589,14 @@ mod tests {
         shift: true,
         ..PLAIN
     };
+
+    #[test]
+    fn typing_replaces_a_name_held_selected() {
+        let mut field = Field::holding_selected("old");
+        field.key(Keysym::n, Some("n"), PLAIN);
+        assert_eq!(field.text, "n");
+        assert_eq!(Field::holding_selected("").selection(), None);
+    }
 
     #[test]
     fn ctrl_a_selects_the_text_and_typing_replaces_it() {
