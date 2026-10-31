@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-31 18:40+0200\n"
+"POT-Creation-Date: 2026-10-31 19:06+0200\n"
 "PO-Revision-Date: 2026-10-31 12:30+0200\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Ukrainian\n"
@@ -24,53 +24,53 @@ msgstr "Команду завершено"
 msgid "Command Failed"
 msgstr "Команда завершилася з помилкою"
 
-#: crates/window/src/app/confirm.rs:126
+#: crates/window/src/app/confirm.rs:128
 msgid "Rename Tab"
 msgstr "Перейменувати вкладку"
 
-#: crates/window/src/app/confirm.rs:127
+#: crates/window/src/app/confirm.rs:129
 msgid "Without a name, the tab shows the program’s title."
 msgstr "Без назви вкладка показує заголовок програми."
 
-#: crates/window/src/app/confirm.rs:128 crates/window/src/app/confirm.rs:147
-#: crates/window/src/app/confirm.rs:175 crates/window/src/app/confirm.rs:220
-#: crates/window/src/app/confirm.rs:342 crates/window/src/app/confirm.rs:372
-#: crates/window/src/app/confirm.rs:460 crates/window/src/app/confirm.rs:476
+#: crates/window/src/app/confirm.rs:130 crates/window/src/app/confirm.rs:149
+#: crates/window/src/app/confirm.rs:177 crates/window/src/app/confirm.rs:222
+#: crates/window/src/app/confirm.rs:344 crates/window/src/app/confirm.rs:374
+#: crates/window/src/app/confirm.rs:462 crates/window/src/app/confirm.rs:478
 msgid "Cancel"
 msgstr "Скасувати"
 
-#: crates/window/src/app/confirm.rs:128 crates/window/src/app/confirm.rs:147
+#: crates/window/src/app/confirm.rs:130 crates/window/src/app/confirm.rs:149
 msgid "Rename"
 msgstr "Перейменувати"
 
-#: crates/window/src/app/confirm.rs:136
+#: crates/window/src/app/confirm.rs:138
 msgid "Naming sessions needs a newer terminal server"
 msgstr "Для назв сеансів потрібен новіший термінальний сервер"
 
-#: crates/window/src/app/confirm.rs:145
+#: crates/window/src/app/confirm.rs:147
 msgid "Rename Session"
 msgstr "Перейменувати сеанс"
 
-#: crates/window/src/app/confirm.rs:146
+#: crates/window/src/app/confirm.rs:148
 msgid "Without a name, the session is known by its number."
 msgstr "Без назви сеанс називається за номером."
 
-#: crates/window/src/app/confirm.rs:169
+#: crates/window/src/app/confirm.rs:171
 #, rust-format
 msgid "The programs in the tabs of “{session}” will be stopped."
 msgstr "Роботу програм у вкладках «{session}» буде перервано."
 
-#: crates/window/src/app/confirm.rs:173
+#: crates/window/src/app/confirm.rs:175
 msgid "Close Session?"
 msgstr "Закрити сеанс?"
 
-#: crates/window/src/app/confirm.rs:175 crates/window/src/app/confirm.rs:233
-#: crates/window/src/app/confirm.rs:342 crates/window/src/app/confirm.rs:372
-#: crates/window/src/app/confirm.rs:458
+#: crates/window/src/app/confirm.rs:177 crates/window/src/app/confirm.rs:235
+#: crates/window/src/app/confirm.rs:344 crates/window/src/app/confirm.rs:374
+#: crates/window/src/app/confirm.rs:460
 msgid "Close"
 msgstr "Закрити"
 
-#: crates/window/src/app/confirm.rs:200
+#: crates/window/src/app/confirm.rs:202
 #, rust-format
 msgid "{count} detached session will end."
 msgid_plural "{count} detached sessions will end."
@@ -78,7 +78,7 @@ msgstr[0] "{count} від'єднаний сеанс буде завершено.
 msgstr[1] "{count} від'єднані сеанси буде завершено."
 msgstr[2] "{count} від'єднаних сеансів буде завершено."
 
-#: crates/window/src/app/confirm.rs:208
+#: crates/window/src/app/confirm.rs:210
 #, rust-format
 msgid "{count} program in them will be stopped."
 msgid_plural "{count} programs in them will be stopped."
@@ -86,15 +86,15 @@ msgstr[0] "Роботу {count} програми в них буде перерв
 msgstr[1] "Роботу {count} програм в них буде перервано."
 msgstr[2] "Роботу {count} програм в них буде перервано."
 
-#: crates/window/src/app/confirm.rs:218
+#: crates/window/src/app/confirm.rs:220
 msgid "Close All Detached?"
 msgstr "Закрити всі від'єднані?"
 
-#: crates/window/src/app/confirm.rs:220 crates/window/src/app/confirm.rs:456
+#: crates/window/src/app/confirm.rs:222 crates/window/src/app/confirm.rs:458
 msgid "Close All"
 msgstr "Закрити всі"
 
-#: crates/window/src/app/confirm.rs:228
+#: crates/window/src/app/confirm.rs:230
 #, rust-format
 msgid ""
 "A terminal drawn by the GPU. Version {version}, by sachesi, free software "
@@ -103,19 +103,19 @@ msgstr ""
 "Термінал, який малює відеокарта. Версія {version}, автор sachesi, вільна "
 "програма під ліцензією GNU General Public License версії 3 або пізнішої."
 
-#: crates/window/src/app/confirm.rs:233
+#: crates/window/src/app/confirm.rs:235
 msgid "Website"
 msgstr "Сайт"
 
-#: crates/window/src/app/confirm.rs:340 crates/window/src/app/confirm.rs:365
+#: crates/window/src/app/confirm.rs:342 crates/window/src/app/confirm.rs:367
 msgid "Close Tab?"
 msgstr "Закрити вкладку?"
 
-#: crates/window/src/app/confirm.rs:367
+#: crates/window/src/app/confirm.rs:369
 msgid "Close Pane?"
 msgstr "Закрити панель?"
 
-#: crates/window/src/app/confirm.rs:433
+#: crates/window/src/app/confirm.rs:435
 #, rust-format
 msgid "A program is still running in this window and will be stopped."
 msgid_plural ""
@@ -126,7 +126,7 @@ msgstr[1] ""
 msgstr[2] ""
 "У цьому вікні ще працюють {count} програм, їхню роботу буде перервано."
 
-#: crates/window/src/app/confirm.rs:441
+#: crates/window/src/app/confirm.rs:443
 #, rust-format
 msgid "{count} session will end with this window."
 msgid_plural "{count} sessions will end with this window."
@@ -134,24 +134,24 @@ msgstr[0] "{count} сеанс завершиться разом із цим ві
 msgstr[1] "{count} сеанси завершаться разом із цим вікном."
 msgstr[2] "{count} сеансів завершаться разом із цим вікном."
 
-#: crates/window/src/app/confirm.rs:448
+#: crates/window/src/app/confirm.rs:450
 #, rust-format
 msgid "The session “{session}” will end with this window."
 msgstr "Сеанс «{session}» завершиться разом із цим вікном."
 
-#: crates/window/src/app/confirm.rs:461 crates/window/src/app/menus.rs:588
+#: crates/window/src/app/confirm.rs:463 crates/window/src/app/menus.rs:594
 msgid "Detach"
 msgstr "Від’єднати"
 
-#: crates/window/src/app/confirm.rs:462
+#: crates/window/src/app/confirm.rs:464
 msgid "Close Window?"
 msgstr "Закрити вікно?"
 
-#: crates/window/src/app/confirm.rs:472
+#: crates/window/src/app/confirm.rs:474
 msgid "Paste Several Lines?"
 msgstr "Вставити кілька рядків?"
 
-#: crates/window/src/app/confirm.rs:474
+#: crates/window/src/app/confirm.rs:476
 msgid ""
 "The program here does not mark pasted text, so each line runs as if typed "
 "and entered."
@@ -159,25 +159,25 @@ msgstr ""
 "Ця програма не позначає вставлений текст, тому кожен рядок виконається, наче "
 "його набрали й натиснули Enter."
 
-#: crates/window/src/app/confirm.rs:476 crates/window/src/app/menus.rs:169
+#: crates/window/src/app/confirm.rs:478 crates/window/src/app/menus.rs:169
 #: crates/window/src/app/shortcut_list.rs:62
 msgid "Paste"
 msgstr "Вставити"
 
-#: crates/window/src/app/confirm.rs:494
+#: crates/window/src/app/confirm.rs:496
 msgid "A program is still running in this tab and will be stopped."
 msgstr "У цій вкладці ще працює програма, її роботу буде перервано."
 
-#: crates/window/src/app/confirm.rs:495
+#: crates/window/src/app/confirm.rs:497
 msgid "A program is still running in this pane and will be stopped."
 msgstr "У цій панелі ще працює програма, її роботу буде перервано."
 
-#: crates/window/src/app/confirm.rs:497
+#: crates/window/src/app/confirm.rs:499
 #, rust-format
 msgid "“{program}” is still running in this tab and will be stopped."
 msgstr "У цій вкладці ще працює «{program}», і її роботу буде перервано."
 
-#: crates/window/src/app/confirm.rs:501
+#: crates/window/src/app/confirm.rs:503
 #, rust-format
 msgid "“{program}” is still running in this pane and will be stopped."
 msgstr "У цій панелі ще працює «{program}», і її роботу буде перервано."
@@ -206,8 +206,8 @@ msgstr "Нове вікно"
 msgid "New Tab"
 msgstr "Нова вкладка"
 
-#: crates/window/src/app/menus.rs:102 crates/window/src/app/menus.rs:385
-#: crates/window/src/app/menus.rs:555 crates/window/src/app/shortcut_list.rs:26
+#: crates/window/src/app/menus.rs:102 crates/window/src/app/menus.rs:388
+#: crates/window/src/app/menus.rs:561 crates/window/src/app/shortcut_list.rs:26
 msgid "New Session"
 msgstr "Новий сеанс"
 
@@ -306,40 +306,40 @@ msgstr "Перейменувати вкладку…"
 msgid "Close Tab"
 msgstr "Закрити вкладку"
 
-#: crates/window/src/app/menus.rs:297
+#: crates/window/src/app/menus.rs:300
 msgid "Could not make the settings file"
 msgstr "Не вдалося створити файл параметрів"
 
-#: crates/window/src/app/menus.rs:325 crates/window/src/app/menus.rs:512
+#: crates/window/src/app/menus.rs:328
 msgid "Listing sessions needs a newer terminal server"
 msgstr "Для списку сеансів потрібен новіший термінальний сервер"
 
-#: crates/window/src/app/menus.rs:364
+#: crates/window/src/app/menus.rs:367
 msgid "In This Window"
 msgstr "У цьому вікні"
 
-#: crates/window/src/app/menus.rs:365
+#: crates/window/src/app/menus.rs:368
 msgid "In Other Windows"
 msgstr "В інших вікнах"
 
-#: crates/window/src/app/menus.rs:366
+#: crates/window/src/app/menus.rs:369
 msgid "Detached"
 msgstr "Від'єднані"
 
-#: crates/window/src/app/menus.rs:376
+#: crates/window/src/app/menus.rs:379
 msgid "Open All Detached"
 msgstr "Відкрити всі від'єднані"
 
-#: crates/window/src/app/menus.rs:378
+#: crates/window/src/app/menus.rs:381
 msgid "Close All Detached…"
 msgstr "Закрити всі від'єднані…"
 
-#: crates/window/src/app/menus.rs:421
+#: crates/window/src/app/menus.rs:418
 #, rust-format
 msgid "{session} · {title}"
 msgstr "{session} · {title}"
 
-#: crates/window/src/app/menus.rs:429
+#: crates/window/src/app/menus.rs:426
 #, rust-format
 msgid "{count} tab"
 msgid_plural "{count} tabs"
@@ -347,7 +347,7 @@ msgstr[0] "{count} вкладка"
 msgstr[1] "{count} вкладки"
 msgstr[2] "{count} вкладок"
 
-#: crates/window/src/app/menus.rs:438
+#: crates/window/src/app/menus.rs:435
 #, rust-format
 msgid "{count} pane"
 msgid_plural "{count} panes"
@@ -355,37 +355,41 @@ msgstr[0] "{count} панель"
 msgstr[1] "{count} панелі"
 msgstr[2] "{count} панелей"
 
-#: crates/window/src/app/menus.rs:443
+#: crates/window/src/app/menus.rs:440
 #, rust-format
 msgid "{tabs}, {panes}"
 msgstr "{tabs}, {panes}"
 
-#: crates/window/src/app/menus.rs:543
+#: crates/window/src/app/menus.rs:524
+msgid "New sessions need a newer terminal server"
+msgstr "Для нових сеансів потрібен новіший термінальний сервер"
+
+#: crates/window/src/app/menus.rs:549
 #, rust-format
 msgid "Show {session} · {title}"
 msgstr "Показати {session} · {title}"
 
-#: crates/window/src/app/menus.rs:567
+#: crates/window/src/app/menus.rs:573
 msgid "Replace This Window"
 msgstr "Замінити в цьому вікні"
 
-#: crates/window/src/app/menus.rs:572
+#: crates/window/src/app/menus.rs:578
 msgid "Add to This Window"
 msgstr "Додати до цього вікна"
 
-#: crates/window/src/app/menus.rs:580
+#: crates/window/src/app/menus.rs:586
 msgid "Open in New Window"
 msgstr "Відкрити в новому вікні"
 
-#: crates/window/src/app/menus.rs:586
+#: crates/window/src/app/menus.rs:592
 msgid "Rename…"
 msgstr "Перейменувати…"
 
-#: crates/window/src/app/menus.rs:589
+#: crates/window/src/app/menus.rs:595
 msgid "Close…"
 msgstr "Закрити…"
 
-#: crates/window/src/app/menus.rs:624
+#: crates/window/src/app/menus.rs:630
 #, rust-format
 msgid "{count} detached session"
 msgid_plural "{count} detached sessions"
@@ -393,32 +397,32 @@ msgstr[0] "{count} від'єднаний сеанс"
 msgstr[1] "{count} від'єднані сеанси"
 msgstr[2] "{count} від'єднаних сеансів"
 
-#: crates/window/src/app/menus.rs:629 crates/window/src/notifications.rs:89
+#: crates/window/src/app/menus.rs:635 crates/window/src/notifications.rs:89
 msgid "Show"
 msgstr "Показати"
 
-#: crates/window/src/app/menus.rs:639
+#: crates/window/src/app/menus.rs:645
 msgid "No windows were detached"
 msgstr "Немає від’єднаних вікон"
 
-#: crates/window/src/app/pointer.rs:780
+#: crates/window/src/app/pointer.rs:806
 #, rust-format
 msgid "Could not open the link: {reason}"
 msgstr "Не вдалося відкрити посилання: {reason}"
 
-#: crates/window/src/app/pointer.rs:789
+#: crates/window/src/app/pointer.rs:815
 msgid "no program opens links"
 msgstr "немає програми, що відкриває посилання"
 
-#: crates/window/src/app/pointer.rs:802
+#: crates/window/src/app/pointer.rs:828
 msgid "it does not exist"
 msgstr "його не існує"
 
-#: crates/window/src/app/pointer.rs:803
+#: crates/window/src/app/pointer.rs:829
 msgid "no program opens it"
 msgstr "немає програми, що його відкриває"
 
-#: crates/window/src/app/pointer.rs:804
+#: crates/window/src/app/pointer.rs:830
 msgid "the program that opens it failed"
 msgstr "програма, що його відкриває, завершилася з помилкою"
 
@@ -540,7 +544,7 @@ msgstr "Сеанс {number}"
 msgid "Showing sessions together needs a newer terminal server"
 msgstr "Для показу сеансів разом потрібен новіший термінальний сервер"
 
-#: crates/window/src/app/tabs.rs:801
+#: crates/window/src/app/tabs.rs:804
 msgid "Splitting needs a newer terminal server"
 msgstr "Для розділення потрібен новіший термінальний сервер"
 

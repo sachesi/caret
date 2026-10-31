@@ -521,7 +521,7 @@ impl App {
     /// Asks for a session of its own in this window, with a tab.
     pub(super) fn new_session(&mut self) {
         if self.server.version < 2 {
-            self.toast(gettext("Listing sessions needs a newer terminal server"));
+            self.toast(gettext("New sessions need a newer terminal server"));
             return;
         }
         let id = self.server.ask(Question::NewSession);
