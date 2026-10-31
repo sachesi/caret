@@ -111,6 +111,7 @@ mod shortcut_list;
 mod tabs;
 mod text_input;
 mod toast;
+mod touch;
 
 /// A question the window is waiting for the answer to.
 enum Asked {
@@ -249,6 +250,7 @@ struct App {
     /// The serial of the last key or button press, which taking a selection needs.
     serial: u32,
     pointer: pointer::Pointer,
+    touch: touch::Touch,
     clipboard: clipboard::Clipboard,
     focused: bool,
     /// Something changed since the last frame was drawn.
@@ -435,6 +437,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         modifiers: Modifiers::default(),
         serial: 0,
         pointer: pointer::Pointer::default(),
+        touch: touch::Touch::default(),
         clipboard,
         focused: false,
         dirty: true,
@@ -1671,6 +1674,13 @@ impl SeatHandler for App {
                 Err(error) => tracing::warn!("taking the pointer: {error}"),
             }
         }
+        if capability == Capability::Touch && self.touch.proxy.is_none() {
+            self.seat = Some(seat.clone());
+            match self.seats.get_touch(qh, &seat) {
+                Ok(touch) => self.touch.proxy = Some(touch),
+                Err(error) => tracing::warn!("taking the touchscreen: {error}"),
+            }
+        }
         if capability == Capability::Keyboard && self.keyboard.is_none() {
             self.text_input =
                 text_input::TextInput::new(self.offered.text_inputs.as_ref(), &seat, qh);
@@ -1699,6 +1709,11 @@ impl SeatHandler for App {
             && let Some(keyboard) = self.keyboard.take()
         {
             keyboard.release();
+        }
+        if capability == Capability::Touch
+            && let Some(touch) = self.touch.proxy.take()
+        {
+            touch.release();
         }
         if capability == Capability::Pointer {
             if let Some(shape) = self.pointer.shape.take() {

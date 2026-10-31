@@ -383,7 +383,7 @@ impl App {
 
     /// Lets go of what the button held: a tab, a pane, a divider, a button of the frame,
     /// or the terminal's selection.
-    fn let_go(&mut self, button: u32) {
+    pub(super) fn let_go(&mut self, button: u32) {
         if let Some(terminal) = self.pointer.dragged_tab.take()
             && self.outside()
         {
@@ -561,8 +561,61 @@ impl App {
         }
     }
 
+    /// The pointer or the finger has left: nothing is under it any more.
+    pub(super) fn leave(&mut self) {
+        if Chrome::hover_shows(self.chrome.hovered.take(), None) {
+            self.dirty = true;
+        }
+        if let Some(terminal) = self.terminal() {
+            self.unhover(terminal);
+        }
+        self.show_link();
+        self.draw();
+    }
+
+    pub(super) fn pointer_moved(&mut self, position: (f64, f64)) {
+        self.pointer.position = position;
+        if self.pointer.dragged_session.is_some() || self.pointer.dragged_row.is_some() {
+            self.drag_listed();
+            self.hover();
+        } else if self.pointer.moving.is_some() {
+            self.dirty = true;
+            self.draw();
+        } else if self.pointer.dividing.is_some() {
+            self.divide();
+        } else if self.dragging() {
+            self.moved(position);
+        } else if let Some(terminal) = self.pointer.dragged_tab {
+            let (x, _) = self.pointer_at();
+            self.drag_tab(terminal, f64::from(x));
+            self.hover();
+        } else {
+            self.hover();
+            self.hover_cell();
+            if self.chrome.hovered.is_none() {
+                self.moved(position);
+            }
+        }
+    }
+
+    pub(super) fn pointer_pressed(&mut self, position: (f64, f64), button: u32, serial: u32) {
+        self.pointer.position = position;
+        match self.part() {
+            Some(part) if !self.dragging() => {
+                self.serial = serial;
+                self.pressed_frame(part, button, serial);
+            }
+            _ => self.pressed(button, serial),
+        }
+    }
+
+    /// The terminal keeps a drag that began in it, wherever the pointer goes.
+    fn dragging(&self) -> bool {
+        self.pointer.selecting || self.pointer.reported.is_some() || self.pointer.dividing.is_some()
+    }
+
     /// Scrolls by `lines`, up for negative ones, as the program or the view takes it.
-    fn scrolled(&mut self, lines: f64) {
+    pub(super) fn scrolled(&mut self, lines: f64) {
         let total = self.pointer.scrolled + lines;
         let whole = total.trunc();
         self.pointer.scrolled = total - whole;
@@ -616,10 +669,6 @@ impl PointerHandler for App {
         events: &[PointerEvent],
     ) {
         for event in events {
-            // The terminal keeps a drag that began in it, wherever the pointer goes.
-            let dragging = self.pointer.selecting
-                || self.pointer.reported.is_some()
-                || self.pointer.dividing.is_some();
             match event.kind {
                 PointerEventKind::Enter { serial } => {
                     self.pointer.position = event.position;
@@ -628,59 +677,10 @@ impl PointerHandler for App {
                     self.chrome.hovered = self.part();
                     self.hover_cell();
                 }
-                PointerEventKind::Leave { .. } => {
-                    if Chrome::hover_shows(self.chrome.hovered.take(), None) {
-                        self.dirty = true;
-                    }
-                    if let Some(terminal) = self.terminal() {
-                        self.unhover(terminal);
-                    }
-                    self.show_link();
-                    self.draw();
-                }
-                PointerEventKind::Motion { .. }
-                    if self.pointer.dragged_session.is_some()
-                        || self.pointer.dragged_row.is_some() =>
-                {
-                    self.pointer.position = event.position;
-                    self.drag_listed();
-                    self.hover();
-                }
-                PointerEventKind::Motion { .. } if self.pointer.moving.is_some() => {
-                    self.pointer.position = event.position;
-                    self.dirty = true;
-                    self.draw();
-                }
-                PointerEventKind::Motion { .. } if self.pointer.dividing.is_some() => {
-                    self.pointer.position = event.position;
-                    self.divide();
-                }
-                PointerEventKind::Motion { .. } if dragging => self.moved(event.position),
-                PointerEventKind::Motion { .. } if self.pointer.dragged_tab.is_some() => {
-                    self.pointer.position = event.position;
-                    if let Some(terminal) = self.pointer.dragged_tab {
-                        let (x, _) = self.pointer_at();
-                        self.drag_tab(terminal, f64::from(x));
-                    }
-                    self.hover();
-                }
-                PointerEventKind::Motion { .. } => {
-                    self.pointer.position = event.position;
-                    self.hover();
-                    self.hover_cell();
-                    if self.chrome.hovered.is_none() {
-                        self.moved(event.position);
-                    }
-                }
+                PointerEventKind::Leave { .. } => self.leave(),
+                PointerEventKind::Motion { .. } => self.pointer_moved(event.position),
                 PointerEventKind::Press { button, serial, .. } => {
-                    self.pointer.position = event.position;
-                    match self.part() {
-                        Some(part) if !dragging => {
-                            self.serial = serial;
-                            self.pressed_frame(part, button, serial);
-                        }
-                        _ => self.pressed(button, serial),
-                    }
+                    self.pointer_pressed(event.position, button, serial);
                 }
                 PointerEventKind::Release { button, .. } => self.let_go(button),
                 PointerEventKind::Axis { vertical, .. } if self.chrome.shortcut_list.is_some() => {

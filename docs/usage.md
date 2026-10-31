@@ -108,6 +108,10 @@ their paths, quoted for the shell.
 
 ## Links
 
+On a touchscreen, a tap clicks, dragging a finger over the terminal scrolls it and a long
+press opens the terminal's menu. On the header bar, the tabs and the gaps between panes a
+finger does what the mouse's left button does.
+
 Ctrl and a click opens a web, file, FTP, SSH, Gemini or mail address: one a program
 marked as a link, or one in the text, found wherever it starts and even when it wraps
 onto the next line, or when a program broke it into lines that each fill the width. The
