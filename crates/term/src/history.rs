@@ -50,18 +50,30 @@ impl Line {
     /// Wraps the line as [`Line::wrap`] does, without making the rows: calls `start` with
     /// the cell each row starts with, and gives the number of rows.
     fn layout(&self, columns: usize, mut start: impl FnMut(usize)) -> usize {
-        let columns = columns.max(1);
-        let mut rows = 1;
-        let mut column = 0;
-        let mut cell = 0;
         start(0);
-        let wide = self.wide.iter().map(|&at| at as usize);
+        1 + self.walk(columns, 0, 0, start).0
+    }
+
+    /// Goes on wrapping from cell `cell`, which comes `column` cells into its row: calls
+    /// `start` with the cell each further row starts with, and gives how many there are
+    /// and how far into the last the line ends.
+    fn walk(
+        &self,
+        columns: usize,
+        mut cell: usize,
+        mut column: usize,
+        mut start: impl FnMut(usize),
+    ) -> (usize, usize) {
+        let columns = columns.max(1);
+        let mut added = 0;
+        let first = self.wide.partition_point(|&at| (at as usize) < cell);
+        let wide = self.wide[first..].iter().map(|&at| at as usize);
         for (at, width) in wide.map(|at| (at, 2)).chain([(self.width(), 0)]) {
             // The narrow cells before the next wide one.
             while cell < at {
                 if column == columns {
                     start(cell);
-                    rows += 1;
+                    added += 1;
                     column = 0;
                 }
                 let taken = (at - cell).min(columns - column);
@@ -75,13 +87,13 @@ impl Line {
             }
             if column + width > columns {
                 start(at);
-                rows += 1;
+                added += 1;
                 column = 0;
             }
             column += width;
             cell = at + width;
         }
-        rows
+        (added, column)
     }
 
     /// Adds the cells of `row`, which follows the line: all of them where the terminal
@@ -286,6 +298,10 @@ pub struct History {
     limit: usize,
     /// The last line goes on in the next row pushed, which the terminal wrapped it into.
     open: bool,
+    /// How far into its last row the last line ends. A row of the screen can be shorter
+    /// than the history's, when a wide character did not fit at its end, so what a row
+    /// brings may fit in the row the line ended in.
+    tail: usize,
 }
 
 impl History {
@@ -373,16 +389,19 @@ impl History {
                 .back()
                 .is_some_and(|&start| self.end - start < self.limit);
         if open && let Some(last) = self.lines.back_mut() {
-            // The row follows a full one wrapped as wide, so what it brings starts a row
-            // of its own: counted without laying out the whole line again.
+            // Only what the row brings is wrapped: a line can be as long as the history.
             let before = last.width();
             last.append(row);
-            self.end += usize::from(last.width() > before);
+            let (added, tail) = last.walk(self.columns, before, self.tail, |_| {});
+            self.end += added;
+            self.tail = tail;
         } else {
             let mut line = Line::default();
             line.append(row);
+            let (added, tail) = line.walk(self.columns, 0, 0, |_| {});
             self.starts.push_back(self.end);
-            self.end += line.rows(self.columns);
+            self.end += 1 + added;
+            self.tail = tail;
             self.lines.push_back(line);
         }
         self.open = row.wrapped;
@@ -413,6 +432,10 @@ impl History {
             *start = self.end;
             self.end += line.rows(columns);
         }
+        self.tail = self
+            .lines
+            .back()
+            .map_or(0, |line| line.walk(columns, 0, 0, |_| {}).1);
         self.trim();
     }
 
@@ -577,6 +600,17 @@ mod tests {
             let laid_out: usize = history.lines().map(|line| line.rows(columns)).sum();
             assert_eq!(history.rows(), laid_out, "at {columns} columns");
         }
+    }
+
+    #[test]
+    fn a_line_with_shorter_rows_is_counted_as_it_wraps_in_the_history() {
+        // Each wide character that does not fit leaves a row one cell short, so the rows
+        // after it take up room in those before when wrapped again.
+        let mut term = crate::Term::new(3, 1, crate::Options::default());
+        term.advance("ab日\rab日日".as_bytes());
+        let history = term.history();
+        let laid_out: usize = history.lines().map(|line| line.rows(3)).sum();
+        assert_eq!(history.rows(), laid_out);
     }
 
     #[test]
