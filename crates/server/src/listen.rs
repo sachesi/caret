@@ -14,6 +14,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
+use std::time::Duration;
 
 use caret_protocol::{LONGEST, Request};
 
@@ -25,6 +26,10 @@ const LISTEN_FDS_START: RawFd = 3;
 /// Bytes queued for a client before it is hung up on: room for two of the longest
 /// messages.
 const BACKLOG: usize = 2 * LONGEST;
+
+/// How long to wait after failing to take a connection. It stays waiting, so with the
+/// server out of descriptors trying again at once would spin and flood the log.
+const ACCEPT_PAUSE: Duration = Duration::from_millis(200);
 
 /// What a queued message costs beyond its bytes, counted against [`BACKLOG`] so that
 /// many short ones are not more than it allows: its allocation and its place in the
@@ -177,6 +182,7 @@ pub fn accept(listener: &UnixListener, events: &mpsc::Sender<Input>) {
             Ok(stream) => stream,
             Err(error) => {
                 tracing::warn!("accepting a client: {error}");
+                std::thread::sleep(ACCEPT_PAUSE);
                 continue;
             }
         };
