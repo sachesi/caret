@@ -232,13 +232,14 @@ impl App {
 
     /// Says what Caret is, which version, and under which licence, offering its website.
     pub(super) fn about(&mut self) {
-        let body = gettext_f(
-            "A terminal drawn by the GPU. Version {version}, by sachesi, free software under the GNU General Public License, version 3 or later.",
-            &[("version", env!("CARGO_PKG_VERSION"))],
-        );
+        let body = format!("{}\nGPL-3.0-or-later", gettext("Terminal for Wayland"));
         let dialog = Dialog {
             appearance: Appearance::Suggested,
-            ..Dialog::new("Caret", &body, [&gettext("Close"), &gettext("Website")])
+            ..Dialog::new(
+                concat!("Caret ", env!("CARGO_PKG_VERSION")),
+                &body,
+                [&gettext("Close"), &gettext("Website")],
+            )
         };
         self.confirm(dialog, Confirm::About);
     }

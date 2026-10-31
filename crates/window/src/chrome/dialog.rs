@@ -247,25 +247,27 @@ fn card_width(width: f32) -> f32 {
     WIDTH.min(width - 2.0 * INSET).max(0.0)
 }
 
-/// `text` cut between words into lines no wider than `width` as `measure` measures them;
-/// a word wider alone has a line of its own.
+/// `text` cut between words into lines no wider than `width` as `measure` measures them,
+/// and at each line break; a word wider alone has a line of its own.
 pub fn wrap(text: &str, width: f32, measure: impl Fn(&str) -> f32) -> Vec<String> {
     let mut lines = Vec::new();
-    let mut line = String::new();
-    for word in text.split_whitespace() {
-        if line.is_empty() {
-            line.push_str(word);
-            continue;
+    for paragraph in text.split('\n') {
+        let mut line = String::new();
+        for word in paragraph.split_whitespace() {
+            if line.is_empty() {
+                line.push_str(word);
+                continue;
+            }
+            let longer = format!("{line} {word}");
+            if measure(&longer) > width {
+                lines.push(std::mem::replace(&mut line, word.to_owned()));
+            } else {
+                line = longer;
+            }
         }
-        let longer = format!("{line} {word}");
-        if measure(&longer) > width {
-            lines.push(std::mem::replace(&mut line, word.to_owned()));
-        } else {
-            line = longer;
+        if !line.is_empty() {
+            lines.push(line);
         }
-    }
-    if !line.is_empty() {
-        lines.push(line);
     }
     lines
 }
@@ -531,6 +533,10 @@ mod tests {
             ["unbreakable", "word"]
         );
         assert!(wrap("  ", 4.0, measure).is_empty());
+        assert_eq!(
+            wrap("one line\nanother", 100.0, measure),
+            ["one line", "another"]
+        );
     }
 
     #[test]

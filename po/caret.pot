@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret 0.2.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-31 21:20+0200\n"
+"POT-Creation-Date: 2026-10-31 22:57+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -44,8 +44,8 @@ msgstr ""
 
 #: crates/window/src/app/confirm.rs:136 crates/window/src/app/confirm.rs:155
 #: crates/window/src/app/confirm.rs:183 crates/window/src/app/confirm.rs:228
-#: crates/window/src/app/confirm.rs:350 crates/window/src/app/confirm.rs:380
-#: crates/window/src/app/confirm.rs:468 crates/window/src/app/confirm.rs:484
+#: crates/window/src/app/confirm.rs:351 crates/window/src/app/confirm.rs:381
+#: crates/window/src/app/confirm.rs:469 crates/window/src/app/confirm.rs:485
 #: crates/window/src/app/presets.rs:325
 msgid "Cancel"
 msgstr ""
@@ -76,8 +76,8 @@ msgid "Close Session?"
 msgstr ""
 
 #: crates/window/src/app/confirm.rs:183 crates/window/src/app/confirm.rs:241
-#: crates/window/src/app/confirm.rs:350 crates/window/src/app/confirm.rs:380
-#: crates/window/src/app/confirm.rs:466
+#: crates/window/src/app/confirm.rs:351 crates/window/src/app/confirm.rs:381
+#: crates/window/src/app/confirm.rs:467
 msgid "Close"
 msgstr ""
 
@@ -99,30 +99,27 @@ msgstr[1] ""
 msgid "Close All Detached?"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:228 crates/window/src/app/confirm.rs:464
+#: crates/window/src/app/confirm.rs:228 crates/window/src/app/confirm.rs:465
 msgid "Close All"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:236
-#, rust-format
-msgid ""
-"A terminal drawn by the GPU. Version {version}, by sachesi, free software "
-"under the GNU General Public License, version 3 or later."
+#: crates/window/src/app/confirm.rs:235
+msgid "Terminal for Wayland"
 msgstr ""
 
 #: crates/window/src/app/confirm.rs:241
 msgid "Website"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:348 crates/window/src/app/confirm.rs:373
+#: crates/window/src/app/confirm.rs:349 crates/window/src/app/confirm.rs:374
 msgid "Close Tab?"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:375
+#: crates/window/src/app/confirm.rs:376
 msgid "Close Pane?"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:441
+#: crates/window/src/app/confirm.rs:442
 #, rust-format
 msgid "A program is still running in this window and will be stopped."
 msgid_plural ""
@@ -130,55 +127,55 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/window/src/app/confirm.rs:449
+#: crates/window/src/app/confirm.rs:450
 #, rust-format
 msgid "{count} session will end with this window."
 msgid_plural "{count} sessions will end with this window."
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/window/src/app/confirm.rs:456
+#: crates/window/src/app/confirm.rs:457
 #, rust-format
 msgid "The session “{session}” will end with this window."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:469 crates/window/src/app/menus.rs:628
+#: crates/window/src/app/confirm.rs:470 crates/window/src/app/menus.rs:628
 msgid "Detach"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:470
+#: crates/window/src/app/confirm.rs:471
 msgid "Close Window?"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:480
+#: crates/window/src/app/confirm.rs:481
 msgid "Paste Several Lines?"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:482
+#: crates/window/src/app/confirm.rs:483
 msgid ""
 "The program here does not mark pasted text, so each line runs as if typed "
 "and entered."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:484 crates/window/src/app/menus.rs:176
+#: crates/window/src/app/confirm.rs:485 crates/window/src/app/menus.rs:176
 #: crates/window/src/app/shortcut_list.rs:71
 msgid "Paste"
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:499
+#: crates/window/src/app/confirm.rs:500
 msgid "A program is still running in this tab and will be stopped."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:500
+#: crates/window/src/app/confirm.rs:501
 msgid "A program is still running in this pane and will be stopped."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:502
+#: crates/window/src/app/confirm.rs:503
 #, rust-format
 msgid "“{program}” is still running in this tab and will be stopped."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:506
+#: crates/window/src/app/confirm.rs:507
 #, rust-format
 msgid "“{program}” is still running in this pane and will be stopped."
 msgstr ""
@@ -596,13 +593,13 @@ msgstr ""
 msgid "Find in the history"
 msgstr ""
 
-#: crates/window/src/text.rs:919
+#: crates/window/src/text.rs:962
 msgid ""
 "arrows focus · shift swap · ctrl resize · n p tab · v s split · x close · z "
 "zoom · t to tab · d detach · Esc"
 msgstr ""
 
-#: crates/window/src/text.rs:928
+#: crates/window/src/text.rs:971
 #, rust-format
 msgid "{key} control"
 msgstr ""

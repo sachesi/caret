@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-31 21:20+0200\n"
+"POT-Creation-Date: 2026-10-31 22:57+0200\n"
 "PO-Revision-Date: 2026-10-31 12:30+0200\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Ukrainian\n"
@@ -42,8 +42,8 @@ msgstr "Без назви вкладка показує заголовок пр�
 
 #: crates/window/src/app/confirm.rs:136 crates/window/src/app/confirm.rs:155
 #: crates/window/src/app/confirm.rs:183 crates/window/src/app/confirm.rs:228
-#: crates/window/src/app/confirm.rs:350 crates/window/src/app/confirm.rs:380
-#: crates/window/src/app/confirm.rs:468 crates/window/src/app/confirm.rs:484
+#: crates/window/src/app/confirm.rs:351 crates/window/src/app/confirm.rs:381
+#: crates/window/src/app/confirm.rs:469 crates/window/src/app/confirm.rs:485
 #: crates/window/src/app/presets.rs:325
 msgid "Cancel"
 msgstr "Скасувати"
@@ -74,8 +74,8 @@ msgid "Close Session?"
 msgstr "Закрити сеанс?"
 
 #: crates/window/src/app/confirm.rs:183 crates/window/src/app/confirm.rs:241
-#: crates/window/src/app/confirm.rs:350 crates/window/src/app/confirm.rs:380
-#: crates/window/src/app/confirm.rs:466
+#: crates/window/src/app/confirm.rs:351 crates/window/src/app/confirm.rs:381
+#: crates/window/src/app/confirm.rs:467
 msgid "Close"
 msgstr "Закрити"
 
@@ -99,32 +99,27 @@ msgstr[2] "Роботу {count} програм в них буде перерва
 msgid "Close All Detached?"
 msgstr "Закрити всі від'єднані?"
 
-#: crates/window/src/app/confirm.rs:228 crates/window/src/app/confirm.rs:464
+#: crates/window/src/app/confirm.rs:228 crates/window/src/app/confirm.rs:465
 msgid "Close All"
 msgstr "Закрити всі"
 
-#: crates/window/src/app/confirm.rs:236
-#, rust-format
-msgid ""
-"A terminal drawn by the GPU. Version {version}, by sachesi, free software "
-"under the GNU General Public License, version 3 or later."
-msgstr ""
-"Термінал, який малює відеокарта. Версія {version}, автор sachesi, вільна "
-"програма під ліцензією GNU General Public License версії 3 або пізнішої."
+#: crates/window/src/app/confirm.rs:235
+msgid "Terminal for Wayland"
+msgstr "Термінал для Wayland"
 
 #: crates/window/src/app/confirm.rs:241
 msgid "Website"
 msgstr "Сайт"
 
-#: crates/window/src/app/confirm.rs:348 crates/window/src/app/confirm.rs:373
+#: crates/window/src/app/confirm.rs:349 crates/window/src/app/confirm.rs:374
 msgid "Close Tab?"
 msgstr "Закрити вкладку?"
 
-#: crates/window/src/app/confirm.rs:375
+#: crates/window/src/app/confirm.rs:376
 msgid "Close Pane?"
 msgstr "Закрити панель?"
 
-#: crates/window/src/app/confirm.rs:441
+#: crates/window/src/app/confirm.rs:442
 #, rust-format
 msgid "A program is still running in this window and will be stopped."
 msgid_plural ""
@@ -135,7 +130,7 @@ msgstr[1] ""
 msgstr[2] ""
 "У цьому вікні ще працюють {count} програм, їхню роботу буде перервано."
 
-#: crates/window/src/app/confirm.rs:449
+#: crates/window/src/app/confirm.rs:450
 #, rust-format
 msgid "{count} session will end with this window."
 msgid_plural "{count} sessions will end with this window."
@@ -143,24 +138,24 @@ msgstr[0] "{count} сеанс завершиться разом із цим ві
 msgstr[1] "{count} сеанси завершаться разом із цим вікном."
 msgstr[2] "{count} сеансів завершаться разом із цим вікном."
 
-#: crates/window/src/app/confirm.rs:456
+#: crates/window/src/app/confirm.rs:457
 #, rust-format
 msgid "The session “{session}” will end with this window."
 msgstr "Сеанс «{session}» завершиться разом із цим вікном."
 
-#: crates/window/src/app/confirm.rs:469 crates/window/src/app/menus.rs:628
+#: crates/window/src/app/confirm.rs:470 crates/window/src/app/menus.rs:628
 msgid "Detach"
 msgstr "Від’єднати"
 
-#: crates/window/src/app/confirm.rs:470
+#: crates/window/src/app/confirm.rs:471
 msgid "Close Window?"
 msgstr "Закрити вікно?"
 
-#: crates/window/src/app/confirm.rs:480
+#: crates/window/src/app/confirm.rs:481
 msgid "Paste Several Lines?"
 msgstr "Вставити кілька рядків?"
 
-#: crates/window/src/app/confirm.rs:482
+#: crates/window/src/app/confirm.rs:483
 msgid ""
 "The program here does not mark pasted text, so each line runs as if typed "
 "and entered."
@@ -168,25 +163,25 @@ msgstr ""
 "Ця програма не позначає вставлений текст, тому кожен рядок виконається, наче "
 "його набрали й натиснули Enter."
 
-#: crates/window/src/app/confirm.rs:484 crates/window/src/app/menus.rs:176
+#: crates/window/src/app/confirm.rs:485 crates/window/src/app/menus.rs:176
 #: crates/window/src/app/shortcut_list.rs:71
 msgid "Paste"
 msgstr "Вставити"
 
-#: crates/window/src/app/confirm.rs:499
+#: crates/window/src/app/confirm.rs:500
 msgid "A program is still running in this tab and will be stopped."
 msgstr "У цій вкладці ще працює програма, її роботу буде перервано."
 
-#: crates/window/src/app/confirm.rs:500
+#: crates/window/src/app/confirm.rs:501
 msgid "A program is still running in this pane and will be stopped."
 msgstr "У цій панелі ще працює програма, її роботу буде перервано."
 
-#: crates/window/src/app/confirm.rs:502
+#: crates/window/src/app/confirm.rs:503
 #, rust-format
 msgid "“{program}” is still running in this tab and will be stopped."
 msgstr "У цій вкладці ще працює «{program}», і її роботу буде перервано."
 
-#: crates/window/src/app/confirm.rs:506
+#: crates/window/src/app/confirm.rs:507
 #, rust-format
 msgid "“{program}” is still running in this pane and will be stopped."
 msgstr "У цій панелі ще працює «{program}», і її роботу буде перервано."
@@ -609,7 +604,7 @@ msgstr "Цю вкладку більше не можна розділити"
 msgid "Find in the history"
 msgstr "Пошук в історії"
 
-#: crates/window/src/text.rs:919
+#: crates/window/src/text.rs:962
 msgid ""
 "arrows focus · shift swap · ctrl resize · n p tab · v s split · x close · z "
 "zoom · t to tab · d detach · Esc"
@@ -617,7 +612,7 @@ msgstr ""
 "стрілки фокус · shift обмін · ctrl розмір · n p вкладка · v s розділити · x "
 "закрити · z розгорнути · t у вкладку · d від’єднати · Esc"
 
-#: crates/window/src/text.rs:928
+#: crates/window/src/text.rs:971
 #, rust-format
 msgid "{key} control"
 msgstr "{key} керування"
@@ -916,6 +911,7 @@ msgstr ""
 msgid "The first release."
 msgstr "Перший випуск."
 
+#, rust-format
 #~ msgid "here"
 #~ msgstr "тут"
 
@@ -955,9 +951,6 @@ msgstr "Перший випуск."
 
 #~ msgid "Use the System Font"
 #~ msgstr "Системний шрифт"
-
-#~ msgid "Terminal Font"
-#~ msgstr "Шрифт термінала"
 
 #~ msgid "Font Features, Such as zero, ss01"
 #~ msgstr "Можливості шрифту, наприклад zero, ss01"

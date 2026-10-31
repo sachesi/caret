@@ -20,7 +20,7 @@ pub use session::run as session;
 #[command(
     name = "caret",
     version,
-    about = "A terminal whose sessions outlive their windows.",
+    about = "Terminal for Wayland.",
     args_conflicts_with_subcommands = true
 )]
 pub struct Cli {
