@@ -99,11 +99,32 @@ the rest: open it in a new window, replace or add, rename, detach and close, and
 detached, the list can open them all or close them all. A new window says when sessions are
 detached, with a button to list them, unless `detached-hint` is off. Right-clicking the +
 button offers a new session and the sessions this window does not show.
-`caret sessions` prints the same list, and `caret attach` with a session's number or
-name shows it: in a Caret window when run in one, or else in the terminal it runs in,
+`caret session` prints the same list, and `caret session attach` with a session's number
+or name shows it: in a Caret window when run in one, or else in the terminal it runs in,
 drawn with escape sequences, where control mode's D detaches back to the shell. On a
 Linux console it uses the console's sixteen colours, so a colour between them shows as
-the nearest one.
+the nearest one. With no name, it takes the only detached session, if there is just one.
+
+The rest of what the list does has a command too, for scripts and for a shell over ssh:
+
+    caret session new --name build -- make     # no window; prints the session's number
+    caret session rename build compile
+    caret session detach compile               # every window showing it lets it go
+    caret session close compile
+
+`new` starts its first tab at 80 by 24 until something shows it. A program it cannot start
+says so in that tab, and the session stays. `close` refuses while a program runs, and says
+which, unless given `--force`; a shell waiting at its prompt does not count, but the shell
+running this command is not waiting. Without a session, `rename`, `detach` and `close` act
+on the one they run in.
+
+`-j` gives any of these answers in JSON, with `"ok": true` and what was asked for, or
+`"ok": false` and an `"error"`:
+
+    caret session -j | jq -r '.sessions[].name'
+
+The exit status is 1 when a command fails, and 2 when its line does not say enough, such
+as no session named outside Caret.
 
 A window that shows several sessions has one tab for each in the strip, with its name
 or number, the title of the tab it shows and how many tabs it has. A click on another

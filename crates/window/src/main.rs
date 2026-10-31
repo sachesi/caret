@@ -30,6 +30,7 @@ mod timings;
 
 use std::process::ExitCode;
 
+use clap::Parser;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::LevelFilter;
 
@@ -54,41 +55,9 @@ fn main() -> ExitCode {
     unsafe {
         i18n::init();
     }
-    let mut start = match cli::parse(std::env::args_os().skip(1)) {
-        Ok(cli::Parsed::Start(start)) => start,
-        Ok(cli::Parsed::Help) => {
-            println!("{}", cli::USAGE);
-            return ExitCode::SUCCESS;
-        }
-        Ok(cli::Parsed::Version) => {
-            println!("caret {}", env!("CARGO_PKG_VERSION"));
-            return ExitCode::SUCCESS;
-        }
-        Ok(cli::Parsed::Sessions) => {
-            return match cli::sessions() {
-                Ok(sessions) => {
-                    print!("{}", cli::listing(&sessions));
-                    ExitCode::SUCCESS
-                }
-                Err(error) => {
-                    eprintln!("caret: {error}");
-                    ExitCode::FAILURE
-                }
-            };
-        }
-        Ok(cli::Parsed::Attach(target)) => {
-            return match attach(&target) {
-                Ok(()) => ExitCode::SUCCESS,
-                Err(error) => {
-                    eprintln!("caret: {error}");
-                    ExitCode::FAILURE
-                }
-            };
-        }
-        Err(error) => {
-            eprintln!("caret: {error}\n{}", cli::USAGE);
-            return ExitCode::from(2);
-        }
+    let mut start = match cli::Cli::parse().parsed() {
+        Err(start) => start,
+        Ok(cli::Noun::Session(command)) => return cli::session(command),
     };
     if start.attach == cli::Attach::Detached {
         let detached = match cli::detached() {
@@ -114,16 +83,5 @@ fn main() -> ExitCode {
             eprintln!("caret: {error}");
             ExitCode::FAILURE
         }
-    }
-}
-
-/// Shows the session `target` names: in the window this runs in, if it runs in one of
-/// Caret's terminals; otherwise drawn in this terminal.
-fn attach(target: &str) -> Result<(), String> {
-    let sessions = cli::sessions()?;
-    let session = cli::find(&sessions, target)?;
-    match cli::own_terminal() {
-        Some(terminal) => cli::show_in_window(terminal, session),
-        None => text::run(session),
     }
 }

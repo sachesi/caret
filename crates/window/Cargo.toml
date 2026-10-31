@@ -17,6 +17,7 @@ ash = "0.38"
 # wakes twice a second for as long as the window is open.
 blocking = "~1.6.2"
 caret-protocol.workspace = true
+clap = { version = "4.6", features = ["derive"] }
 fontdb = { version = "0.24", default-features = false, features = ["std", "fs", "memmap"] }
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 harfrust = "0.13"
