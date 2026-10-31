@@ -13,6 +13,8 @@ const INSET: f32 = 12.0;
 /// The room around its contents, and between the heading and the body.
 const PADDING: f32 = 24.0;
 const SPACING: f32 = 10.0;
+/// The room around its contents where they would not fit otherwise.
+const TIGHT_PADDING: f32 = 8.0;
 /// Its buttons' and field's height, and the room between the buttons.
 const BUTTON: f32 = 34.0;
 const BUTTON_SPACING: f32 = 12.0;
@@ -57,6 +59,8 @@ pub enum Appearance {
 /// Where a dialog's parts are, in logical pixels from the window's corner.
 struct Layout {
     card: [f32; 4],
+    /// The window is too low for the body, which is left out.
+    tight: bool,
     heading: f32,
     body: f32,
     field: [f32; 4],
@@ -116,28 +120,48 @@ impl Dialog {
         } else {
             PADDING / 2.0 + SWATCH
         };
-        let card_height =
+        let roomy =
             PADDING + heading + SPACING + body + field + swatches + PADDING + BUTTON + PADDING;
+        let tight = roomy > height;
+        // Its buttons stay in reach in the lowest window, where it says less.
+        let (padding, spacing, body, field, swatches) = if tight {
+            let field = if self.field.is_some() { BUTTON } else { 0.0 };
+            let swatches = if self.swatches.is_empty() {
+                0.0
+            } else {
+                TIGHT_PADDING + SWATCH
+            };
+            (TIGHT_PADDING, 0.0, 0.0, field, swatches)
+        } else {
+            (PADDING, SPACING, body, field, swatches)
+        };
+        let card_height =
+            2.0 * padding + heading + spacing + body + field + swatches + padding + BUTTON;
         let (x, y) = (
             (width - card_width) / 2.0,
             ((height - card_height) / 2.0).max(0.0),
         );
         let count = self.responses.len() as f32;
         let button_width = (card_width - 2.0 * PADDING - (count - 1.0) * BUTTON_SPACING) / count;
-        let button_y = y + card_height - PADDING - BUTTON;
+        let button_y = y + card_height - padding - BUTTON;
         let row = card_width - 2.0 * PADDING;
         let step = (row - SWATCH) / (self.swatches.len().max(2) - 1) as f32;
-        let swatch_y = y + PADDING + heading + SPACING + body + field + PADDING / 2.0;
+        let field_y = if tight {
+            y + padding + heading
+        } else {
+            y + PADDING + heading + SPACING + body + PADDING / 2.0
+        };
+        let swatch_y = if tight {
+            field_y + field + TIGHT_PADDING
+        } else {
+            y + PADDING + heading + SPACING + body + field + PADDING / 2.0
+        };
         Layout {
             card: [x, y, card_width, card_height],
-            heading: y + PADDING,
-            body: y + PADDING + heading + SPACING,
-            field: [
-                x + PADDING,
-                y + PADDING + heading + SPACING + body + PADDING / 2.0,
-                card_width - 2.0 * PADDING,
-                BUTTON,
-            ],
+            tight,
+            heading: y + padding,
+            body: y + padding + heading + spacing,
+            field: [x + PADDING, field_y, card_width - 2.0 * PADDING, BUTTON],
             swatches: (0..self.swatches.len())
                 .map(|index| [x + PADDING + index as f32 * step, swatch_y, SWATCH, SWATCH])
                 .collect(),
@@ -266,7 +290,12 @@ impl Painter<'_> {
             let top = margin + layout.heading * scale;
             quads.push(centred_line(centre, top, glyph, colors.foreground));
         }
-        for (index, line) in dialog.lines.iter().enumerate() {
+        let lines = if layout.tight {
+            &[][..]
+        } else {
+            &dialog.lines[..]
+        };
+        for (index, line) in lines.iter().enumerate() {
             let label = Drawing::Label {
                 text: line.clone(),
                 width: room,
@@ -442,6 +471,20 @@ mod tests {
             Part::Response(0)
         );
         assert_eq!(dialog.part_at((5.0, 5.0), size), Part::Dialog);
+    }
+
+    #[test]
+    fn in_the_lowest_window_a_dialog_s_field_and_buttons_stay_in_it() {
+        let mut dialog = Dialog::asking("Rename", "", ["Cancel", "Rename"], "name");
+        dialog.line = 20.0;
+        dialog.lines = vec!["a line".to_owned(), "another".to_owned()];
+        dialog.swatches = vec![0; 9];
+        let layout = dialog.layout((360.0, 200.0));
+        assert!(layout.tight);
+        let bottom = |[_, y, _, height]: [f32; 4]| y + height;
+        assert!(bottom(layout.buttons[1]) <= 200.0);
+        assert!(bottom(layout.field) <= layout.swatches[0][1]);
+        assert!(bottom(layout.swatches[0]) <= layout.buttons[0][1]);
         assert!(layout.card[2] <= WIDTH);
     }
 
