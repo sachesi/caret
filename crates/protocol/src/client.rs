@@ -1,7 +1,10 @@
 //! A client's end of the socket: finding the server, starting one when none listens,
 //! and the handshake.
 
+use std::fs::File;
 use std::io;
+use std::os::fd::AsFd;
+use std::os::unix::fs::FileTypeExt;
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -86,6 +89,23 @@ fn server_program() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(SERVER))
 }
 
+/// Where a server started from here writes its log: where this does, unless that is a pipe.
+/// The server outlives this client, and whoever reads the pipe, such as `$(caret ... 2>&1)`,
+/// would wait for it to end.
+fn server_stderr() -> process::Stdio {
+    let writes_to_pipe = io::stderr()
+        .as_fd()
+        .try_clone_to_owned()
+        .map(File::from)
+        .and_then(|stderr| stderr.metadata())
+        .is_ok_and(|stderr| stderr.file_type().is_fifo());
+    if writes_to_pipe {
+        process::Stdio::null()
+    } else {
+        process::Stdio::inherit()
+    }
+}
+
 fn connect_or_start(path: &Path) -> Result<UnixStream, ConnectError> {
     let refused = match UnixStream::connect(path) {
         Ok(stream) => return Ok(stream),
@@ -106,6 +126,7 @@ fn connect_or_start(path: &Path) -> Result<UnixStream, ConnectError> {
         .arg(path)
         .stdin(process::Stdio::null())
         .stdout(process::Stdio::null())
+        .stderr(server_stderr())
         // Out of the window's process group, so that a signal to it leaves the terminals.
         .process_group(0)
         .spawn()
