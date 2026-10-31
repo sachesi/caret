@@ -17,8 +17,8 @@ Before a change goes in:
 ## Where things are
 
     crates/window             caret, the window
-      main.rs, cli.rs         start-up, and the command line with `caret sessions` and
-                              `caret attach`
+      main.rs, cli.rs, cli/   start-up, and the command line with `caret session` and
+                              `caret completions`
       app.rs                  a window: Wayland events, keys, and the frames it hands to
                               the render thread
       app/                    its parts: tabs and their panes, control mode, sessions,
@@ -42,7 +42,7 @@ Before a change goes in:
       shortcuts.rs, keys.rs   actions and their keys; keys as the terminal encodes them
       desktop.rs              the style and the font from the settings portal
       access.rs               what screen readers are told
-      text.rs                 a session drawn in another terminal, for `caret attach`
+      text.rs                 a session drawn in another terminal, for `caret session attach`
                               outside a window
     crates/protocol           what clients and the server send each other, and how it
                               is written on the socket; in encode.rs, keys, mouse
