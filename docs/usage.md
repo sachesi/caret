@@ -107,7 +107,8 @@ on the arrow of any, lists its tabs, with New Tab, Rename, Detach and Close Sess
 session's tabs from the keys, and typing narrows the list. Ctrl+Page Up and Page Down
 and Alt and a number act on the shown session's tabs, and Ctrl+Shift+Page Up and Page
 Down and Ctrl+Alt and a number on the sessions. Each session has a colour of its own on
-its tab unless `session-colors` is off.
+its tab unless `session-colors` is off. The wheel over a session's tab goes through its
+tabs.
 
 ## Selecting, copying and pasting
 

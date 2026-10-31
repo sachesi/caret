@@ -76,6 +76,9 @@ pub struct Pointer {
     scrolled: f64,
     /// Part of a notch of the wheel turned with Ctrl held, in 120ths, not yet zoomed by.
     zoomed: i32,
+    /// Part of a notch of the wheel turned over a session's tab, in 120ths, not yet stepped
+    /// by.
+    tab_wheel: i32,
     /// Part of a notch turned over the list of shortcuts, in 120ths, not yet scrolled by.
     pub turned_list: i32,
 }
@@ -719,6 +722,22 @@ impl PointerHandler for App {
                 PointerEventKind::Release { button, .. } => self.let_go(button),
                 PointerEventKind::Axis { vertical, .. } if self.chrome.shortcut_list.is_some() => {
                     self.scroll_shortcut_list(vertical.value120, vertical.discrete);
+                }
+                // Only a wheel steps: a touchpad's scrolling would step by the pixel.
+                PointerEventKind::Axis { vertical, .. } if self.over_session_tab().is_some() => {
+                    let turned = if vertical.value120 != 0 {
+                        vertical.value120
+                    } else {
+                        vertical.discrete * 120
+                    };
+                    self.pointer.tab_wheel += turned;
+                    let notches = self.pointer.tab_wheel / 120;
+                    self.pointer.tab_wheel %= 120;
+                    if notches != 0
+                        && let Some(session) = self.over_session_tab()
+                    {
+                        self.step_tab_of(session, notches);
+                    }
                 }
                 PointerEventKind::Axis { .. } if self.chrome.hovered.is_some() => {}
                 // Only a wheel zooms: a touchpad's scrolling would zoom by the pixel.

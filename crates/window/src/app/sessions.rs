@@ -171,6 +171,30 @@ impl App {
         }
     }
 
+    /// The session whose tab the pointer is over, in a strip of sessions' tabs.
+    pub(super) fn over_session_tab(&self) -> Option<SessionId> {
+        let (Part::Tab(index) | Part::TabMenu(index)) = self.chrome.hovered? else {
+            return None;
+        };
+        self.sessions.get(index).copied().filter(|_| self.grouped())
+    }
+
+    /// Shows the tab `steps` after `session`'s last, round from its last tab to its first.
+    pub(super) fn step_tab_of(&mut self, session: SessionId, steps: i32) {
+        let indices: Vec<usize> = (0..self.tabs.len())
+            .filter(|&index| self.tabs[index].session == session)
+            .collect();
+        let Some(last) = self.session_tab(session) else {
+            return;
+        };
+        let Some(at) = indices.iter().position(|&index| index == last) else {
+            return;
+        };
+        let count = indices.len() as i64;
+        let next = (at as i64 + i64::from(steps)).rem_euclid(count);
+        self.show(indices[next as usize]);
+    }
+
     /// Shows the last tab of the session `steps` after the shown one, round from the
     /// last to the first.
     pub(super) fn step_session(&mut self, steps: isize) {
