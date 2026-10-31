@@ -244,10 +244,13 @@ impl App {
             .as_ref()
             .and_then(|menu| menu.items().nth(index))
             .is_some_and(|item| item.enabled);
+        if !enabled {
+            return;
+        }
         let choice = self.choices.get(index).cloned();
         let at = self.chrome.menu.as_ref().map(|menu| menu.at);
         self.close_menu();
-        match choice.filter(|_| enabled) {
+        match choice {
             Some(Choice::Act(action)) => {
                 self.act(action);
             }

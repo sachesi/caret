@@ -18,7 +18,7 @@ use smithay_client_toolkit::shm::{Shm, ShmHandler};
 
 use super::App;
 use crate::atlas::{COLOR, GpuGlyph};
-use crate::chrome::{self, Drawing};
+use crate::chrome::{self, Drawing, Quad};
 use crate::fonts::{Fonts, Raster};
 use crate::paint;
 
@@ -40,6 +40,17 @@ pub struct MenuPopup {
     rasters: Vec<Raster>,
     /// Kept while the compositor may be showing it.
     buffer: Option<Buffer>,
+    /// What the buffer shows and its size, as the window draws far more often than a menu
+    /// changes.
+    painted: (Vec<Quad>, (i32, i32)),
+}
+
+impl Drop for MenuPopup {
+    fn drop(&mut self) {
+        if let Some(viewport) = &self.viewport {
+            viewport.destroy();
+        }
+    }
 }
 
 impl App {
@@ -51,7 +62,7 @@ impl App {
             self.menu_popup = None;
             return;
         };
-        menu.fit(|text| fonts.label_advance(text, false) / scale);
+        menu.fit(|text, bold| fonts.label_advance(text, bold) / scale);
         let (width, height) = menu.size();
         let placement = Placement {
             at: menu.at,
@@ -136,6 +147,7 @@ impl App {
             known: HashMap::new(),
             rasters: Vec::new(),
             buffer: None,
+            painted: (Vec::new(), (0, 0)),
         });
     }
 
@@ -174,6 +186,9 @@ impl App {
             let raster = &rasters[index as usize - 1];
             Some((index, glyph(raster)))
         });
+        if popup.painted.1 == (width, height) && popup.painted.0 == quads {
+            return;
+        }
         if self.popup_pool.is_none() {
             match SlotPool::new((width * height * 4) as usize, shm) {
                 Ok(pool) => self.popup_pool = Some(pool),
@@ -216,6 +231,7 @@ impl App {
         surface.damage_buffer(0, 0, width, height);
         surface.commit();
         popup.buffer = Some(buffer);
+        popup.painted = (quads, (width, height));
     }
 
     /// `position` on `surface` in the window's coordinates, where the surface is the menu's.

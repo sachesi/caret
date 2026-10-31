@@ -42,6 +42,8 @@ pub struct TabClosing {
 
 impl App {
     fn confirm(&mut self, dialog: Dialog, confirm: Confirm) {
+        // A menu would stand over the dialog and take its clicks.
+        self.close_menu();
         self.chrome.dialog = Some(dialog);
         self.confirming = Some(confirm);
         self.hover();

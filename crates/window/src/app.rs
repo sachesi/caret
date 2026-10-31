@@ -268,6 +268,8 @@ struct App {
     touch: touch::Touch,
     clipboard: clipboard::Clipboard,
     focused: bool,
+    /// The keyboard is on the window or its menu.
+    keys_here: bool,
     /// Something changed since the last frame was drawn.
     dirty: bool,
     /// A frame is with the render thread, which says when the compositor wants the next.
@@ -461,6 +463,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         touch: touch::Touch::default(),
         clipboard,
         focused: false,
+        keys_here: false,
         dirty: true,
         waiting: false,
         sent_glyphs: (0, 0),
@@ -1619,7 +1622,10 @@ impl KeyboardHandler for App {
         _: &[u32],
         _: &[Keysym],
     ) {
-        self.set_focus(true);
+        self.keys_here = true;
+        if !self.focused {
+            self.set_focus(true);
+        }
     }
 
     fn leave(
@@ -1630,9 +1636,15 @@ impl KeyboardHandler for App {
         surface: &wl_surface::WlSurface,
         _: u32,
     ) {
-        // The window keeps looking focused while a menu it opened has the keys.
+        self.keys_here = false;
+        // The window keeps looking focused while a menu it opened has the keys, and programs
+        // do not hear of the keys coming back from it: an enter comes with the leave.
         if self.menu_popup.is_none() || self.is_popup(surface) {
-            self.set_focus(false);
+            self.events.insert_idle(|app| {
+                if !app.keys_here {
+                    app.set_focus(false);
+                }
+            });
         }
     }
 

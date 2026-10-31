@@ -145,8 +145,8 @@ impl Menu {
     }
 
     /// Fits the menu's width to its items, as `measure` gives their text's width in
-    /// logical pixels.
-    pub fn fit(&mut self, measure: impl Fn(&str) -> f32) {
+    /// logical pixels, plain or bold.
+    pub fn fit(&mut self, measure: impl Fn(&str, bool) -> f32) {
         let widest = self
             .items()
             .map(|item| {
@@ -156,11 +156,11 @@ impl Menu {
                 } else {
                     0.0
                 };
-                (measure(&item.label)
+                (measure(&item.label, item.current || item.title)
                     + item
                         .shortcut
                         .as_deref()
-                        .map_or(0.0, |shortcut| SHORTCUT_GAP + measure(shortcut))
+                        .map_or(0.0, |shortcut| SHORTCUT_GAP + measure(shortcut, false))
                     + if item.dot.is_some() { DOT_ROOM } else { 0.0 }
                     + self.check_room()
                     + end)
@@ -168,7 +168,7 @@ impl Menu {
             })
             .chain(
                 self.heading_text()
-                    .map(|heading| measure(&heading) + DOT_ROOM),
+                    .map(|heading| measure(&heading, true) + DOT_ROOM),
             )
             .fold(0.0, f32::max);
         // Whole pixels to spare, as the room for each label is cut to whole pixels.
@@ -477,9 +477,19 @@ impl Painter<'_> {
         }
         let end = if item.closes { BUTTON * scale } else { 0.0 };
         let room = width - (start - x) - inset - padding - end;
+        let shortcut = item.shortcut.as_ref().and_then(|shortcut| {
+            draw(&Drawing::Label {
+                text: shortcut.clone(),
+                width: room.max(0.0) as u32,
+                bold: false,
+            })
+        });
+        let beside = shortcut.map_or(0.0, |(_, glyph)| {
+            halves(glyph.size).0 as f32 + SHORTCUT_GAP * scale
+        });
         let label = Drawing::Label {
             text: item.label.clone(),
-            width: room.max(0.0) as u32,
+            width: (room - beside).max(0.0) as u32,
             bold: item.current,
         };
         if let Some(glyph) = draw(&label) {
@@ -509,18 +519,11 @@ impl Painter<'_> {
                 ],
             );
         }
-        if let Some(shortcut) = &item.shortcut {
-            let label = Drawing::Label {
-                text: shortcut.clone(),
-                width: room.max(0.0) as u32,
-                bold: false,
-            };
-            if let Some(glyph) = draw(&label) {
-                let (glyph_width, _) = halves(glyph.1.size);
-                let right = x + width - inset - padding - glyph_width as f32;
-                let dim = (colors.foreground & !0xff) | 0x8c;
-                quads.push(self.left_label(right, middle, glyph, dim));
-            }
+        if let Some(glyph) = shortcut {
+            let (glyph_width, _) = halves(glyph.1.size);
+            let right = x + width - inset - padding - glyph_width as f32;
+            let dim = (colors.foreground & !0xff) | 0x8c;
+            quads.push(self.left_label(right, middle, glyph, dim));
         }
     }
 
@@ -632,7 +635,7 @@ mod tests {
     #[test]
     fn a_long_title_does_not_widen_a_menu_past_its_limit() {
         let mut menu = menu();
-        menu.fit(|_| 10_000.0);
+        menu.fit(|_, _| 10_000.0);
         assert!((menu.width - MAX_WIDTH).abs() < 0.1);
     }
 
