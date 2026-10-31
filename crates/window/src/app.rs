@@ -523,13 +523,18 @@ fn palette(config: &Config, desktop: &Desktop) -> Palette {
 fn look(config: &Config, palette: &Palette) -> Request {
     Request::Look {
         palette: palette.colors(),
-        options: Options {
-            scrollback: config.scrollback_lines,
-            cursor_shape: config.cursor_shape,
-            cursor_blinks: false,
-            copy_from_programs: config.program_clipboard,
-            scroll_on_output: config.scroll_on_output,
-        },
+        options: options(config),
+    }
+}
+
+/// How the settings want terminals to behave.
+pub(crate) fn options(config: &Config) -> Options {
+    Options {
+        scrollback: config.scrollback_lines,
+        cursor_shape: config.cursor_shape,
+        cursor_blinks: false,
+        copy_from_programs: config.program_clipboard,
+        scroll_on_output: config.scroll_on_output,
     }
 }
 

@@ -1,9 +1,11 @@
 //! The terminal the text client runs in: what it tells of itself when asked, and what it
 //! sends, split into keys, mouse events and bytes to pass on as they are.
 
+use std::fmt::Write as _;
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
+use caret_protocol::Rgb;
 use caret_protocol::encode::{Key, Modifiers, MouseAction, MouseButton};
 use rustix::event::{PollFd, PollFlags, Timespec};
 
@@ -16,15 +18,22 @@ const CONTROL: u8 = 0x1d;
 pub struct Host {
     /// It writes keys apart that would read the same as others, once asked to.
     pub enhanced: bool,
+    pub foreground: Option<Rgb>,
+    pub background: Option<Rgb>,
+    pub ansi: [Option<Rgb>; 16],
     /// What was typed while it answered.
     pub typed: Vec<u8>,
 }
 
-/// Asks the terminal whether it can write keys apart, and waits a second at most for the
-/// answers.
+/// Asks the terminal for its colours and whether it can write keys apart, and waits a
+/// second at most for the answers.
 pub fn probe() -> Host {
+    let mut query = String::from("\x1b]10;?\x1b\\\x1b]11;?\x1b\\");
+    for index in 0..16 {
+        let _ = write!(query, "\x1b]4;{index};?\x1b\\");
+    }
     // Every terminal answers the device attributes, and in order: the end of the answers.
-    let query = "\x1b[?u\x1b[c";
+    query.push_str("\x1b[?u\x1b[c");
     let mut stdout = io::stdout();
     if stdout
         .write_all(query.as_bytes())
@@ -65,23 +74,76 @@ fn parse(answers: &[u8]) -> (Host, bool) {
     let mut complete = false;
     let mut rest = answers;
     while let Some(&first) = rest.first() {
-        if first != 0x1b || rest.get(1) != Some(&b'[') {
+        if first != 0x1b {
             host.typed.push(first);
             rest = &rest[1..];
             continue;
         }
-        let body = &rest[2..];
-        let Some(end) = body.iter().position(|byte| (0x40..=0x7e).contains(byte)) else {
-            break;
-        };
-        match (body.first(), body[end]) {
-            (Some(b'?'), b'u') => host.enhanced = true,
-            (Some(b'?'), b'c') => complete = true,
-            _ => host.typed.extend_from_slice(&rest[..end + 3]),
+        match rest.get(1) {
+            Some(b']') => {
+                let body = &rest[2..];
+                let Some(end) = body.iter().position(|&byte| byte == 0x07 || byte == 0x1b) else {
+                    break;
+                };
+                color(&mut host, &body[..end]);
+                let terminator = if body[end] == 0x07 { 1 } else { 2 };
+                rest = &body[(end + terminator).min(body.len())..];
+            }
+            Some(b'[') => {
+                let body = &rest[2..];
+                let Some(end) = body.iter().position(|byte| (0x40..=0x7e).contains(byte)) else {
+                    break;
+                };
+                match (body.first(), body[end]) {
+                    (Some(b'?'), b'u') => host.enhanced = true,
+                    (Some(b'?'), b'c') => complete = true,
+                    _ => host.typed.extend_from_slice(&rest[..end + 3]),
+                }
+                rest = &body[end + 1..];
+            }
+            _ => {
+                host.typed.push(first);
+                rest = &rest[1..];
+            }
         }
-        rest = &body[end + 1..];
     }
     (host, complete)
+}
+
+/// Takes in a colour answer: `10;rgb:…`, `11;rgb:…` or `4;N;rgb:…`.
+fn color(host: &mut Host, answer: &[u8]) {
+    let Ok(answer) = std::str::from_utf8(answer) else {
+        return;
+    };
+    let mut parts = answer.split(';');
+    let slot = match parts.next() {
+        Some("10") => &mut host.foreground,
+        Some("11") => &mut host.background,
+        Some("4") => match parts
+            .next()
+            .and_then(|index| index.parse::<usize>().ok())
+            .and_then(|index| host.ansi.get_mut(index))
+        {
+            Some(slot) => slot,
+            None => return,
+        },
+        _ => return,
+    };
+    *slot = parts.next().and_then(rgb);
+}
+
+/// `rgb:R/G/B`, each one to four hex digits.
+fn rgb(spec: &str) -> Option<Rgb> {
+    let mut channels = spec.strip_prefix("rgb:")?.split('/').map(|channel| {
+        let value = u32::from_str_radix(channel, 16).ok()?;
+        let digits = u32::try_from(channel.len())
+            .ok()
+            .filter(|&n| (1..=4).contains(&n))?;
+        let most = (1 << (4 * digits)) - 1;
+        u8::try_from((value * 255 + most / 2) / most).ok()
+    });
+    let (r, g, b) = (channels.next()??, channels.next()??, channels.next()??);
+    Some(Rgb { r, g, b })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -230,14 +292,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn answers_tell_of_keys_written_apart() {
-        let (host, complete) = parse(b"a\x1b[?0u\x1b[?62;c");
+    fn answers_give_colours_and_keys_written_apart() {
+        let (host, complete) =
+            parse(b"\x1b]11;rgb:1d1d/1d1d/2020\x1b\\\x1b]4;1;rgb:c0/1c/28\x07a\x1b[?0u\x1b[?62;c");
         assert!(complete);
         assert!(host.enhanced);
+        assert_eq!(host.background, Some(Rgb::from_u32(0x1d1d20)));
+        assert_eq!(host.ansi[1], Some(Rgb::from_u32(0xc01c28)));
+        assert_eq!(host.foreground, None);
         assert_eq!(host.typed, b"a");
-        let (host, complete) = parse(b"\x1b[?62;c");
-        assert!(complete);
-        assert!(!host.enhanced);
+        let (host, complete) = parse(b"\x1b]10;rgb:f/f/f\x07");
+        assert!(!complete);
+        assert_eq!(host.foreground, Some(Rgb::from_u32(0xffffff)));
     }
 
     #[test]

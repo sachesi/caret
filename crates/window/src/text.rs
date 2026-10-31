@@ -22,6 +22,7 @@ use caret_protocol::{
 };
 use rustix::termios::{self, OptionalActions};
 
+use crate::config::Config;
 use crate::panes::{self, Direction, Divider, Rect};
 use host::{Host, Input, Mouse};
 
@@ -170,6 +171,7 @@ fn show(stream: &mut UnixStream, session: SessionId, host: &Host) -> Result<(), 
         moved: None,
         drag: None,
     };
+    client.send(&look(host));
     client.send(&Request::Attach { session });
     if !host.typed.is_empty() {
         client.typed(&host.typed);
@@ -199,6 +201,33 @@ fn show(stream: &mut UnixStream, session: SessionId, host: &Host) -> Result<(), 
             Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
         }
         client.draw();
+    }
+}
+
+/// The colours of the terminal it runs in, the configured ones of its style where it does
+/// not tell, and the configured options.
+fn look(host: &Host) -> Request {
+    let config = Config::load(None);
+    let dark = host.background.is_none_or(|background| {
+        u32::from(background.r) * 299
+            + u32::from(background.g) * 587
+            + u32::from(background.b) * 114
+            < 128_000
+    });
+    let scheme = if dark {
+        &config.dark_scheme
+    } else {
+        &config.light_scheme
+    };
+    let mut palette = crate::palette::Palette::named(scheme, dark).colors();
+    palette.foreground = host.foreground.unwrap_or(palette.foreground);
+    palette.background = host.background.unwrap_or(palette.background);
+    for (color, told) in palette.ansi.iter_mut().zip(host.ansi) {
+        *color = told.unwrap_or(*color);
+    }
+    Request::Look {
+        palette,
+        options: crate::app::options(&config),
     }
 }
 
