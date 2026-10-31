@@ -111,12 +111,17 @@ impl Pty {
             .stdin(Stdio::from(terminal.try_clone()?))
             .stdout(Stdio::from(terminal.try_clone()?))
             .stderr(Stdio::from(terminal));
-        // SAFETY: between fork and exec the closure calls only setsid and ioctl, which are
-        // async-signal-safe, and allocates nothing.
+        // SAFETY: between fork and exec the closure calls only setsid, ioctl and signal, which
+        // are async-signal-safe, and allocates nothing.
         unsafe {
             program.pre_exec(|| {
                 check(libc::setsid())?;
                 check(libc::ioctl(0, libc::TIOCSCTTY, 0))?;
+                // A shell starting the server in the background leaves SIGINT and SIGQUIT
+                // ignored, and an exec keeps that: Ctrl+C would stop nothing in the session.
+                for signal in [libc::SIGINT, libc::SIGQUIT] {
+                    libc::signal(signal, libc::SIG_DFL);
+                }
                 Ok(())
             });
         }
@@ -240,4 +245,34 @@ pub fn foreground(controller: BorrowedFd<'_>) -> Option<u32> {
     // SAFETY: tcgetpgrp only reads the descriptor, which the caller keeps open.
     let group = unsafe { libc::tcgetpgrp(controller.as_raw_fd()) };
     (group > 0).then(|| group.cast_unsigned())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write as _;
+
+    use super::*;
+
+    #[test]
+    #[expect(unsafe_code, reason = "signal through libc")]
+    fn ctrl_c_stops_a_program_when_the_server_ignores_the_signal() {
+        // SAFETY: SIG_IGN holds no handler, and nothing else in these tests relies on SIGINT.
+        unsafe { libc::signal(libc::SIGINT, libc::SIG_IGN) };
+        let size = Size {
+            columns: 80,
+            lines: 24,
+            cell_width: 8,
+            cell_height: 16,
+        };
+        let mut pty = Pty::spawn(Command::new("cat"), size).expect("cat starts");
+        // SAFETY: SIG_DFL holds no handler.
+        unsafe { libc::signal(libc::SIGINT, libc::SIG_DFL) };
+        pty.controller
+            .write_all(b"\x03")
+            .expect("the terminal takes input");
+        let ready = wait_readable(&[pty.exited()], Some(Duration::from_secs(5)));
+        assert_eq!(ready.expect("poll works"), [true]);
+        let status = pty.status().expect("cat has exited");
+        assert_eq!(status.signal(), Some(libc::SIGINT));
+    }
 }
