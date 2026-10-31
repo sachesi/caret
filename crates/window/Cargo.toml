@@ -1,10 +1,12 @@
 [package]
-name = "caret-window"
+name = "caret"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "A GPU-rendered terminal for Wayland"
 repository.workspace = true
+readme = "../../README.md"
 publish = false
 
 [dependencies]

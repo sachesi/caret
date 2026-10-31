@@ -5,8 +5,8 @@ up and how much memory it holds.
 
     bench/bench.py [--caret target/release/caret] [--out target/bench] [--runs 3]
 
-Needs sway, swaymsg and wdotool. Every run gets a session bus of its own and settings in
-memory, so nothing of the user's is read or changed. The summary goes to stdout and,
+Needs sway, swaymsg and wdotool. Every run gets a session bus and a settings folder of
+its own, so nothing of the user's is read or changed. The summary goes to stdout and,
 with the raw timings, under --out.
 """
 
@@ -24,7 +24,6 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-APP_ID = "io.github.sachesi.caret"
 RESOLUTION = "1920x1080"
 
 
@@ -215,17 +214,14 @@ def woken(before: dict[str, int], after: dict[str, int]) -> int:
 class Caret:
     """One Caret with its own bus and settings, running `command`."""
 
-    def __init__(self, session: Session, caret: Path, schemas: Path, timings: Path, command: list[str]):
+    def __init__(self, session: Session, caret: Path, timings: Path, command: list[str]):
         self.timings = timings
         # The kernel keeps the first 15 bytes of a program's name.
         self.name = caret.name[:15]
         env = session.env | {
-            "GSETTINGS_SCHEMA_DIR": str(schemas),
-            "GSETTINGS_BACKEND": "memory",
             "XDG_CONFIG_HOME": str(session.state / "config"),
             "XDG_STATE_HOME": str(session.state / "state"),
             "CARET_TIMINGS": str(timings),
-            "GTK_A11Y": "none",
         }
         self.process = subprocess.Popen(
             ["dbus-run-session", "--", str(caret), "-e", *command],
@@ -319,11 +315,11 @@ def percentile(values: list[int], share: float) -> float:
     return ordered[min(len(ordered) - 1, int(share * len(ordered)))] if ordered else float("nan")
 
 
-def throughput(session, caret, schemas, out, name, path) -> dict:
+def throughput(session, caret, out, name, path) -> dict:
     result = out / f"{name}.ns"
     result.unlink(missing_ok=True)
     script = f's=$(date +%s%N); cat "{path}"; e=$(date +%s%N); echo $((e - s)) > "{result}"'
-    run = Caret(session, caret, schemas, out / f"{name}.timings", ["sh", "-c", script])
+    run = Caret(session, caret, out / f"{name}.timings", ["sh", "-c", script])
     run.wait(300)
     nanoseconds = int(result.read_text())
     frames, _ = read_timings(run.timings)
@@ -337,8 +333,8 @@ def throughput(session, caret, schemas, out, name, path) -> dict:
     }
 
 
-def latency(session, caret, schemas, out) -> dict:
-    run = Caret(session, caret, schemas, out / "typing.timings", ["cat"])
+def latency(session, caret, out) -> dict:
+    run = Caret(session, caret, out / "typing.timings", ["cat"])
     time.sleep(1.0)
     # Typed one at a time, slower than frames come, so each key is answered alone.
     session.wdotool("type", "--delay", "40", "the quick brown fox jumps over the lazy dog " * 3)
@@ -354,10 +350,10 @@ def latency(session, caret, schemas, out) -> dict:
     }
 
 
-def idle(session, caret, schemas, out) -> dict:
-    run = Caret(session, caret, schemas, out / "idle.timings", ["sleep", "60"])
-    # GTK's cursor stops blinking ten seconds after the last key.
-    time.sleep(12)
+def idle(session, caret, out) -> dict:
+    run = Caret(session, caret, out / "idle.timings", ["sleep", "60"])
+    # The first frames and the fonts' loading are over by then.
+    time.sleep(2)
     pid, server = run.caret_pid(), run.server_pid()
     if pid is None or server is None:
         run.stop()
@@ -381,7 +377,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=ROOT / "target/bench")
     parser.add_argument("--runs", type=int, default=3)
     args = parser.parse_args()
-    for tool in ("sway", "swaymsg", "wdotool", "dbus-run-session", "glib-compile-schemas"):
+    for tool in ("sway", "swaymsg", "wdotool", "dbus-run-session"):
         if shutil.which(tool) is None:
             sys.exit(f"{tool} is needed and not installed")
     if not args.caret.exists():
@@ -389,10 +385,6 @@ def main() -> None:
 
     args.out.mkdir(parents=True, exist_ok=True)
     files = generate(args.out / "data")
-    schemas = args.out / "schemas"
-    schemas.mkdir(exist_ok=True)
-    shutil.copy(ROOT / f"data/{APP_ID}.gschema.xml", schemas)
-    subprocess.run(["glib-compile-schemas", "--strict", str(schemas)], check=True)
 
     results: dict[str, list[dict]] = {}
     with tempfile.TemporaryDirectory(prefix="caret-bench-") as state:
@@ -402,9 +394,9 @@ def main() -> None:
                 run_out = args.out / f"run-{number}"
                 run_out.mkdir(exist_ok=True)
                 for name, path in files.items():
-                    results.setdefault(name, []).append(throughput(session, args.caret, schemas, run_out, name, path))
-                results.setdefault("typing", []).append(latency(session, args.caret, schemas, run_out))
-                results.setdefault("idle", []).append(idle(session, args.caret, schemas, run_out))
+                    results.setdefault(name, []).append(throughput(session, args.caret, run_out, name, path))
+                results.setdefault("typing", []).append(latency(session, args.caret, run_out))
+                results.setdefault("idle", []).append(idle(session, args.caret, run_out))
         finally:
             session.close()
 

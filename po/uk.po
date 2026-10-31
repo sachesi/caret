@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-31 12:42+0200\n"
+"POT-Creation-Date: 2026-10-31 12:45+0200\n"
 "PO-Revision-Date: 2026-10-31 12:30+0200\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Ukrainian\n"
@@ -16,19 +16,19 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
-#: crates/window/src/app/attention.rs:74 src/window.rs:359
+#: crates/window/src/app/attention.rs:74
 msgid "Command Finished"
 msgstr "Команду завершено"
 
-#: crates/window/src/app/attention.rs:75 src/window.rs:360
+#: crates/window/src/app/attention.rs:75
 msgid "Command Failed"
 msgstr "Команда завершилася з помилкою"
 
-#: crates/window/src/app/confirm.rs:105 src/window.rs:653
+#: crates/window/src/app/confirm.rs:105
 msgid "Rename Tab"
 msgstr "Перейменувати вкладку"
 
-#: crates/window/src/app/confirm.rs:106 src/window.rs:655
+#: crates/window/src/app/confirm.rs:106
 msgid "Without a name, the tab shows the program’s title."
 msgstr "Без назви вкладка показує заголовок програми."
 
@@ -84,7 +84,6 @@ msgid "Website"
 msgstr "Сайт"
 
 #: crates/window/src/app/confirm.rs:272 crates/window/src/app/confirm.rs:297
-#: src/window.rs:810
 msgid "Close Tab?"
 msgstr "Закрити вкладку?"
 
@@ -103,15 +102,15 @@ msgstr[1] ""
 msgstr[2] ""
 "У цьому вікні ще працюють {count} програм, їхню роботу буде перервано."
 
-#: crates/window/src/app/confirm.rs:369 src/window.rs:842
+#: crates/window/src/app/confirm.rs:369
 msgid "Close Window?"
 msgstr "Закрити вікно?"
 
-#: crates/window/src/app/confirm.rs:381 src/terminal_view.rs:1093
+#: crates/window/src/app/confirm.rs:381
 msgid "Paste Several Lines?"
 msgstr "Вставити кілька рядків?"
 
-#: crates/window/src/app/confirm.rs:383 src/terminal_view.rs:1095
+#: crates/window/src/app/confirm.rs:383
 msgid ""
 "The program here does not mark pasted text, so each line runs as if typed "
 "and entered."
@@ -120,11 +119,11 @@ msgstr ""
 "його набрали й натиснули Enter."
 
 #: crates/window/src/app/confirm.rs:385 crates/window/src/app/menus.rs:148
-#: crates/window/src/app/shortcut_list.rs:61 ui/shortcuts_dialog.ui:99
+#: crates/window/src/app/shortcut_list.rs:61
 msgid "Paste"
 msgstr "Вставити"
 
-#: crates/window/src/app/confirm.rs:403 src/window.rs:803
+#: crates/window/src/app/confirm.rs:403
 msgid "A program is still running in this tab and will be stopped."
 msgstr "У цій вкладці ще працює програма, її роботу буде перервано."
 
@@ -132,7 +131,7 @@ msgstr "У цій вкладці ще працює програма, її роб
 msgid "A program is still running in this pane and will be stopped."
 msgstr "У цій панелі ще працює програма, її роботу буде перервано."
 
-#: crates/window/src/app/confirm.rs:406 src/window.rs:806
+#: crates/window/src/app/confirm.rs:406
 #, rust-format
 msgid "“{program}” is still running in this tab and will be stopped."
 msgstr "У цій вкладці ще працює «{program}», і її роботу буде перервано."
@@ -156,14 +155,13 @@ msgstr "Для переміщення панелей потрібен новіш
 
 #: crates/window/src/app/menus.rs:96 crates/window/src/app/menus.rs:166
 #: crates/window/src/app/shortcut_list.rs:23
-#: data/io.github.sachesi.caret.desktop:17 ui/shortcuts_dialog.ui:15
+#: data/io.github.sachesi.caret.desktop:17
 msgid "New Window"
 msgstr "Нове вікно"
 
 #: crates/window/src/app/menus.rs:97 crates/window/src/app/menus.rs:168
 #: crates/window/src/app/sessions.rs:222
-#: crates/window/src/app/shortcut_list.rs:25 ui/shortcuts_dialog.ui:21
-#: ui/window.ui:87
+#: crates/window/src/app/shortcut_list.rs:25
 msgid "New Tab"
 msgstr "Нова вкладка"
 
@@ -189,17 +187,16 @@ msgid "Reattach Windows"
 msgstr "Повернути вікна"
 
 #: crates/window/src/app/menus.rs:118 crates/window/src/app/menus.rs:186
-#: crates/window/src/app/shortcut_list.rs:30 ui/shortcuts_dialog.ui:82
+#: crates/window/src/app/shortcut_list.rs:30
 msgid "Full Screen"
 msgstr "На весь екран"
 
-#: crates/window/src/app/menus.rs:120 crates/window/src/app/shortcut_list.rs:77
-#: src/preferences.rs:18 ui/shortcuts_dialog.ui:170
+#: crates/window/src/app/menus.rs:120 crates/window/src/app/shortcut_list.rs:80
 msgid "Preferences"
 msgstr "Параметри"
 
-#: crates/window/src/app/menus.rs:121 crates/window/src/app/shortcut_list.rs:78
-#: crates/window/src/app/shortcut_list.rs:84 ui/shortcuts_dialog.ui:176
+#: crates/window/src/app/menus.rs:121 crates/window/src/app/shortcut_list.rs:81
+#: crates/window/src/app/shortcut_list.rs:87
 msgid "Keyboard Shortcuts"
 msgstr "Клавіатурні скорочення"
 
@@ -208,17 +205,14 @@ msgid "About Caret"
 msgstr "Про Caret"
 
 #: crates/window/src/app/menus.rs:147 crates/window/src/app/shortcut_list.rs:60
-#: ui/shortcuts_dialog.ui:93
 msgid "Copy"
 msgstr "Копіювати"
 
 #: crates/window/src/app/menus.rs:149 crates/window/src/app/shortcut_list.rs:62
-#: ui/shortcuts_dialog.ui:105
 msgid "Select All"
 msgstr "Виділити все"
 
 #: crates/window/src/app/menus.rs:151 crates/window/src/app/shortcut_list.rs:63
-#: ui/shortcuts_dialog.ui:111
 msgid "Deselect"
 msgstr "Зняти виділення"
 
@@ -246,16 +240,15 @@ msgstr "Розділити донизу"
 msgid "Close Pane"
 msgstr "Закрити панель"
 
-#: crates/window/src/app/menus.rs:185 src/preferences.rs:178
+#: crates/window/src/app/menus.rs:185
 msgid "Title Bar"
 msgstr "Заголовок вікна"
 
 #: crates/window/src/app/menus.rs:189 crates/window/src/app/shortcut_list.rs:24
-#: ui/shortcuts_dialog.ui:33
 msgid "Close Window"
 msgstr "Закрити вікно"
 
-#: crates/window/src/app/menus.rs:190 ui/window.ui:101
+#: crates/window/src/app/menus.rs:190
 msgid "Main Menu"
 msgstr "Головне меню"
 
@@ -264,7 +257,6 @@ msgid "Rename Tab…"
 msgstr "Перейменувати вкладку…"
 
 #: crates/window/src/app/menus.rs:203 crates/window/src/app/shortcut_list.rs:26
-#: ui/shortcuts_dialog.ui:27
 msgid "Close Tab"
 msgstr "Закрити вкладку"
 
@@ -338,11 +330,11 @@ msgstr "Від’єднати"
 msgid "Close…"
 msgstr "Закрити…"
 
-#: crates/window/src/app/menus.rs:457 src/application.rs:234
+#: crates/window/src/app/menus.rs:457
 msgid "No windows were detached"
 msgstr "Немає від’єднаних вікон"
 
-#: crates/window/src/app/pointer.rs:723 src/terminal_view/input.rs:627
+#: crates/window/src/app/pointer.rs:723
 #, rust-format
 msgid "Could not open the link: {reason}"
 msgstr "Не вдалося відкрити посилання: {reason}"
@@ -371,23 +363,23 @@ msgstr "Від’єднати сеанс"
 msgid "Close Session…"
 msgstr "Закрити сеанс…"
 
-#: crates/window/src/app/shortcut_list.rs:21 ui/shortcuts_dialog.ui:12
+#: crates/window/src/app/shortcut_list.rs:21
 msgid "Windows and Tabs"
 msgstr "Вікна та вкладки"
 
-#: crates/window/src/app/shortcut_list.rs:27 ui/shortcuts_dialog.ui:39
+#: crates/window/src/app/shortcut_list.rs:27
 msgid "Next Tab"
 msgstr "Наступна вкладка"
 
-#: crates/window/src/app/shortcut_list.rs:28 ui/shortcuts_dialog.ui:45
+#: crates/window/src/app/shortcut_list.rs:28
 msgid "Previous Tab"
 msgstr "Попередня вкладка"
 
-#: crates/window/src/app/shortcut_list.rs:29 ui/shortcuts_dialog.ui:63
+#: crates/window/src/app/shortcut_list.rs:29
 msgid "Switch to a Tab"
 msgstr "Перейти до вкладки"
 
-#: crates/window/src/app/shortcut_list.rs:31 ui/shortcuts_dialog.ui:76
+#: crates/window/src/app/shortcut_list.rs:31
 msgid "Show or Hide the Title Bar"
 msgstr "Показати або сховати заголовок вікна"
 
@@ -436,45 +428,43 @@ msgid "Switch to a Session"
 msgstr "Перейти до сеансу"
 
 #: crates/window/src/app/shortcut_list.rs:58
-#: data/io.github.sachesi.caret.desktop:3 ui/shortcuts_dialog.ui:90
+#: data/io.github.sachesi.caret.desktop:3
 msgid "Terminal"
 msgstr "Термінал"
 
-#: crates/window/src/app/shortcut_list.rs:64 ui/shortcuts_dialog.ui:117
-#: ui/window.ui:113
+#: crates/window/src/app/shortcut_list.rs:64
 msgid "Find"
 msgstr "Знайти"
 
-#: crates/window/src/app/shortcut_list.rs:65 ui/shortcuts_dialog.ui:147
+#: crates/window/src/app/shortcut_list.rs:65
 msgid "Zoom In"
 msgstr "Збільшити"
 
-#: crates/window/src/app/shortcut_list.rs:66 ui/shortcuts_dialog.ui:153
+#: crates/window/src/app/shortcut_list.rs:66
 msgid "Zoom Out"
 msgstr "Зменшити"
 
-#: crates/window/src/app/shortcut_list.rs:67 ui/shortcuts_dialog.ui:159
+#: crates/window/src/app/shortcut_list.rs:67
 msgid "Original Size"
 msgstr "Звичайний розмір"
 
-#: crates/window/src/app/shortcut_list.rs:68 ui/shortcuts_dialog.ui:123
+#: crates/window/src/app/shortcut_list.rs:68
 msgid "Scroll Up a Page"
 msgstr "На сторінку вгору"
 
-#: crates/window/src/app/shortcut_list.rs:69 ui/shortcuts_dialog.ui:129
+#: crates/window/src/app/shortcut_list.rs:69
 msgid "Scroll Down a Page"
 msgstr "На сторінку вниз"
 
-#: crates/window/src/app/shortcut_list.rs:70 ui/shortcuts_dialog.ui:135
+#: crates/window/src/app/shortcut_list.rs:71
 msgid "Scroll to the Previous Prompt"
 msgstr "Прокрутити до попереднього запрошення"
 
-#: crates/window/src/app/shortcut_list.rs:71 ui/shortcuts_dialog.ui:141
+#: crates/window/src/app/shortcut_list.rs:74
 msgid "Scroll to the Next Prompt"
 msgstr "Прокрутити до наступного запрошення"
 
-#: crates/window/src/app/shortcut_list.rs:75 src/preferences.rs:23
-#: ui/shortcuts_dialog.ui:167
+#: crates/window/src/app/shortcut_list.rs:78
 msgid "General"
 msgstr "Загальне"
 
@@ -491,7 +481,7 @@ msgstr "Для показу сеансів разом потрібен нові�
 msgid "Splitting needs a newer terminal server"
 msgstr "Для розділення потрібен новіший термінальний сервер"
 
-#: crates/window/src/chrome.rs:973 ui/window.ui:137
+#: crates/window/src/chrome.rs:973
 msgid "Find in the history"
 msgstr "Пошук в історії"
 
@@ -513,8 +503,7 @@ msgid "{key} control"
 msgstr "{key} керування"
 
 #: data/io.github.sachesi.caret.desktop:2
-#: data/io.github.sachesi.caret.metainfo.xml:6 src/window.rs:741
-#: ui/window.ui:68 ui/window.ui:93
+#: data/io.github.sachesi.caret.metainfo.xml:6
 msgid "Caret"
 msgstr "Caret"
 
@@ -529,7 +518,7 @@ msgstr ""
 "оболонка;запрошення;команда;командний "
 "рядок;консоль;shell;prompt;command;commandline;console;"
 
-#: data/io.github.sachesi.caret.gschema.xml:16 src/preferences.rs:55
+#: data/io.github.sachesi.caret.gschema.xml:16
 msgid "Font"
 msgstr "Шрифт"
 
@@ -553,7 +542,7 @@ msgstr ""
 "Можливості OpenType, які слід увімкнути або вимкнути, як у CSS: «zero, ss01, "
 "calt=0»."
 
-#: data/io.github.sachesi.caret.gschema.xml:26 src/preferences.rs:145
+#: data/io.github.sachesi.caret.gschema.xml:26
 msgid "Ligatures"
 msgstr "Лігатури"
 
@@ -797,327 +786,249 @@ msgstr ""
 msgid "The first release."
 msgstr "Перший випуск."
 
-#: src/application.rs:178
-msgid "Start in this directory"
-msgstr "Запустити в цьому каталозі"
+#~ msgid "Start in this directory"
+#~ msgstr "Запустити в цьому каталозі"
 
-#: src/application.rs:179
-msgid "DIRECTORY"
-msgstr "КАТАЛОГ"
+#~ msgid "DIRECTORY"
+#~ msgstr "КАТАЛОГ"
 
-#: src/application.rs:186
-msgid "Show the windows that were detached"
-msgstr "Показати від’єднані вікна"
+#~ msgid "Show the windows that were detached"
+#~ msgstr "Показати від’єднані вікна"
 
-#: src/application.rs:194
-msgid "Print the version and exit"
-msgstr "Показати версію й вийти"
+#~ msgid "Print the version and exit"
+#~ msgstr "Показати версію й вийти"
 
-#: src/application.rs:203
-msgid "[-e] [COMMAND [ARGUMENT…]]"
-msgstr "[-e] [КОМАНДА [АРГУМЕНТ…]]"
+#~ msgid "[-e] [COMMAND [ARGUMENT…]]"
+#~ msgstr "[-e] [КОМАНДА [АРГУМЕНТ…]]"
 
-#: src/application.rs:328
-msgid "A terminal drawn by the GPU"
-msgstr "Термінал з апаратним прискоренням"
+#~ msgid "A terminal drawn by the GPU"
+#~ msgstr "Термінал з апаратним прискоренням"
 
-#. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:330
-msgid "translator-credits"
-msgstr "sachesi"
+#~ msgid "translator-credits"
+#~ msgstr "sachesi"
 
-#: src/preferences.rs:28
-msgid "Text"
-msgstr "Текст"
+#~ msgid "Text"
+#~ msgstr "Текст"
 
-#: src/preferences.rs:31
-msgid "Use the System Font"
-msgstr "Системний шрифт"
+#~ msgid "Use the System Font"
+#~ msgstr "Системний шрифт"
 
-#: src/preferences.rs:37
-msgid "Terminal Font"
-msgstr "Шрифт термінала"
+#~ msgid "Terminal Font"
+#~ msgstr "Шрифт термінала"
 
-#: src/preferences.rs:139
-msgid "Font Features, Such as zero, ss01"
-msgstr "Можливості шрифту, наприклад zero, ss01"
+#~ msgid "Font Features, Such as zero, ss01"
+#~ msgstr "Можливості шрифту, наприклад zero, ss01"
 
-#: src/preferences.rs:147
-msgid "Join symbols such as -> and != where the font does"
-msgstr "З’єднувати символи на кшталт -> та != там, де це робить шрифт"
+#~ msgid "Join symbols such as -> and != where the font does"
+#~ msgstr "З’єднувати символи на кшталт -> та != там, де це робить шрифт"
 
-#: src/preferences.rs:155
-msgid "Appearance"
-msgstr "Вигляд"
+#~ msgid "Appearance"
+#~ msgstr "Вигляд"
 
-#: src/preferences.rs:160
-msgid "Style"
-msgstr "Стиль"
+#~ msgid "Style"
+#~ msgstr "Стиль"
 
-#: src/preferences.rs:162
-msgid "Follow System"
-msgstr "Як у системі"
+#~ msgid "Follow System"
+#~ msgstr "Як у системі"
 
-#: src/preferences.rs:163
-msgid "Light"
-msgstr "Світлий"
+#~ msgid "Light"
+#~ msgstr "Світлий"
 
-#: src/preferences.rs:164
-msgid "Dark"
-msgstr "Темний"
+#~ msgid "Dark"
+#~ msgstr "Темний"
 
-#: src/preferences.rs:170
-msgid "Cursor Shape"
-msgstr "Форма курсора"
+#~ msgid "Cursor Shape"
+#~ msgstr "Форма курсора"
 
-#: src/preferences.rs:172
-msgid "Block"
-msgstr "Блок"
+#~ msgid "Block"
+#~ msgstr "Блок"
 
-#: src/preferences.rs:173
-msgid "I-Beam"
-msgstr "Риска"
+#~ msgid "I-Beam"
+#~ msgstr "Риска"
 
-#: src/preferences.rs:174
-msgid "Underline"
-msgstr "Підкреслення"
+#~ msgid "Underline"
+#~ msgstr "Підкреслення"
 
-#: src/preferences.rs:179
-msgid "Without it, the context menu has its commands"
-msgstr "Без нього його команди є в контекстному меню"
+#~ msgid "Without it, the context menu has its commands"
+#~ msgstr "Без нього його команди є в контекстному меню"
 
-#: src/preferences.rs:186
-msgid "Behaviour"
-msgstr "Поведінка"
+#~ msgid "Behaviour"
+#~ msgstr "Поведінка"
 
-#: src/preferences.rs:189
-msgid "Custom Command, Instead of the Shell"
-msgstr "Власна команда замість оболонки"
+#~ msgid "Custom Command, Instead of the Shell"
+#~ msgstr "Власна команда замість оболонки"
 
-#: src/preferences.rs:196
-msgid "Lines of History"
-msgstr "Рядків історії"
+#~ msgid "Lines of History"
+#~ msgstr "Рядків історії"
 
-#: src/preferences.rs:198
-msgid "Kept for scrolling back after they leave the screen"
-msgstr "Зберігаються для прокручування назад, коли зникають з екрана"
+#~ msgid "Kept for scrolling back after they leave the screen"
+#~ msgstr "Зберігаються для прокручування назад, коли зникають з екрана"
 
-#: src/preferences.rs:214
-msgid "Scroll on Output"
-msgstr "Прокручування під час виведення"
+#~ msgid "Scroll on Output"
+#~ msgstr "Прокручування під час виведення"
 
-#: src/preferences.rs:215
-msgid "Go back to the bottom when a program writes"
-msgstr "Повертатися вниз, коли програма щось виводить"
+#~ msgid "Go back to the bottom when a program writes"
+#~ msgstr "Повертатися вниз, коли програма щось виводить"
 
-#: src/preferences.rs:222
-msgid "Scroll on Keystroke"
-msgstr "Прокручування під час натискання клавіш"
+#~ msgid "Scroll on Keystroke"
+#~ msgstr "Прокручування під час натискання клавіш"
 
-#: src/preferences.rs:223
-msgid "Go back to the bottom when typing or pasting"
-msgstr "Повертатися вниз під час введення або вставлення"
+#~ msgid "Go back to the bottom when typing or pasting"
+#~ msgstr "Повертатися вниз під час введення або вставлення"
 
-#: src/preferences.rs:230
-msgid "Terminal Bell"
-msgstr "Дзвінок термінала"
+#~ msgid "Terminal Bell"
+#~ msgstr "Дзвінок термінала"
 
-#: src/preferences.rs:231
-msgid "Sound the bell when a program rings it"
-msgstr "Звук, коли програма подає дзвінок"
+#~ msgid "Sound the bell when a program rings it"
+#~ msgstr "Звук, коли програма подає дзвінок"
 
-#: src/preferences.rs:236
-msgid "Keep Closed Windows"
-msgstr "Зберігати закриті вікна"
+#~ msgid "Keep Closed Windows"
+#~ msgstr "Зберігати закриті вікна"
 
-#: src/preferences.rs:238
-msgid "Closing a window detaches it, and its programs go on running"
-msgstr "Закрите вікно від’єднується, а його програми продовжують працювати"
+#~ msgid "Closing a window detaches it, and its programs go on running"
+#~ msgstr "Закрите вікно від’єднується, а його програми продовжують працювати"
 
-#: src/preferences.rs:248
-msgid "Programs"
-msgstr "Програми"
+#~ msgid "Programs"
+#~ msgstr "Програми"
 
-#: src/preferences.rs:250
-msgid ""
-"What programs in the terminal may do, including ones on other machines and "
-"files that are shown"
-msgstr ""
-"Що можуть робити програми в терміналі, зокрема на інших машинах і в "
-"показаних файлах"
+#~ msgid ""
+#~ "What programs in the terminal may do, including ones on other machines "
+#~ "and files that are shown"
+#~ msgstr ""
+#~ "Що можуть робити програми в терміналі, зокрема на інших машинах і в "
+#~ "показаних файлах"
 
-#: src/preferences.rs:254
-msgid "Notifications"
-msgstr "Сповіщення"
+#~ msgid "Notifications"
+#~ msgstr "Сповіщення"
 
-#: src/preferences.rs:256
-msgid "Programs can notify you while their tab is out of sight"
-msgstr "Програми можуть сповіщати, поки їхню вкладку не видно"
+#~ msgid "Programs can notify you while their tab is out of sight"
+#~ msgstr "Програми можуть сповіщати, поки їхню вкладку не видно"
 
-#: src/preferences.rs:264
-msgid "Copying"
-msgstr "Копіювання"
+#~ msgid "Copying"
+#~ msgstr "Копіювання"
 
-#: src/preferences.rs:266
-msgid "Programs can put text on the clipboard, but never read it"
-msgstr "Програми можуть додавати текст до буфера обміну, але не читати його"
+#~ msgid "Programs can put text on the clipboard, but never read it"
+#~ msgstr "Програми можуть додавати текст до буфера обміну, але не читати його"
 
-#: src/terminal_view.rs:251
 #, rust-format
-msgid "The terminal cannot be drawn: {reason}"
-msgstr "Не вдається намалювати термінал: {reason}"
+#~ msgid "The terminal cannot be drawn: {reason}"
+#~ msgstr "Не вдається намалювати термінал: {reason}"
 
-#: src/terminal_view.rs:560
 #, rust-format
-msgid "The terminal server cannot be reached: {reason}"
-msgstr "Сервер терміналів недоступний: {reason}"
+#~ msgid "The terminal server cannot be reached: {reason}"
+#~ msgstr "Сервер терміналів недоступний: {reason}"
 
-#: src/terminal_view.rs:569
 #, rust-format
-msgid "Could not start “{program}”: {reason}"
-msgstr "Не вдалося запустити «{program}»: {reason}"
+#~ msgid "Could not start “{program}”: {reason}"
+#~ msgstr "Не вдалося запустити «{program}»: {reason}"
 
-#: src/terminal_view.rs:572
 #, rust-format
-msgid "Could not start the shell: {reason}"
-msgstr "Не вдалося запустити командну оболонку: {reason}"
+#~ msgid "Could not start the shell: {reason}"
+#~ msgstr "Не вдалося запустити командну оболонку: {reason}"
 
-#: src/terminal_view.rs:589
 #, rust-format
-msgid "“{program}” exited with status {status}"
-msgstr "«{program}» завершилася з кодом {status}"
+#~ msgid "“{program}” exited with status {status}"
+#~ msgstr "«{program}» завершилася з кодом {status}"
 
-#: src/terminal_view.rs:593
 #, rust-format
-msgid "“{program}” was ended by signal {signal}"
-msgstr "«{program}» завершено сигналом {signal}"
+#~ msgid "“{program}” was ended by signal {signal}"
+#~ msgstr "«{program}» завершено сигналом {signal}"
 
-#: src/terminal_view.rs:596
 #, rust-format
-msgid "“{program}” ended"
-msgstr "«{program}» завершилася"
+#~ msgid "“{program}” ended"
+#~ msgstr "«{program}» завершилася"
 
-#: src/terminal_view.rs:1099 src/window.rs:660 src/window.rs:812
-#: src/window.rs:851
-msgid "_Cancel"
-msgstr "_Скасувати"
+#~ msgid "_Cancel"
+#~ msgstr "_Скасувати"
 
-#: src/terminal_view.rs:1100 src/terminal_view/input.rs:655
-msgid "_Paste"
-msgstr "_Вставити"
+#~ msgid "_Paste"
+#~ msgstr "_Вставити"
 
-#: src/terminal_view/input.rs:654
-msgid "_Copy"
-msgstr "_Копіювати"
+#~ msgid "_Copy"
+#~ msgstr "_Копіювати"
 
-#: src/terminal_view/input.rs:657
-msgid "Select _All"
-msgstr "Виділити _все"
+#~ msgid "Select _All"
+#~ msgstr "Виділити _все"
 
-#: src/terminal_view/input.rs:661
-msgid "_Deselect"
-msgstr "_Зняти виділення"
+#~ msgid "_Deselect"
+#~ msgstr "_Зняти виділення"
 
-#: src/terminal_view/input.rs:670
-msgid "_Open Link"
-msgstr "_Відкрити посилання"
+#~ msgid "_Open Link"
+#~ msgstr "_Відкрити посилання"
 
-#: src/terminal_view/input.rs:671
-msgid "Copy _Link Address"
-msgstr "Копіювати _адресу посилання"
+#~ msgid "Copy _Link Address"
+#~ msgstr "Копіювати _адресу посилання"
 
-#: src/terminal_view/input.rs:680 ui/window.ui:12
-msgid "New _Window"
-msgstr "Нове _вікно"
+#~ msgid "New _Window"
+#~ msgstr "Нове _вікно"
 
-#: src/terminal_view/input.rs:682 ui/window.ui:16
-msgid "New _Tab"
-msgstr "Нова _вкладка"
+#~ msgid "New _Tab"
+#~ msgstr "Нова _вкладка"
 
-#: src/terminal_view/input.rs:683
-msgid "_Find…"
-msgstr "_Знайти…"
+#~ msgid "_Find…"
+#~ msgstr "_Знайти…"
 
-#: src/terminal_view/input.rs:686
-msgid "Show _All Tabs"
-msgstr "Показати _всі вкладки"
+#~ msgid "Show _All Tabs"
+#~ msgstr "Показати _всі вкладки"
 
-#: src/terminal_view/input.rs:691
-msgid "Title _Bar"
-msgstr "_Заголовок вікна"
+#~ msgid "Title _Bar"
+#~ msgstr "_Заголовок вікна"
 
-#: src/terminal_view/input.rs:692 ui/window.ui:32
-msgid "_Full Screen"
-msgstr "_На весь екран"
+#~ msgid "_Full Screen"
+#~ msgstr "_На весь екран"
 
-#: src/terminal_view/input.rs:693 ui/window.ui:38
-msgid "_Preferences"
-msgstr "_Параметри"
+#~ msgid "_Preferences"
+#~ msgstr "_Параметри"
 
-#: src/terminal_view/input.rs:694 ui/window.ui:42
-msgid "_Keyboard Shortcuts"
-msgstr "_Клавіатурні скорочення"
+#~ msgid "_Keyboard Shortcuts"
+#~ msgstr "_Клавіатурні скорочення"
 
-#: src/terminal_view/input.rs:695 ui/window.ui:46
-msgid "_About Caret"
-msgstr "_Про Caret"
+#~ msgid "_About Caret"
+#~ msgstr "_Про Caret"
 
-#: src/terminal_view/input.rs:698
-msgid "_Close Window"
-msgstr "_Закрити вікно"
+#~ msgid "_Close Window"
+#~ msgstr "_Закрити вікно"
 
-#: src/window.rs:661
-msgid "_Rename"
-msgstr "_Перейменувати"
+#~ msgid "_Rename"
+#~ msgstr "_Перейменувати"
 
-#: src/window.rs:813 src/window.rs:852
-msgid "C_lose"
-msgstr "_Закрити"
+#~ msgid "C_lose"
+#~ msgstr "_Закрити"
 
-#: src/window.rs:844
 #, rust-format
-msgid "A program is still running in {count} tab and will be stopped."
-msgid_plural "Programs are still running in {count} tabs and will be stopped."
-msgstr[0] "Роботу програм у {count} вкладці буде перервано."
-msgstr[1] "Роботу програм у {count} вкладках буде перервано."
-msgstr[2] "Роботу програм у {count} вкладках буде перервано."
+#~ msgid "A program is still running in {count} tab and will be stopped."
+#~ msgid_plural ""
+#~ "Programs are still running in {count} tabs and will be stopped."
+#~ msgstr[0] "Роботу програм у {count} вкладці буде перервано."
+#~ msgstr[1] "Роботу програм у {count} вкладках буде перервано."
+#~ msgstr[2] "Роботу програм у {count} вкладках буде перервано."
 
-#: ui/shortcuts_dialog.ui:51
-msgid "Move Tab Right"
-msgstr "Перемістити вкладку праворуч"
+#~ msgid "Move Tab Right"
+#~ msgstr "Перемістити вкладку праворуч"
 
-#: ui/shortcuts_dialog.ui:57
-msgid "Move Tab Left"
-msgstr "Перемістити вкладку ліворуч"
+#~ msgid "Move Tab Left"
+#~ msgstr "Перемістити вкладку ліворуч"
 
-#: ui/shortcuts_dialog.ui:64
-msgid "Alt and the number of the tab"
-msgstr "Alt і номер вкладки"
+#~ msgid "Alt and the number of the tab"
+#~ msgstr "Alt і номер вкладки"
 
-#: ui/shortcuts_dialog.ui:70
-msgid "Show All Tabs"
-msgstr "Показати всі вкладки"
+#~ msgid "Show All Tabs"
+#~ msgstr "Показати всі вкладки"
 
-#: ui/window.ui:22
-msgid "_Detach Window"
-msgstr "_Від’єднати вікно"
+#~ msgid "_Detach Window"
+#~ msgstr "_Від’єднати вікно"
 
-#: ui/window.ui:26
-msgid "_Reattach Windows"
-msgstr "_Повернути вікна"
+#~ msgid "_Reattach Windows"
+#~ msgstr "_Повернути вікна"
 
-#: ui/window.ui:54
-msgid "_Rename Tab…"
-msgstr "_Перейменувати вкладку…"
+#~ msgid "_Rename Tab…"
+#~ msgstr "_Перейменувати вкладку…"
 
-#: ui/window.ui:60
-msgid "_Close Tab"
-msgstr "_Закрити вкладку"
+#~ msgid "_Close Tab"
+#~ msgstr "_Закрити вкладку"
 
-#: ui/window.ui:153
-msgid "Find Upwards"
-msgstr "Знайти вище"
+#~ msgid "Find Upwards"
+#~ msgstr "Знайти вище"
 
-#: ui/window.ui:160
-msgid "Find Downwards"
-msgstr "Знайти нижче"
+#~ msgid "Find Downwards"
+#~ msgstr "Знайти нижче"

@@ -1,6 +1,6 @@
 # Caret build and install tasks.
 #
-# `build` needs cargo and blueprint-compiler; `install` only copies what is already in
+# `build` needs cargo and glslc; `install` only copies what is already in
 # target/release, so the two can run on different machines sharing this directory.
 #
 #   just build
@@ -10,15 +10,12 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 app_id := "io.github.sachesi.caret"
-app_path := "/io/github/sachesi/caret"
 prefix := env("PREFIX", "/usr/local")
 destdir := env("DESTDIR", "")
 bindir := destdir + prefix + "/bin"
 datadir := destdir + prefix + "/share"
 unitdir := destdir + prefix + "/lib/systemd/user"
 release := "target/release"
-schema_dir := "target/schemas"
-pot_dir := "target/pot"
 version := `sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml`
 
 default:
@@ -32,37 +29,26 @@ build:
 build-debug:
     cargo build --locked
 
-# The settings schema under the .Devel id that debug builds use.
-schemas:
-    mkdir -p {{schema_dir}}
-    sed -e 's|"{{app_id}}"|"{{app_id}}.Devel"|' -e 's|"{{app_path}}/"|"{{app_path}}/Devel/"|' \
-        data/{{app_id}}.gschema.xml > {{schema_dir}}/{{app_id}}.Devel.gschema.xml
-    glib-compile-schemas --strict {{schema_dir}}
-
 # Run a debug build uninstalled, as the separate {{app_id}}.Devel application, which starts
 # the debug terminal server beside it: just run [-e COMMAND…]
-run *args: schemas build-debug
-    GSETTINGS_SCHEMA_DIR={{schema_dir}} target/debug/caret {{args}}
+run *args: build-debug
+    target/debug/caret {{args}}
 
-# Formatting, clippy, Blueprint formatting, schema, desktop entry, metainfo and catalogues.
+# Formatting, clippy, schema, desktop entry, metainfo and catalogues.
 check:
     cargo fmt --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
-    blueprint-compiler format data/ui/*.blp
     glib-compile-schemas --strict --dry-run data
     desktop-file-validate data/{{app_id}}.desktop
     appstreamcli validate --no-net data/{{app_id}}.metainfo.xml
     for lang in $(cat po/LINGUAS); do msgfmt -c -o /dev/null po/$lang.po; done
 
-# Regenerate po/caret.pot from the sources, Blueprint files, desktop entry, metainfo and schema.
+# Regenerate po/caret.pot from the sources, desktop entry, metainfo and schema.
 pot:
-    mkdir -p {{pot_dir}}/ui
-    blueprint-compiler batch-compile {{pot_dir}}/ui data/ui data/ui/*.blp >/dev/null
     xgettext --from-code=UTF-8 --package-name=caret --package-version={{version}} \
         --msgid-bugs-address=https://github.com/sachesi/caret/issues \
         --keyword=gettext_f --keyword=ngettext_f:1,2 \
-        --add-comments=Translators --sort-by-file -o po/caret.pot $(find src crates/window/src -name '*.rs' | sort)
-    xgettext -j --from-code=UTF-8 --package-name=caret --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/caret/issues --add-comments=Translators --sort-by-file --directory={{pot_dir}} -o po/caret.pot $(cd {{pot_dir}} && ls ui/*.ui)
+        --add-comments=Translators --sort-by-file -o po/caret.pot $(find crates/window/src -name '*.rs' | sort)
     xgettext -j --from-code=UTF-8 --package-name=caret --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/caret/issues --language=Desktop --sort-by-file -o po/caret.pot data/{{app_id}}.desktop
     xgettext -j --from-code=UTF-8 --package-name=caret --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/caret/issues --sort-by-file -o po/caret.pot data/{{app_id}}.metainfo.xml data/{{app_id}}.gschema.xml
 

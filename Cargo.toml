@@ -1,6 +1,6 @@
 [workspace]
 members = ["crates/protocol", "crates/server", "crates/term", "crates/window"]
-default-members = [".", "crates/protocol", "crates/server", "crates/term"]
+resolver = "3"
 
 [workspace.package]
 version = "0.2.0"
@@ -17,44 +17,11 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-[package]
-name = "caret"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-description = "A GPU-rendered terminal for GTK 4 and libadwaita"
-repository.workspace = true
-readme = "README.md"
-publish = false
-
-[dependencies]
-adw = { package = "libadwaita", version = "0.9", features = ["v1_9"] }
-async-channel = "2"
-caret-protocol.workspace = true
-gettext-rs = { version = "0.8", features = ["gettext-system"] }
-gio = { version = "0.22", features = ["v2_80"] }
-glow = "0.18"
-gtk = { package = "gtk4", version = "0.11", features = ["v4_22"] }
-libloading = "0.9"
-pangocairo = "0.22"
-thiserror.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
-
-[build-dependencies]
-glib-build-tools = "0.22"
-
-[lints]
-workspace = true
-
 [workspace.lints.rust]
 unsafe_code = "deny"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
-# `mod imp { use super::*; }` is how every GObject subclass is written.
-wildcard_imports = "allow"
 # Pixel, cell and texel arithmetic converts between i32, usize and floats everywhere,
 # with values bounded by the size of a window or a texture.
 cast_possible_truncation = "allow"
