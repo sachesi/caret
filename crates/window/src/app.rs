@@ -47,7 +47,7 @@ use smithay_client_toolkit::primary_selection::PrimarySelectionManagerState;
 use smithay_client_toolkit::seat::pointer::cursor_shape::CursorShapeManager;
 
 use crate::atlas::Atlas;
-use crate::chrome::{self, Chrome, Dialog, Drawing};
+use crate::chrome::{self, Chrome, Dialog, Drawing, WindowButtons};
 use crate::cli::{Attach, Start};
 use crate::config::{self, Config, FontChoice};
 use crate::connection::{self, Received};
@@ -421,6 +421,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         grid: Grid::default(),
         palette,
         chrome: Chrome {
+            buttons: window_buttons(&desktop),
             title: "Caret".to_owned(),
             header_bar: config.title_bar,
             dark: config.dark(desktop.dark),
@@ -576,6 +577,15 @@ fn palette(config: &Config, desktop: &Desktop) -> Palette {
     }
 }
 
+/// The buttons the desktop's layout asks for on the header bar.
+fn window_buttons(desktop: &Desktop) -> WindowButtons {
+    desktop
+        .button_layout
+        .as_deref()
+        .map(WindowButtons::from_layout)
+        .unwrap_or_default()
+}
+
 /// Tells the server how to show the window's terminals.
 fn look(config: &Config, palette: &Palette) -> Request {
     Request::Look {
@@ -618,6 +628,7 @@ fn listen(
                 app.desktop = desktop;
                 app.restyle(&before);
                 app.restart_blink();
+                app.place_buttons();
             }
         })
         .map_err(|error| AppError::Loop(error.error))?;
@@ -847,6 +858,12 @@ impl App {
     }
 
     /// Applies what changed of the window's style since it was `before`.
+    fn place_buttons(&mut self) {
+        self.chrome.buttons = window_buttons(&self.desktop);
+        self.dirty = true;
+        self.draw();
+    }
+
     fn restyle(&mut self, before: &(FontChoice, Request)) {
         if self.config.font_for(self.desktop.monospace.as_deref()) != before.0 {
             // A font named in the settings may have been installed since.

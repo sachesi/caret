@@ -38,6 +38,8 @@ const BUTTON: f32 = 24.0;
 const BUTTON_HIT: f32 = 34.0;
 /// From the window's right edge to the close button's centre.
 const BUTTON_END: f32 = 23.0;
+/// From one window button's centre to the next.
+const BUTTON_STEP: f32 = 40.0;
 /// From the window's right edge to the main menu button's centre.
 const MAIN_MENU_END: f32 = 63.0;
 /// The new tab button's square, from the window's left edge, and its corners' radius.
@@ -179,6 +181,9 @@ pub enum Drawing {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Icon {
     Close,
+    Minimize,
+    Maximize,
+    Restore,
     NewTab,
     Up,
     Down,
@@ -310,6 +315,8 @@ pub enum Part {
     Edge(ResizeEdge),
     Header,
     Close,
+    Minimize,
+    Maximize,
     NewTab,
     /// The button that opens the main menu.
     MainMenu,
@@ -353,12 +360,74 @@ impl Part {
     }
 }
 
+/// The buttons of the window on each side of the header bar, each side's in the order
+/// they are drawn from left to right.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowButtons {
+    pub start: Vec<Part>,
+    pub end: Vec<Part>,
+}
+
+impl Default for WindowButtons {
+    fn default() -> Self {
+        Self {
+            start: Vec::new(),
+            end: vec![Part::Close],
+        }
+    }
+}
+
+impl WindowButtons {
+    /// The buttons a layout such as `"close,minimize:maximize"` asks for, in the desktop's
+    /// form: the two sides apart by a colon, with names of things the window does not
+    /// have left out.
+    pub fn from_layout(layout: &str) -> Self {
+        let side = |names: &str| {
+            names
+                .split(',')
+                .filter_map(|name| match name.trim() {
+                    "close" => Some(Part::Close),
+                    "minimize" => Some(Part::Minimize),
+                    "maximize" => Some(Part::Maximize),
+                    _ => None,
+                })
+                .collect()
+        };
+        let (start, end) = layout.split_once(':').unwrap_or((layout, ""));
+        Self {
+            start: side(start),
+            end: side(end),
+        }
+    }
+
+    /// How far each button's centre is from the side it is on, with the side.
+    fn placed(&self) -> impl Iterator<Item = (Part, bool, f32)> {
+        let from_end = self.end.iter().rev().enumerate();
+        let from_start = self.start.iter().enumerate();
+        let at = |index: usize| BUTTON_END + index as f32 * BUTTON_STEP;
+        from_start
+            .map(move |(index, &part)| (part, false, at(index)))
+            .chain(from_end.map(move |(index, &part)| (part, true, at(index))))
+    }
+
+    /// How much further in than with one button on the end the main menu goes.
+    fn main_menu_shift(&self) -> f32 {
+        (self.end.len() as f32 - 1.0) * BUTTON_STEP
+    }
+
+    /// How much further in than with no button at the start the + button goes.
+    fn new_tab_shift(&self) -> f32 {
+        self.start.len() as f32 * BUTTON_STEP
+    }
+}
+
 #[derive(Debug, Default)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "each is a separate state the compositor configures"
 )]
 pub struct Chrome {
+    pub buttons: WindowButtons,
     /// The window draws its frame: the compositor draws none.
     pub drawn: bool,
     /// Neither maximized nor tiled, so the window has a shadow, rounded corners and
@@ -466,21 +535,24 @@ impl Chrome {
             let within =
                 |(cx, cy): (f64, f64), reach: f64| (x - cx).abs() < reach && (y - cy).abs() < reach;
             let middle = f64::from(HEADER) / 2.0;
-            let (left, side) = (f64::from(FLAT_BUTTON.0), f64::from(FLAT_BUTTON.1));
-            return Some(
-                if within(
-                    (width - f64::from(BUTTON_END), middle),
-                    f64::from(BUTTON_HIT) / 2.0,
-                ) {
-                    Part::Close
-                } else if within((left + side / 2.0, middle), side / 2.0) {
-                    Part::NewTab
-                } else if within((width - f64::from(MAIN_MENU_END), middle), side / 2.0) {
-                    Part::MainMenu
-                } else {
-                    Part::Header
-                },
-            );
+            let button = self.buttons.placed().find(|&(_, end, from)| {
+                let from = f64::from(from);
+                let centre = if end { width - from } else { from };
+                within((centre, middle), f64::from(BUTTON_HIT) / 2.0)
+            });
+            if let Some((part, ..)) = button {
+                return Some(part);
+            }
+            let left = f64::from(FLAT_BUTTON.0 + self.buttons.new_tab_shift());
+            let side = f64::from(FLAT_BUTTON.1);
+            let menu = f64::from(MAIN_MENU_END + self.buttons.main_menu_shift());
+            return Some(if within((left + side / 2.0, middle), side / 2.0) {
+                Part::NewTab
+            } else if within((width - menu, middle), side / 2.0) {
+                Part::MainMenu
+            } else {
+                Part::Header
+            });
         }
         let tabs = header + f64::from(self.tab_bar());
         if y >= tabs {
@@ -739,7 +811,7 @@ impl Painter<'_> {
         let colors = chrome.colors();
         let middle = margin + HEADER as f32 * scale / 2.0;
         let side = FLAT_BUTTON.1 * scale;
-        let left = (margin + FLAT_BUTTON.0 * scale).round();
+        let left = (margin + (FLAT_BUTTON.0 + chrome.buttons.new_tab_shift()) * scale).round();
         let top = (middle - side / 2.0).round();
         if chrome.over(Part::NewTab, false) {
             let shade = colors.flat[usize::from(chrome.over(Part::NewTab, true))];
@@ -760,7 +832,8 @@ impl Painter<'_> {
                 chrome.dim(colors.foreground),
             ));
         }
-        let menu_left = (margin + width - (MAIN_MENU_END + FLAT_BUTTON.1 / 2.0) * scale).round();
+        let menu_end = MAIN_MENU_END + chrome.buttons.main_menu_shift();
+        let menu_left = (margin + width - (menu_end + FLAT_BUTTON.1 / 2.0) * scale).round();
         let open = chrome.menu.as_ref().is_some_and(|menu| menu.main);
         if open || chrome.over(Part::MainMenu, false) {
             let pressed = open || chrome.over(Part::MainMenu, true);
@@ -781,7 +854,8 @@ impl Painter<'_> {
                 chrome.dim(colors.foreground),
             ));
         }
-        let room = width - 2.0 * (MAIN_MENU_END + FLAT_BUTTON.1 / 2.0 + 6.0) * scale;
+        let widest = menu_end.max(FLAT_BUTTON.1 + chrome.buttons.new_tab_shift());
+        let room = width - 2.0 * (widest + FLAT_BUTTON.1 / 2.0 + 6.0) * scale;
         if !chrome.title.is_empty() && room > 0.0 {
             let title = Drawing::Label {
                 text: chrome.title.clone(),
@@ -792,18 +866,30 @@ impl Painter<'_> {
                 quads.push(self.label(margin + width / 2.0, middle, label, colors.foreground));
             }
         }
-        let centre = margin + width - BUTTON_END * scale;
-        let shade = if chrome.over(Part::Close, true) {
-            colors.button[2]
-        } else if chrome.over(Part::Close, false) {
-            colors.button[1]
-        } else {
-            colors.button[0]
-        };
         let diameter = BUTTON * scale;
-        quads.push(circle(centre, middle, diameter, chrome.dim(shade)));
-        if let Some(icon) = draw(&Drawing::Icon(Icon::Close)) {
-            quads.push(centred(centre, middle, icon, chrome.dim(colors.foreground)));
+        for (part, end, from) in chrome.buttons.placed() {
+            let centre = if end {
+                margin + width - from * scale
+            } else {
+                margin + from * scale
+            };
+            let shade = if chrome.over(part, true) {
+                colors.button[2]
+            } else if chrome.over(part, false) {
+                colors.button[1]
+            } else {
+                colors.button[0]
+            };
+            quads.push(circle(centre, middle, diameter, chrome.dim(shade)));
+            let icon = match part {
+                Part::Minimize => Icon::Minimize,
+                Part::Maximize if chrome.maximized => Icon::Restore,
+                Part::Maximize => Icon::Maximize,
+                _ => Icon::Close,
+            };
+            if let Some(icon) = draw(&Drawing::Icon(icon)) {
+                quads.push(centred(centre, middle, icon, chrome.dim(colors.foreground)));
+            }
         }
     }
 
@@ -1302,6 +1388,24 @@ fn offset(glyph: GpuGlyph) -> (i32, i32) {
 pub fn icon(icon: Icon, scale: f32) -> Raster {
     let lines: &[&[[f32; 2]]] = match icon {
         Icon::Close => &[&[[4.0, 4.0], [12.0, 12.0]], &[[12.0, 4.0], [4.0, 12.0]]],
+        Icon::Minimize => &[&[[4.0, 12.0], [12.0, 12.0]]],
+        Icon::Maximize => &[&[
+            [4.0, 4.0],
+            [12.0, 4.0],
+            [12.0, 12.0],
+            [4.0, 12.0],
+            [4.0, 4.0],
+        ]],
+        Icon::Restore => &[
+            &[
+                [3.5, 6.0],
+                [10.0, 6.0],
+                [10.0, 12.5],
+                [3.5, 12.5],
+                [3.5, 6.0],
+            ],
+            &[[6.0, 3.5], [12.5, 3.5], [12.5, 10.0]],
+        ],
         Icon::NewTab => &[&[[3.0, 8.0], [13.0, 8.0]], &[[8.0, 3.0], [8.0, 13.0]]],
         Icon::Up => &[&[[3.0, 10.5], [8.0, 5.5], [13.0, 10.5]]],
         Icon::Down => &[&[[3.0, 5.5], [8.0, 10.5], [13.0, 5.5]]],
@@ -1414,6 +1518,41 @@ mod tests {
         assert_eq!((chrome.margin(), chrome.header()), (0, 0));
         assert_eq!(chrome.part_at((5.0, 5.0), (800, 500)), None);
         assert!(chrome.quads((800, 500), 1.0, 0, 0, |_| None).0.is_empty());
+    }
+
+    #[test]
+    fn a_layout_puts_the_buttons_it_names_on_its_sides() {
+        let buttons = WindowButtons::from_layout("close,minimize:appmenu,maximize");
+        assert_eq!(buttons.start, [Part::Close, Part::Minimize]);
+        assert_eq!(buttons.end, [Part::Maximize]);
+        assert_eq!(
+            WindowButtons::from_layout(":close"),
+            WindowButtons::default()
+        );
+        let chrome = Chrome {
+            drawn: true,
+            header_bar: true,
+            buttons,
+            ..Chrome::default()
+        };
+        let size = (800, 500);
+        let m = f64::from(chrome.margin());
+        let middle = m + f64::from(HEADER) / 2.0;
+        let start = f64::from(BUTTON_END);
+        let step = f64::from(BUTTON_STEP);
+        assert_eq!(chrome.part_at((m + start, middle), size), Some(Part::Close));
+        assert_eq!(
+            chrome.part_at((m + start + step, middle), size),
+            Some(Part::Minimize)
+        );
+        assert_eq!(
+            chrome.part_at((m + 800.0 - start, middle), size),
+            Some(Part::Maximize)
+        );
+        assert_eq!(
+            chrome.part_at((m + start + 2.0 * step, middle), size),
+            Some(Part::NewTab)
+        );
     }
 
     #[test]

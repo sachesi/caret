@@ -97,16 +97,17 @@ impl Menu {
 
     /// Where the main menu opens: under its button, its right edge at the button's, in
     /// a window `width` wide.
-    pub fn under_main_button(width: u32) -> (f32, f32) {
-        let right = width as f32 - super::MAIN_MENU_END + super::FLAT_BUTTON.1 / 2.0;
+    pub fn under_main_button(width: u32, buttons: &super::WindowButtons) -> (f32, f32) {
+        let end = super::MAIN_MENU_END + buttons.main_menu_shift();
+        let right = width as f32 - end + super::FLAT_BUTTON.1 / 2.0;
         let bottom = super::HEADER as f32 - (super::HEADER as f32 - super::FLAT_BUTTON.1) / 2.0;
         (right, bottom + 2.0)
     }
 
     /// Where the + button's menu opens: under the button, at its left edge.
-    pub fn under_new_tab_button() -> (f32, f32) {
+    pub fn under_new_tab_button(buttons: &super::WindowButtons) -> (f32, f32) {
         let bottom = super::HEADER as f32 - (super::HEADER as f32 - super::FLAT_BUTTON.1) / 2.0;
-        (super::FLAT_BUTTON.0, bottom + 2.0)
+        (super::FLAT_BUTTON.0 + buttons.new_tab_shift(), bottom + 2.0)
     }
 
     pub fn items(&self) -> impl Iterator<Item = &Item> {

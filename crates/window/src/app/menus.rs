@@ -124,7 +124,11 @@ impl App {
         ]);
         match at {
             Some(at) => self.show_menu(sections, at, false),
-            None => self.show_menu(sections, Menu::under_main_button(width), true),
+            None => self.show_menu(
+                sections,
+                Menu::under_main_button(width, &self.chrome.buttons),
+                true,
+            ),
         }
     }
 
@@ -421,7 +425,7 @@ impl App {
             vec![self.item(&gettext("New Session"), Choice::NewSession, true)],
             others,
         ];
-        let at = Menu::under_new_tab_button();
+        let at = Menu::under_new_tab_button(&self.chrome.buttons);
         self.show_menu(sections, at, false);
     }
 

@@ -271,6 +271,8 @@ impl App {
             (Part::OffShortcutList, _) => return self.close_shortcut_list(),
             (
                 Part::Close
+                | Part::Minimize
+                | Part::Maximize
                 | Part::NewTab
                 | Part::CloseTab(_)
                 | Part::FindUp
@@ -328,17 +330,13 @@ impl App {
                     .is_some_and(|at| now.duration_since(at) < MULTI_CLICK);
                 if again {
                     self.pointer.header_click = None;
-                    if self.chrome.maximized {
-                        self.window.unset_maximized();
-                    } else {
-                        self.window.set_maximized();
-                    }
+                    self.toggle_maximized();
                 } else {
                     self.pointer.header_click = Some(now);
                     self.window.move_(&seat, serial);
                 }
             }
-            (Part::Header | Part::Close, BUTTON_RIGHT) => {
+            (Part::Header | Part::Close | Part::Minimize | Part::Maximize, BUTTON_RIGHT) => {
                 let margin = f64::from(self.chrome.margin());
                 let (x, y) = self.pointer.position;
                 self.window.show_window_menu(
@@ -351,6 +349,14 @@ impl App {
         }
     }
 
+    fn toggle_maximized(&mut self) {
+        if self.chrome.maximized {
+            self.window.unset_maximized();
+        } else {
+            self.window.set_maximized();
+        }
+    }
+
     /// Clicks the button the pointer was pressed on, if it is still over it.
     fn released_frame(&mut self) {
         let Some(pressed) = self.chrome.pressed.take() else {
@@ -360,6 +366,8 @@ impl App {
         if self.chrome.hovered == Some(pressed) {
             match pressed {
                 Part::Close => self.close(),
+                Part::Minimize => self.window.set_minimized(),
+                Part::Maximize => self.toggle_maximized(),
                 Part::NewTab => {
                     let held = self.pointer.new_tab_pressed.take();
                     if held.is_some_and(|at| at.elapsed() >= LONG_PRESS) {
@@ -762,6 +770,8 @@ fn cursor(part: Part) -> Shape {
         Part::SearchField => Shape::Text,
         Part::Header
         | Part::Close
+        | Part::Minimize
+        | Part::Maximize
         | Part::NewTab
         | Part::Tab(_)
         | Part::CloseTab(_)

@@ -11,6 +11,7 @@ use zbus::zvariant::{OwnedValue, Value};
 
 const APPEARANCE: &str = "org.freedesktop.appearance";
 const INTERFACE: &str = "org.gnome.desktop.interface";
+const WINDOW_MANAGER: &str = "org.gnome.desktop.wm.preferences";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Desktop {
@@ -20,6 +21,8 @@ pub struct Desktop {
     pub monospace: Option<String>,
     /// The desktop has cursors not blink.
     pub steady_cursor: bool,
+    /// Which window buttons go where, as `"close,minimize:maximize"`.
+    pub button_layout: Option<String>,
 }
 
 /// Follows the desktop's preferences on a thread of their own, sending them to `changes`
@@ -56,6 +59,8 @@ fn listen(first: &mpsc::SyncSender<Desktop>, changes: &Sender<Desktop>) -> zbus:
             .and_then(|font| String::try_from(font).ok()),
         steady_cursor: read(&portal, INTERFACE, "cursor-blink")
             .is_some_and(|value| bool::try_from(value).is_ok_and(|blinks| !blinks)),
+        button_layout: read(&portal, WINDOW_MANAGER, "button-layout")
+            .and_then(|layout| String::try_from(layout).ok()),
     };
     // The window may have stopped waiting, so the reading goes on as a change too.
     let _ = first.send(desktop.clone());
@@ -71,6 +76,10 @@ fn listen(first: &mpsc::SyncSender<Desktop>, changes: &Sender<Desktop>) -> zbus:
             },
             (INTERFACE, "monospace-font-name") => Desktop {
                 monospace: String::try_from(value).ok(),
+                ..desktop.clone()
+            },
+            (WINDOW_MANAGER, "button-layout") => Desktop {
+                button_layout: String::try_from(value).ok(),
                 ..desktop.clone()
             },
             (INTERFACE, "cursor-blink") => Desktop {

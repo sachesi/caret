@@ -37,6 +37,10 @@ until you clear it. A tab whose program rings the bell while the tab is in the b
 until you look at it, and the bell sounds unless `audible-bell` is off. Tabs can be
 dragged along the strip to reorder them.
 
+Where Caret draws the title bar itself, its window buttons are the ones the desktop's
+`button-layout` in `org.gnome.desktop.wm.preferences` names, on the sides it puts them; with
+no such setting there is a close button at the right.
+
 Ctrl+Shift+H, or `title-bar` in the settings, hides the title bar, and so does full
 screen (F11, or Full Screen in the main menu). The context menu then has what the title
 bar had: a new window, the title bar again, full screen, closing the window and the main
