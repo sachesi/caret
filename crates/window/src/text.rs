@@ -52,32 +52,77 @@ pub fn run(session: SessionId) -> Result<(), String> {
         .map_err(|error| format!("setting the terminal up: {error}"))?;
     let mut host = host::probe();
     host.console = std::env::var("TERM").is_ok_and(|term| term.starts_with("linux"));
+    let _restore = Restore {
+        saved,
+        enhanced: host.enhanced,
+        console: host.console,
+    };
     // The other screen, the cursor hidden until a pane shows its own, mouse reports while
     // a button is held, and keys written apart where the terminal can.
     print!("\x1b[?1049h\x1b[?25l\x1b[?1002h\x1b[?1006h");
     if host.enhanced {
         print!("\x1b[>1u");
     }
-    let ended = show(&mut stream, session, &host);
-    if host.enhanced {
-        print!("\x1b[<u");
+    show(&mut stream, session, &host)
+}
+
+/// Gives the user back the terminal as it was, however the client ends. Otherwise a panic
+/// leaves a shell with no echo, on the other screen, reporting the mouse.
+struct Restore {
+    saved: termios::Termios,
+    enhanced: bool,
+    console: bool,
+}
+
+impl Drop for Restore {
+    fn drop(&mut self) {
+        let mut text = String::new();
+        if self.enhanced {
+            text.push_str("\x1b[<u");
+        }
+        // A console has no other screen to go back from.
+        text.push_str(if self.console {
+            "\x1b[?0c\x1b[0m\x1b[2J\x1b[H"
+        } else {
+            "\x1b[0 q"
+        });
+        text.push_str("\x1b[?1006l\x1b[?1002l\x1b[0m\x1b[?25h\x1b[?1049l");
+        // Not `print!`, which panics when the terminal has gone.
+        let mut out = io::stdout();
+        let _ = out.write_all(text.as_bytes());
+        let _ = out.flush();
+        let _ = termios::tcsetattr(io::stdin(), OptionalActions::Now, &self.saved);
     }
-    if host.console {
-        // It has no other screen to go back from.
-        print!("\x1b[?0c\x1b[0m\x1b[2J\x1b[H");
-    } else {
-        print!("\x1b[0 q");
+}
+
+/// Ends the client in order on SIGTERM and SIGHUP. Called before any thread that should
+/// leave them to the one this starts, which inherits the mask.
+#[expect(unsafe_code, reason = "signal masks are only reached through libc")]
+fn close_on_signals(events: mpsc::Sender<Event>) {
+    // SAFETY: an all-zero sigset_t is a valid value for sigemptyset to fill in.
+    let mut signals: libc::sigset_t = unsafe { std::mem::zeroed() };
+    // SAFETY: each call takes the live set above, and the old mask may be null.
+    unsafe {
+        libc::sigemptyset(&raw mut signals);
+        libc::sigaddset(&raw mut signals, libc::SIGTERM);
+        libc::sigaddset(&raw mut signals, libc::SIGHUP);
+        libc::pthread_sigmask(libc::SIG_BLOCK, &raw const signals, std::ptr::null_mut());
     }
-    print!("\x1b[?1006l\x1b[?1002l\x1b[0m\x1b[?25h\x1b[?1049l");
-    let _ = io::stdout().flush();
-    let _ = termios::tcsetattr(&stdin, OptionalActions::Now, &saved);
-    ended
+    std::thread::spawn(move || {
+        let mut signal = 0;
+        // SAFETY: both pointers are to live values for the length of the call.
+        if unsafe { libc::sigwait(&raw const signals, &raw mut signal) } == 0 {
+            let _ = events.send(Event::Stopped);
+        }
+    });
 }
 
 enum Event {
     Message(Message),
     Typed(Vec<u8>),
     Closed,
+    /// A signal asked the client to end.
+    Stopped,
 }
 
 struct Screen {
@@ -193,6 +238,7 @@ enum Drag {
 fn show(stream: &mut UnixStream, session: SessionId, host: &Host) -> Result<(), String> {
     let writer = stream.try_clone().map_err(|error| error.to_string())?;
     let (events, received) = mpsc::channel();
+    close_on_signals(events.clone());
     let mut reader = stream.try_clone().map_err(|error| error.to_string())?;
     let from_server = events.clone();
     std::thread::spawn(move || {
@@ -964,6 +1010,7 @@ impl Client {
                 Ok(going_on)
             }
             Event::Closed => Err("the server closed the connection".to_owned()),
+            Event::Stopped => Ok(false),
         }
     }
 }

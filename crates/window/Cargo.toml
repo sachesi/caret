@@ -20,6 +20,7 @@ caret-protocol.workspace = true
 fontdb = { version = "0.24", default-features = false, features = ["std", "fs", "memmap"] }
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 harfrust = "0.13"
+libc.workspace = true
 rustix = { version = "1", features = ["event", "fs", "termios"] }
 shlex = "1"
 skrifa = { version = "0.44", default-features = false, features = ["std"] }
