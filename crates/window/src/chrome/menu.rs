@@ -133,7 +133,8 @@ impl Menu {
                     .map(|heading| measure(&heading) + DOT_ROOM),
             )
             .fold(0.0, f32::max);
-        self.width = (widest + 2.0 * (ITEM_PADDING + PADDING)).max(MIN_WIDTH);
+        // Whole pixels to spare, as the room for each label is cut to whole pixels.
+        self.width = (widest.ceil() + 1.0 + 2.0 * (ITEM_PADDING + PADDING)).max(MIN_WIDTH);
     }
 
     /// Moves the focus `steps` items on, past those that cannot be chosen.
