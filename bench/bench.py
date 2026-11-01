@@ -216,8 +216,7 @@ class Caret:
 
     def __init__(self, session: Session, caret: Path, timings: Path, command: list[str]):
         self.timings = timings
-        # The kernel keeps the first 15 bytes of a program's name.
-        self.name = caret.name[:15]
+        self.name = caret.name
         env = session.env | {
             "XDG_CONFIG_HOME": str(session.state / "config"),
             "XDG_STATE_HOME": str(session.state / "state"),
@@ -235,23 +234,24 @@ class Caret:
         self.peak_rss = 0
         self.peak_server_rss = 0
 
-    def find(self, name: str) -> int | None:
+    def find_program(self, name: str) -> int | None:
+        """By its file: the server goes by the terminal's name."""
         for pid in process_tree(self.process.pid):
             try:
-                if Path(f"/proc/{pid}/comm").read_text().strip() == name:
+                if Path(f"/proc/{pid}/exe").resolve().name == name:
                     return pid
             except OSError:
                 pass
         return None
 
     def caret_pid(self) -> int | None:
-        return self.find(self.name)
+        return self.find_program(self.name)
 
     def server_pid(self) -> int | None:
         """The terminal server the window started, found while it is still the window's
         child and remembered after."""
         if self.server is None:
-            self.server = self.find("caret-server")
+            self.server = self.find_program("caret-server")
         return self.server
 
     def sample(self) -> None:

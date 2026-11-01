@@ -138,6 +138,11 @@ and the schema, and `just po` merges it into every `po/<lang>.po`. A new languag
 line in `po/LINGUAS` plus the `.po` file. `install` compiles the catalogues and merges the
 desktop and metainfo translations with `msgfmt`.
 
+The server goes by `caret`, in its process name and the first word of its command line, as
+programs in a terminal have it for a parent and system information tools take the parent's
+name for the terminal's. So `pgrep -f 'caret --socket'` finds a server a window or systemd
+started, and neither `pgrep -x` nor `-f` with `caret-server` does.
+
 Shortcuts of the window take Ctrl and Shift; Ctrl with a single key belongs to the program
 in the terminal. The window matches its shortcuts before the terminal sees the key, and an
 action that has nothing to do at the time, such as going to a pane where there is none,

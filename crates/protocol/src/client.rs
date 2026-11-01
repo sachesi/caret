@@ -13,6 +13,10 @@ use std::time::{Duration, Instant};
 
 const SERVER: &str = "caret-server";
 
+/// What the server is started as, so that a program asking which terminal it runs in reads
+/// this for its parent's command line.
+const TERMINAL: &str = "caret";
+
 /// How long a server has to answer, started by systemd for its socket or running.
 const PATIENCE: Duration = Duration::from_secs(10);
 
@@ -122,6 +126,7 @@ fn connect_or_start(path: &Path) -> Result<UnixStream, ConnectError> {
     }
     let program = server_program();
     let mut server = process::Command::new(&program)
+        .arg0(TERMINAL)
         .arg("--socket")
         .arg(path)
         .stdin(process::Stdio::null())
