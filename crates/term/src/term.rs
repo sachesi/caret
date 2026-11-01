@@ -394,32 +394,27 @@ impl Term {
     /// that line the row starts with. Lines go on from the history's.
     #[must_use]
     pub fn screen_places(&self) -> Vec<(u64, usize)> {
-        let open = self.history.is_open() && !self.alt_active;
-        let next = self.history.serial(self.history.len());
+        let mut place = self.first_place();
         let mut places = Vec::with_capacity(self.lines());
-        let mut place = if open {
-            // Without history, the start of the line is gone.
-            let width = self.history.len().checked_sub(1);
-            (
-                next - 1,
-                width.map_or(0, |last| self.history.line(last).width()),
-            )
-        } else {
-            (next, 0)
-        };
-        let rows = self.screen().rows();
-        for index in 0..rows.len() {
-            if index > 0 {
-                let above = &rows[index - 1];
-                place = if above.wrapped {
-                    (place.0, place.1 + above.line_cells())
-                } else {
-                    (place.0 + 1, 0)
-                };
-            }
+        for row in self.screen().rows() {
             places.push(place);
+            place = place_after(place, row);
         }
         places
+    }
+
+    /// Where the screen's first row is, as [`Term::screen_places`] gives it.
+    fn first_place(&self) -> (u64, usize) {
+        let next = self.history.serial(self.history.len());
+        if !self.history.is_open() || self.alt_active {
+            return (next, 0);
+        }
+        // Without history, the start of the line is gone.
+        let width = self.history.len().checked_sub(1);
+        (
+            next - 1,
+            width.map_or(0, |last| self.history.line(last).width()),
+        )
     }
 
     /// The serial numbers of the lines there are: the history's and the screen's, or only
@@ -469,11 +464,15 @@ impl Term {
         let main = self.main.take_written();
         let alt = self.alt.take_written();
         let written = if self.alt_active { alt } else { main }?;
-        let places = self.screen_places();
+        let first = self.first_place();
         Some(match usize::try_from(written) {
-            Ok(row) => places[row.min(places.len() - 1)].0,
+            Ok(row) => {
+                let rows = self.screen().rows();
+                let above = rows.iter().take(row.min(rows.len() - 1));
+                above.fold(first, place_after).0
+            }
             // Each row above the screen is at most a line.
-            Err(_) => places[0].0.saturating_sub(written.unsigned_abs() as u64),
+            Err(_) => first.0.saturating_sub(written.unsigned_abs() as u64),
         })
     }
 
@@ -1081,6 +1080,15 @@ impl Term {
         rows.resize_with(lines, || Row::new(columns, blank));
         self.main.set_rows(rows, columns);
         (cursor_row, cursor_column.min(columns - 1))
+    }
+}
+
+/// Where the row after `row` is, `row` being at `place`.
+fn place_after(place: (u64, usize), row: &Row) -> (u64, usize) {
+    if row.wrapped {
+        (place.0, place.1 + row.line_cells())
+    } else {
+        (place.0 + 1, 0)
     }
 }
 
