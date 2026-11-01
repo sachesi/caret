@@ -37,6 +37,8 @@ is deleted, and a new window has the defaults.
 | `session-list-click` | `"add"`, `"replace"` | `"add"` |
 | `session-colors` | bool | true |
 | `rounded-pane-ring` | bool | true |
+| `pane-line-width` | 1 to 12 pixels | 1 |
+| `active-pane-color` | bool | true |
 | `detached-hint` | bool | true |
 | `middle-click-detach` | bool | false |
 | `tab-previews` | bool | false |
@@ -75,7 +77,9 @@ window leave its programs running, to attach to again with `caret --attach`.
 compositor offers to draw them. The `session-` settings, `middle-click-detach` and
 `tab-previews` are about windows that show several sessions, described under
 [sessions](usage.md#sessions). `rounded-pane-ring` rounds the corners of the ring control
-mode draws around the focused pane.
+mode draws around the focused pane. `pane-line-width` is how thick the lines between panes
+are in a window. `active-pane-color` off has the lines along the focused pane, and that ring,
+stand out by contrast instead of taking the session's colour.
 
 ## Profiles
 

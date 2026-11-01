@@ -19,6 +19,9 @@ use crate::presets::{Preset, SavedPane};
 use crate::shortcuts::{self, Action, Shortcut};
 
 /// The directory of split presets, a file for each, beside `config.toml`.
+/// As wide as the gap between two panes.
+const MOST_PANE_LINE_WIDTH: u32 = 12;
+
 const PRESETS: &str = "presets";
 
 /// The font size when neither the settings nor the desktop name one.
@@ -102,6 +105,10 @@ pub struct Config {
     pub session_colors: bool,
     /// The ring around the focused pane in control mode has rounded corners.
     pub rounded_pane_ring: bool,
+    /// The lines between panes, in logical pixels.
+    pub pane_line_width: u32,
+    /// The focused pane is marked in the session's colour, rather than by contrast alone.
+    pub active_pane_color: bool,
     /// A new window says when sessions are detached.
     pub detached_hint: bool,
     /// A middle click on a session's tab detaches the session.
@@ -149,6 +156,8 @@ impl Default for Config {
             session_list_click: SessionListClick::Add,
             session_colors: true,
             rounded_pane_ring: true,
+            pane_line_width: 1,
+            active_pane_color: true,
             detached_hint: true,
             middle_click_detach: false,
             tab_previews: false,
@@ -404,6 +413,14 @@ impl Config {
             }
             "session-colors" => self.session_colors = boolean()?,
             "rounded-pane-ring" => self.rounded_pane_ring = boolean()?,
+            "pane-line-width" => {
+                self.pane_line_width = item
+                    .as_integer()
+                    .and_then(|width| u32::try_from(width).ok())
+                    .filter(|width| (1..=MOST_PANE_LINE_WIDTH).contains(width))
+                    .ok_or("a number of pixels from 1 to 12")?;
+            }
+            "active-pane-color" => self.active_pane_color = boolean()?,
             "detached-hint" => self.detached_hint = boolean()?,
             "middle-click-detach" => self.middle_click_detach = boolean()?,
             "tab-previews" => self.tab_previews = boolean()?,
@@ -537,6 +554,11 @@ const STARTER: &str = r##"# Caret's settings. Take the # off a setting to change
 #session-colors = true
 # Whether the ring of control mode has rounded corners.
 #rounded-pane-ring = true
+# How thick the lines between panes are, in pixels, from 1 to 12.
+#pane-line-width = 1
+# Whether the lines along the focused pane and the ring of control mode take the
+# session's colour; off, they stand out by contrast alone.
+#active-pane-color = true
 # Whether a new window says when sessions are detached, offering to list them.
 #detached-hint = true
 # Whether a middle click on a session's tab detaches the session.
@@ -858,6 +880,27 @@ mod tests {
 
     fn family_and_size(choice: FontChoice) -> (Option<String>, f32) {
         (choice.family, choice.points)
+    }
+
+    #[test]
+    fn the_pane_line_takes_a_width_it_can_fit_and_the_mark_can_go_without_colour() {
+        let mut config = Config::default();
+        assert_eq!(config.pane_line_width, 1);
+        assert!(config.active_pane_color);
+        let doc: toml_edit::DocumentMut =
+            "pane-line-width = 3\nactive-pane-color = false\ntoo-thin = 0\n"
+                .parse()
+                .unwrap();
+        config
+            .set("pane-line-width", &doc["pane-line-width"])
+            .unwrap();
+        config
+            .set("active-pane-color", &doc["active-pane-color"])
+            .unwrap();
+        assert_eq!(config.pane_line_width, 3);
+        assert!(!config.active_pane_color);
+        assert!(config.set("pane-line-width", &doc["too-thin"]).is_err());
+        assert_eq!(config.pane_line_width, 3);
     }
 
     #[test]

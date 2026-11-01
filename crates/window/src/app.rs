@@ -114,7 +114,7 @@ mod presets;
 mod scale;
 mod screen_reader;
 mod search;
-mod sessions;
+pub(crate) mod sessions;
 mod shortcut_list;
 mod tabs;
 mod text_input;
@@ -1374,36 +1374,67 @@ impl App {
         shown
     }
 
-    /// A line along the middle of each divider between the panes shown.
+    /// What marks the focused pane: the session's colour, or else strong contrast.
+    fn active_pane_color(&self) -> u32 {
+        if !self.config.active_pane_color {
+            return if self.chrome.dark {
+                0xffff_ffcc
+            } else {
+                0x0000_00cc
+            };
+        }
+        self.shown_session()
+            .and_then(|session| self.session_color(session))
+            .unwrap_or(chrome::ACCENT)
+    }
+
+    /// A line along the middle of each divider between the panes shown, stronger along the
+    /// sides of the focused pane. In control mode the ring marks that pane.
     fn dividers(&self, placed: &Placed) -> Vec<chrome::Quad> {
-        let thickness = self.device(1).max(1) as f32;
+        // On whole pixels: across two, a thin line blends to half its colour.
+        let line = |vertical: bool, gap: crate::panes::Rect, thickness: f32, color: u32| {
+            let (x, y, width, height) = if vertical {
+                let middle = gap.x as f32 + ((gap.width as f32 - thickness) / 2.0).floor();
+                (middle, gap.y as f32, thickness, gap.height as f32)
+            } else {
+                let middle = gap.y as f32 + ((gap.height as f32 - thickness) / 2.0).floor();
+                (gap.x as f32, middle, gap.width as f32, thickness)
+            };
+            chrome::Quad {
+                x,
+                y,
+                width,
+                height,
+                color,
+                ..chrome::Quad::default()
+            }
+        };
+        let thickness = self.device(self.config.pane_line_width).max(1) as f32;
         let color = if self.chrome.dark {
             0xffff_ff26
         } else {
             0x0000_0026
         };
-        placed
+        let mut lines: Vec<chrome::Quad> = placed
             .dividers
             .iter()
-            .map(|divider| {
-                let gap = divider.gap;
-                let (x, y, width, height) = if divider.vertical {
-                    let middle = gap.x as f32 + (gap.width as f32 - thickness) / 2.0;
-                    (middle, gap.y as f32, thickness, gap.height as f32)
-                } else {
-                    let middle = gap.y as f32 + (gap.height as f32 - thickness) / 2.0;
-                    (gap.x as f32, middle, gap.width as f32, thickness)
-                };
-                chrome::Quad {
-                    x,
-                    y,
-                    width,
-                    height,
-                    color,
-                    ..chrome::Quad::default()
-                }
-            })
-            .collect()
+            .map(|divider| line(divider.vertical, divider.gap, thickness, color))
+            .collect();
+        if !self.control
+            && let Some(rect) = self.terminal().and_then(|terminal| placed.rect(terminal))
+        {
+            let color = self.active_pane_color();
+            // Far enough past the pane's corners for two sides to join in the gaps' middle.
+            let past = i32::midpoint(self.gap(), thickness as i32);
+            let area = self.area().unwrap_or(rect);
+            lines.extend(
+                placed
+                    .edges(rect)
+                    .into_iter()
+                    .map(|edge| line(edge.vertical, edge.reaching(past, area), thickness, color)),
+            );
+        }
+        lines
     }
 
     /// Tells the compositor where the window is in its surface and where the surface

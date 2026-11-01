@@ -82,6 +82,40 @@ fn junction(upright: &Divider, level: &Divider) -> Option<Rect> {
     })
 }
 
+/// A side of a pane that lies along a divider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Edge {
+    pub vertical: bool,
+    /// The part of the divider's gap beside the pane.
+    pub side: Rect,
+    /// The divider's whole gap.
+    pub gap: Rect,
+}
+
+impl Edge {
+    /// The side, going on `past` pixels beyond the pane's corners but not out of `within`.
+    pub fn reaching(&self, past: i32, within: Rect) -> Rect {
+        let Self { side, vertical, .. } = *self;
+        if vertical {
+            let top = (side.y - past).max(within.y);
+            let bottom = (side.y + side.height + past).min(within.y + within.height);
+            Rect {
+                y: top,
+                height: bottom - top,
+                ..side
+            }
+        } else {
+            let left = (side.x - past).max(within.x);
+            let right = (side.x + side.width + past).min(within.x + within.width);
+            Rect {
+                x: left,
+                width: right - left,
+                ..side
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Placed {
     pub panes: Vec<(TerminalId, Rect)>,
@@ -101,6 +135,39 @@ impl Placed {
             .iter()
             .find(|(_, rect)| rect.contains(point))
             .map(|&(pane, _)| pane)
+    }
+
+    /// The sides of `rect` that lie along a divider.
+    pub fn edges(&self, rect: Rect) -> Vec<Edge> {
+        self.dividers
+            .iter()
+            .filter_map(|divider| {
+                let gap = divider.gap;
+                let side = if divider.vertical {
+                    let beside = gap.x + gap.width == rect.x || gap.x == rect.x + rect.width;
+                    (beside && gap.y < rect.y + rect.height && gap.y + gap.height > rect.y)
+                        .then_some(Rect {
+                            y: rect.y,
+                            height: rect.height,
+                            ..gap
+                        })
+                } else {
+                    let beside = gap.y + gap.height == rect.y || gap.y == rect.y + rect.height;
+                    (beside && gap.x < rect.x + rect.width && gap.x + gap.width > rect.x).then_some(
+                        Rect {
+                            x: rect.x,
+                            width: rect.width,
+                            ..gap
+                        },
+                    )
+                };
+                side.map(|side| Edge {
+                    vertical: divider.vertical,
+                    side,
+                    gap,
+                })
+            })
+            .collect()
     }
 
     fn divider_at(&self, point: (f64, f64)) -> Option<Divider> {
@@ -408,6 +475,43 @@ mod tests {
         assert_eq!(divider.share_at(65.0, 10), WHOLE / 4);
         assert_eq!(placed.pane_at((130.0, 100.0)), Some(TerminalId(3)));
         assert_eq!(placed.pane_at((115.0, 100.0)), None);
+    }
+
+    #[test]
+    fn a_pane_has_edges_only_along_the_dividers_beside_it() {
+        let placed = place(&tree(), AREA, 10);
+        let edges = |terminal| placed.edges(placed.rect(TerminalId(terminal)).unwrap());
+        let sides = |terminal| -> Vec<(bool, Rect)> {
+            edges(terminal)
+                .iter()
+                .map(|edge| (edge.vertical, edge.side))
+                .collect()
+        };
+        let upright = Rect {
+            x: 110,
+            y: 20,
+            width: 10,
+            height: 110,
+        };
+        let level = Rect {
+            x: 120,
+            y: 70,
+            width: 100,
+            height: 10,
+        };
+        assert_eq!(sides(1), [(true, upright)]);
+        let beside_two = Rect {
+            height: 50,
+            ..upright
+        };
+        assert_eq!(sides(2), [(true, beside_two), (false, level)]);
+        // Joined at the corner where there is room, kept in by the edge of the panes.
+        let two = edges(2);
+        assert_eq!(two[0].reaching(5, AREA).height, 55);
+        assert_eq!(two[0].reaching(5, AREA).y, 20);
+        assert_eq!(two[1].reaching(5, AREA).x, 115);
+        assert_eq!(two[1].reaching(5, AREA).width, 105);
+        assert_eq!(two[1].reaching(5, two[1].gap), level);
     }
 
     #[test]

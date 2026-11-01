@@ -82,10 +82,7 @@ impl App {
             return None;
         }
         let rect = placed.rect(self.terminal()?)?;
-        let color = self
-            .shown_session()
-            .and_then(|session| self.session_color(session))
-            .unwrap_or(chrome::ACCENT);
+        let color = self.active_pane_color();
         let ring = self.device(2) as f32;
         let (x, y) = (rect.x as f32, rect.y as f32);
         let (width, height) = (rect.width as f32, rect.height as f32);
