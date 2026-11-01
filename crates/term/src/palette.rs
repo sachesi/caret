@@ -63,7 +63,7 @@ impl Default for Base {
 }
 
 /// The base colours and what programs changed of them.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Palette {
     base: Base,
     overrides: Box<[Option<Rgb>; SLOTS]>,

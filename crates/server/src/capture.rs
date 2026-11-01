@@ -14,9 +14,15 @@ use caret_term::view::{Link, Place, View};
 
 use crate::palette;
 
-/// The whole of what a view shows: a row for every line.
+/// What a view shows, for a client that was last sent [`Sent`]: for every line its row, or
+/// none where the client has that already.
 pub struct Screen {
     frame: Frame,
+    rows: Vec<Option<Row>>,
+    /// Each line's [`stamp`](caret_term::grid::Row::stamp).
+    stamps: Vec<u64>,
+    palette: Palette,
+    linked: bool,
 }
 
 /// What the program asked of the terminal that changes what keys, the mouse and pastes
@@ -49,7 +55,9 @@ pub fn mode(term: &Term) -> Mode {
 }
 
 /// The rows `view` shows of `term` in `palette`, with `link` underlined as the one a click
-/// would open, and the cursor hollow while the client is not `focused`.
+/// would open, and the cursor hollow while the client is not `focused`. Rows are made only
+/// for the lines that may differ from what the client was `sent`: this runs for each frame,
+/// and most frames change a row or two of a screen of thousands of cells.
 #[expect(clippy::too_many_lines, reason = "one pass over the visible cells")]
 pub fn capture(
     term: &Term,
@@ -57,6 +65,7 @@ pub fn capture(
     palette: &Palette,
     focused: bool,
     link: Option<&Link>,
+    sent: &Sent,
 ) -> Screen {
     let (columns, lines) = (term.columns(), term.lines());
     let background = palette::rgb(palette.resolve(Color::DEFAULT, true));
@@ -106,8 +115,23 @@ pub fn capture(
         }
     });
 
-    for (line, shown) in view.shown(term).iter().enumerate() {
+    // What a row's cells are made from beside the row itself.
+    let same_look = sent.columns == columns as u16
+        && sent.rows.len() == lines
+        && link.is_none()
+        && !sent.linked
+        && sent.palette.as_ref() == Some(palette);
+    let shown_rows = view.shown(term);
+    let mut rows = Vec::with_capacity(shown_rows.len());
+    let mut stamps = Vec::with_capacity(shown_rows.len());
+    for (line, shown) in shown_rows.iter().enumerate() {
         let row = &shown.row;
+        let stamp = row.stamp();
+        stamps.push(stamp);
+        if same_look && stamp != 0 && sent.stamps.get(line) == Some(&stamp) {
+            rows.push(None);
+            continue;
+        }
         let mut cells = Vec::new();
         for (column, cell) in row.cells.iter().enumerate() {
             let style = cell.style;
@@ -175,12 +199,18 @@ pub fn capture(
                 flags: lines_drawn,
             });
         }
-        frame.rows.push(Row {
+        rows.push(Some(Row {
             line: line as u16,
             cells,
-        });
+        }));
     }
-    Screen { frame }
+    Screen {
+        frame,
+        rows,
+        stamps,
+        palette: palette.clone(),
+        linked: link.is_some(),
+    }
 }
 
 /// Bytes of a frame's rows, about, past which the rest wait for the next frame. A client
@@ -209,13 +239,21 @@ fn row_bytes(row: &Row) -> usize {
 pub struct Sent {
     columns: u16,
     rows: Vec<Row>,
+    /// The stamp of the row each line showed; zero for one that is still to be sent.
+    stamps: Vec<u64>,
+    palette: Option<Palette>,
+    /// A link was underlined.
+    linked: bool,
+    /// All but the rows of its last frame.
+    last: Frame,
 }
 
 impl Screen {
     /// The frame for a client that was last sent `sent`, which becomes this screen's rows:
     /// only the rows that differ, or all of them after the size changed. And whether that
-    /// is all of them: past [`FRAME_BYTES`], the rest go in the next frame.
-    pub fn changes(self, sent: &mut Sent, hovered: Option<Hovered>) -> (Frame, bool) {
+    /// is all of them: past [`FRAME_BYTES`], the rest go in the next frame. None when the
+    /// client has all of it already, so that what it draws stays as it is.
+    pub fn changes(self, sent: &mut Sent, hovered: Option<Hovered>) -> Option<(Frame, bool)> {
         self.changes_within(sent, hovered, FRAME_BYTES)
     }
 
@@ -224,34 +262,57 @@ impl Screen {
         sent: &mut Sent,
         hovered: Option<Hovered>,
         limit: usize,
-    ) -> (Frame, bool) {
-        let Self { mut frame } = self;
-        let mut rows = std::mem::take(&mut frame.rows);
+    ) -> Option<(Frame, bool)> {
+        let Self {
+            mut frame,
+            rows,
+            stamps,
+            palette,
+            linked,
+        } = self;
         let all = sent.columns != frame.columns || sent.rows.len() != rows.len();
+        if all {
+            sent.columns = frame.columns;
+            sent.rows = vec![Row::default(); rows.len()];
+            sent.stamps = vec![0; rows.len()];
+        }
         let mut bytes = 0;
         let mut whole = true;
-        for (line, row) in rows.iter_mut().enumerate() {
-            if !all && sent.rows[line] == *row {
+        let mut changed = Vec::new();
+        for (line, (row, stamp)) in rows.into_iter().zip(stamps).enumerate() {
+            let Some(row) = row else {
+                continue;
+            };
+            if !all && sent.rows[line] == row {
+                sent.stamps[line] = stamp;
                 continue;
             }
-            bytes += row_bytes(row);
-            if bytes > limit && !frame.rows.is_empty() {
+            bytes += row_bytes(&row);
+            if bytes > limit && !changed.is_empty() {
                 whole = false;
                 // Differs from any row there is, so it is sent next time.
-                *row = Row {
+                sent.rows[line] = Row {
                     line: u16::MAX,
                     cells: Vec::new(),
                 };
+                sent.stamps[line] = 0;
             } else {
-                frame.rows.push(row.clone());
+                changed.push(row.clone());
+                sent.rows[line] = row;
+                sent.stamps[line] = stamp;
             }
         }
-        *sent = Sent {
-            columns: frame.columns,
-            rows,
-        };
+        if sent.palette.as_ref() != Some(&palette) {
+            sent.palette = Some(palette);
+        }
+        sent.linked = linked;
         frame.hovered = hovered;
-        (frame, whole)
+        if changed.is_empty() && frame == sent.last {
+            return None;
+        }
+        sent.last.clone_from(&frame);
+        frame.rows = changed;
+        Some((frame, whole))
     }
 }
 
@@ -283,10 +344,156 @@ mod tests {
             .collect()
     }
 
+    /// What a client holds of a screen after the frames it was sent.
+    #[derive(Default)]
+    struct Client {
+        sent: Sent,
+        rows: Vec<Vec<Cell>>,
+        frames: usize,
+    }
+
+    impl Client {
+        fn take_frame(&mut self, term: &Term, view: &View, palette: &Palette, link: Option<&Link>) {
+            let screen = capture(term, view, palette, true, link, &self.sent);
+            let Some((frame, whole)) = screen.changes(&mut self.sent, None) else {
+                return;
+            };
+            assert!(whole);
+            self.frames += 1;
+            self.rows.resize(usize::from(frame.lines), Vec::new());
+            for row in frame.rows {
+                self.rows[usize::from(row.line)] = row.cells;
+            }
+        }
+    }
+
+    /// Whatever happened in between, the rows a client put together from its frames are
+    /// the ones a client new to the terminal would be sent.
+    #[test]
+    fn frames_add_up_to_the_whole_screen() {
+        const OUTPUT: [&str; 18] = [
+            "hello ",
+            "\r\n",
+            "\x1b[31mred\x1b[0m",
+            "\x1b[2;5H",
+            "\x1b[2J",
+            "\x1b[K",
+            "\x1b[1L",
+            "\x1b[1M",
+            "\x1b[2;4r",
+            "\x1b[r",
+            "\x1b[?1049h",
+            "\x1b[?1049l",
+            "\x1bc",
+            "\x1b]4;1;#102030\x07",
+            "\x1b]104\x07",
+            "日本語",
+            "e\u{301}",
+            "https://example.org/some/path ",
+        ];
+        for seed in 1..=64u64 {
+            let mut random = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+            let mut below = |limit: usize| {
+                random ^= random >> 12;
+                random ^= random << 25;
+                random ^= random >> 27;
+                (random.wrapping_mul(0x2545_f491_4f6c_dd1d) >> 33) as usize % limit
+            };
+            let mut term = Term::new(20, 6, Options::default());
+            let mut view = View::default();
+            let mut base = palette::base(&palette::fallback());
+            // One takes every frame, and one takes a frame now and then.
+            let (mut often, mut seldom) = (Client::default(), Client::default());
+            for _ in 0..300 {
+                match below(24) {
+                    0 => term.resize(10 + below(20), 3 + below(6)),
+                    1 => view.scroll(&term, 2),
+                    2 => view.scroll_to_bottom(),
+                    3 => {
+                        base.background = caret_term::palette::Rgb::from_u32(below(0xff) as u32);
+                        term.set_palette_base(base.clone());
+                    }
+                    _ => term.advance(OUTPUT[below(OUTPUT.len())].as_bytes()),
+                }
+                let hovered = below(3) == 0;
+                let link = hovered
+                    .then(|| view.link_at(&term, below(term.lines()), below(term.columns())))
+                    .flatten();
+                let palette = term.palette().clone();
+                often.take_frame(&term, &view, &palette, link.as_ref());
+                if below(4) == 0 {
+                    seldom.take_frame(&term, &view, &palette, link.as_ref());
+                }
+                let new = capture(
+                    &term,
+                    &view,
+                    &palette,
+                    true,
+                    link.as_ref(),
+                    &Sent::default(),
+                );
+                let (whole, _) = new.changes(&mut Sent::default(), None).expect("all of it");
+                assert_eq!(whole.rows.len(), term.lines(), "seed {seed}");
+                for row in whole.rows {
+                    assert_eq!(
+                        often.rows[usize::from(row.line)],
+                        row.cells,
+                        "seed {seed}, line {}",
+                        row.line
+                    );
+                }
+            }
+            seldom.take_frame(&term, &view, &term.palette().clone(), None);
+            let new = capture(&term, &view, term.palette(), true, None, &Sent::default());
+            let (whole, _) = new.changes(&mut Sent::default(), None).expect("all of it");
+            for row in whole.rows {
+                assert_eq!(seldom.rows[usize::from(row.line)], row.cells, "seed {seed}");
+            }
+            assert!(often.frames >= seldom.frames);
+        }
+    }
+
+    #[test]
+    fn a_frame_with_nothing_new_is_not_sent() {
+        let view = View::default();
+        let mut term = term("one");
+        let mut sent = Sent::default();
+        let palette = palette();
+        let frame = |term: &Term, sent: &mut Sent| {
+            capture(term, &view, &palette, true, None, sent).changes(sent, None)
+        };
+        assert!(frame(&term, &mut sent).is_some());
+        assert!(frame(&term, &mut sent).is_none());
+        // Written over with what it held: the row changed, what it shows did not.
+        term.advance(b"\rone");
+        assert!(frame(&term, &mut sent).is_none());
+        term.advance(b"\x08");
+        let (moved, _) = frame(&term, &mut sent).expect("the cursor moved");
+        assert!(moved.rows.is_empty());
+    }
+
+    #[test]
+    fn only_the_row_written_to_is_made_again() {
+        let view = View::default();
+        let mut term = term("one\r\ntwo\r\nthree");
+        let mut sent = Sent::default();
+        let palette = palette();
+        let _ = capture(&term, &view, &palette, true, None, &sent).changes(&mut sent, None);
+        term.advance(b"!");
+        let screen = capture(&term, &view, &palette, true, None, &sent);
+        let made: Vec<usize> = screen
+            .rows
+            .iter()
+            .enumerate()
+            .filter_map(|(line, row)| row.as_ref().map(|_| line))
+            .collect();
+        assert_eq!(made, [2]);
+    }
+
     fn frame(term: &Term, view: &View, sent: &mut Sent) -> Frame {
-        capture(term, view, &palette(), true, None)
+        capture(term, view, &palette(), true, None, sent)
             .changes(sent, None)
-            .0
+            .map_or_else(Frame::default, |(frame, _)| frame)
     }
 
     #[test]
@@ -301,8 +508,9 @@ mod tests {
         let mut got = vec![false; lines];
         let mut frames = 0;
         loop {
-            let (frame, whole) = capture(&term, &view, &palette(), true, None)
-                .changes_within(&mut sent, None, limit);
+            let (frame, whole) = capture(&term, &view, &palette(), true, None, &sent)
+                .changes_within(&mut sent, None, limit)
+                .expect("rows remain");
             frames += 1;
             assert!(caret_protocol::wire::encode(&frame).len() < limit);
             for row in &frame.rows {
@@ -314,8 +522,8 @@ mod tests {
         }
         assert!(frames > 1);
         assert!(got.iter().all(|&line| line), "every row arrived");
-        let (next, whole) = capture(&term, &view, &palette(), true, None).changes(&mut sent, None);
-        assert!(whole && next.rows.is_empty());
+        let next = capture(&term, &view, &palette(), true, None, &sent).changes(&mut sent, None);
+        assert_eq!(next, None);
     }
 
     #[test]
@@ -381,8 +589,9 @@ mod tests {
         assert_eq!((frame.history, frame.offset), (2, 1));
         assert_eq!(frame.cursor.map(|cursor| cursor.point.line), None);
         view.scroll(&term, -1);
-        let (frame, _) =
-            capture(&term, &view, &palette(), false, None).changes(&mut Sent::default(), None);
+        let (frame, _) = capture(&term, &view, &palette(), false, None, &Sent::default())
+            .changes(&mut Sent::default(), None)
+            .expect("the first frame");
         assert_eq!(
             frame.cursor.map(|cursor| (cursor.point.line, cursor.shape)),
             Some((3, CursorShape::HollowBlock))

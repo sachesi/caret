@@ -1,6 +1,7 @@
-//! The visible screen: rows of cells, and which rows changed since they were last taken.
+//! The visible screen: rows of cells, each with a stamp that tells when it changed.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::style::{Cell, Flags, Style};
 
@@ -21,6 +22,10 @@ pub struct Row {
     /// No cell from here on shows anything, so that the end of the text is found without
     /// looking at every blank after it.
     used: usize,
+    /// Changes with what the row holds, and is never the same on two rows of any screen,
+    /// so that someone who saw this stamp on a line knows the line still shows that. Zero
+    /// for a row made for showing the history, which no one can tell that of.
+    stamp: u64,
 }
 
 impl Row {
@@ -35,6 +40,12 @@ impl Row {
             },
             ..Self::default()
         }
+    }
+
+    /// See [`Row::stamp`](field@Row::stamp); zero for a row of the history.
+    #[must_use]
+    pub fn stamp(&self) -> u64 {
+        self.stamp
     }
 
     /// Cells up to `end` may show something now.
@@ -306,13 +317,17 @@ pub enum Text<'a> {
     Cluster(&'a str),
 }
 
+/// Which grid the next one is: each counts its stamps from a number of its own, so that
+/// rows of the two screens, or of one before and after a reset, never share one.
+static GRIDS: AtomicU64 = AtomicU64::new(1);
+
 #[derive(Debug, Clone)]
 pub struct Grid {
     /// A queue, as scrolling the whole screen is done for every line of output and then
     /// moves no row but the one going round.
     rows: VecDeque<Row>,
     columns: usize,
-    dirty: Vec<bool>,
+    last_stamp: u64,
     /// The highest row output wrote to since it was last taken, where that row is now:
     /// above the screen for one that scrolled off it since.
     written: Option<isize>,
@@ -321,12 +336,14 @@ pub struct Grid {
 impl Grid {
     #[must_use]
     pub fn new(columns: usize, lines: usize) -> Self {
-        Self {
-            rows: VecDeque::from(vec![Row::new(columns, Style::default()); lines]),
+        let mut grid = Self {
+            rows: VecDeque::new(),
             columns,
-            dirty: vec![true; lines],
+            last_stamp: GRIDS.fetch_add(1, Ordering::Relaxed) << 40,
             written: Some(0),
-        }
+        };
+        grid.set_rows(vec![Row::new(columns, Style::default()); lines], columns);
+        grid
     }
 
     #[must_use]
@@ -345,9 +362,11 @@ impl Grid {
     }
 
     pub fn row_mut(&mut self, line: usize) -> &mut Row {
-        self.dirty[line] = true;
         self.wrote(line);
-        &mut self.rows[line]
+        self.last_stamp += 1;
+        let row = &mut self.rows[line];
+        row.stamp = self.last_stamp;
+        row
     }
 
     pub(crate) fn wrote(&mut self, line: usize) {
@@ -366,22 +385,6 @@ impl Grid {
         &self.rows
     }
 
-    /// Whether `line` changed since the damage was last taken.
-    #[must_use]
-    pub fn is_dirty(&self, line: usize) -> bool {
-        self.dirty[line]
-    }
-
-    /// Forgets which rows changed, once they have been looked at.
-    pub fn clean(&mut self) {
-        self.dirty.fill(false);
-    }
-
-    pub fn touch_all(&mut self) {
-        self.dirty.fill(true);
-        self.wrote(0);
-    }
-
     /// Moves the rows from `top` to `bottom` up by `count`, blanking those it opens at the
     /// bottom with `style`. `gone` sees each row moved off the top, top first, before its
     /// cells are blanked for reuse.
@@ -397,13 +400,14 @@ impl Grid {
         for row in self.rows.range_mut(top..top + count) {
             gone(row);
             row.reset(style);
+            self.last_stamp += 1;
+            row.stamp = self.last_stamp;
         }
         if top == 0 && bottom + 1 == self.rows.len() {
             self.rows.rotate_left(count);
         } else {
             self.rows.make_contiguous()[top..=bottom].rotate_left(count);
         }
-        self.dirty[top..=bottom].fill(true);
         // Rows moved off the top keep their text, in the history or nowhere; rows moved
         // within the screen lose what they were.
         if top == 0 {
@@ -424,21 +428,24 @@ impl Grid {
         }
         for row in self.rows.range_mut(top..top + count) {
             row.reset(style);
+            self.last_stamp += 1;
+            row.stamp = self.last_stamp;
         }
-        self.dirty[top..=bottom].fill(true);
         self.wrote(top);
     }
 
     /// Takes every row out, leaving none, for a resize to make them again.
     pub fn take_rows(&mut self) -> Vec<Row> {
-        self.dirty.clear();
         std::mem::take(&mut self.rows).into()
     }
 
     /// Puts `rows` in, each `columns` wide.
-    pub fn set_rows(&mut self, rows: Vec<Row>, columns: usize) {
+    pub fn set_rows(&mut self, mut rows: Vec<Row>, columns: usize) {
         self.columns = columns;
-        self.dirty = vec![true; rows.len()];
+        for row in &mut rows {
+            self.last_stamp += 1;
+            row.stamp = self.last_stamp;
+        }
         self.rows = rows.into();
     }
 }
@@ -463,6 +470,41 @@ mod tests {
 
     fn text(row: &Row) -> String {
         row.cells.iter().map(|cell| cell.c).collect()
+    }
+
+    #[test]
+    fn a_row_keeps_its_stamp_until_it_changes() {
+        let mut grid = Grid::new(3, 3);
+        let stamps = |grid: &Grid| -> Vec<u64> { grid.rows().iter().map(Row::stamp).collect() };
+        let before = stamps(&grid);
+        assert!(before.iter().all(|&stamp| stamp != 0));
+        let _ = grid.row(1);
+        assert_eq!(stamps(&grid), before);
+        grid.row_mut(1);
+        let after = stamps(&grid);
+        assert_eq!((after[0], after[2]), (before[0], before[2]));
+        assert_ne!(after[1], before[1]);
+
+        grid.scroll_up(0, 2, 1, Style::default(), |_| {});
+        let scrolled = stamps(&grid);
+        assert_eq!(scrolled[..2], [after[1], after[2]]);
+        assert!(!after.contains(&scrolled[2]));
+        grid.scroll_down(0, 2, 1, Style::default());
+        let back = stamps(&grid);
+        assert_eq!(back[1..], scrolled[..2]);
+        assert!(!scrolled.contains(&back[0]));
+    }
+
+    #[test]
+    fn no_two_grids_share_a_stamp() {
+        let (one, other) = (Grid::new(3, 3), Grid::new(3, 3));
+        let stamps: std::collections::HashSet<u64> = one
+            .rows()
+            .iter()
+            .chain(other.rows())
+            .map(Row::stamp)
+            .collect();
+        assert_eq!(stamps.len(), 6);
     }
 
     #[test]

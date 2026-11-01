@@ -185,7 +185,6 @@ fn colours_are_changed_and_told() {
         replies,
         "\x1b]4;1;rgb:1212/3434/5656\x07\x1b]11;rgb:1d1d/1d1d/2020\x1b\\"
     );
-    assert!(term.recolored());
     term.advance(b"\x1b]104\x07");
     assert_eq!(
         term.palette().slot(1),

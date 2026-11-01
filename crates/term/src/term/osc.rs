@@ -120,7 +120,6 @@ impl Term {
                         }
                     }
                 }
-                self.recolored = true;
             }
             b"110" | b"111" | b"112" => {
                 self.palette.reset(match number {
@@ -128,7 +127,6 @@ impl Term {
                     b"111" => BACKGROUND,
                     _ => CURSOR,
                 });
-                self.recolored = true;
             }
             b"8" => self.hyperlink(fields),
             b"52" => self.clipboard(fields),
@@ -174,7 +172,6 @@ impl Term {
         }
         if let Some(color) = palette::parse(spec) {
             self.palette.set(slot, color);
-            self.recolored = true;
         }
     }
 

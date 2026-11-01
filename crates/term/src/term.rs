@@ -314,8 +314,6 @@ pub struct Term {
     dcs: Option<osc::Dcs>,
     replies: Vec<u8>,
     events: Vec<Event>,
-    /// The palette changed, so every row's colours did.
-    recolored: bool,
 }
 
 impl Term {
@@ -348,7 +346,6 @@ impl Term {
             dcs: None,
             replies: Vec::new(),
             events: Vec::new(),
-            recolored: false,
         }
     }
 
@@ -386,19 +383,6 @@ impl Term {
         } else {
             &self.main
         }
-    }
-
-    /// Forgets which rows changed, once a frame was made of them.
-    pub fn clean(&mut self) {
-        self.main.clean();
-        self.alt.clean();
-        self.recolored = false;
-    }
-
-    /// Whether every row's colours changed, with the palette.
-    #[must_use]
-    pub fn recolored(&self) -> bool {
-        self.recolored
     }
 
     #[must_use]
@@ -542,7 +526,6 @@ impl Term {
         if *self.palette.base() != base {
             let flipped = self.palette.base().is_dark() != base.is_dark();
             self.palette.set_base(base);
-            self.recolored = true;
             if flipped && self.modes.color_scheme_reports {
                 self.report_color_scheme();
             }
@@ -904,7 +887,7 @@ impl Term {
             self.alt
                 .set_rows(vec![Row::new(columns, blank); lines], columns);
         }
-        self.alt.touch_all();
+        self.alt.wrote(0);
         self.forget_last_cell();
     }
 
@@ -913,7 +896,7 @@ impl Term {
             return;
         }
         self.alt_active = false;
-        self.main.touch_all();
+        self.main.wrote(0);
         self.forget_last_cell();
     }
 
@@ -933,7 +916,6 @@ impl Term {
         self.keyboard = [0; 2];
         self.keyboard_stack = [Vec::new(), Vec::new()];
         self.palette.reset_all();
-        self.recolored = true;
         self.last = None;
         if !self.title.is_empty() {
             self.title.clear();

@@ -304,7 +304,6 @@ fn round(seed: u64) {
                 });
             }
             2 => term.end_synchronized(),
-            3 => term.clean(),
             _ => {}
         }
         check(&term, seed);

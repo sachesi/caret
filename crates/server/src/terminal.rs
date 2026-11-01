@@ -1170,15 +1170,25 @@ impl Worker {
             });
             let mut palette = term.palette().clone();
             palette.set_base(viewer.base.clone());
-            let (frame, whole) =
-                capture(term, &viewer.view, &palette, viewer.focused, link.as_ref())
-                    .changes(&mut viewer.sent, hovered);
-            viewer.send(&Message::Frame {
-                terminal: self.id,
-                frame,
-            });
-            viewer.wants_frame = false;
-            viewer.dirty = !whole;
+            let changes = capture(
+                term,
+                &viewer.view,
+                &palette,
+                viewer.focused,
+                link.as_ref(),
+                &viewer.sent,
+            )
+            .changes(&mut viewer.sent, hovered);
+            viewer.dirty = false;
+            // It keeps waiting for a frame until there is something new to see.
+            if let Some((frame, whole)) = changes {
+                viewer.send(&Message::Frame {
+                    terminal: self.id,
+                    frame,
+                });
+                viewer.wants_frame = false;
+                viewer.dirty = !whole;
+            }
         }
     }
 }
