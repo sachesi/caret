@@ -1,7 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <rect x="7.5" y="17.5" width="113" height="93" rx="12.5" fill="#9a9996" fill-opacity="0.4"/>
-  <rect x="8" y="18" width="112" height="92" rx="12" fill="#deddda"/>
-  <rect x="11" y="21" width="106" height="86" rx="9" fill="#343437"/>
-  <polyline points="30,44 45,56 30,68" fill="none" stroke="#f6f5f4" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-  <line x1="54" y1="70" x2="76" y2="70" stroke="#f6f5f4" stroke-width="7" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="top" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6b7180"/><stop offset="1" stop-color="#393c47"/></linearGradient>
+    <linearGradient id="mid" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#494d59"/><stop offset="1" stop-color="#31343d"/></linearGradient>
+    <linearGradient id="low" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a3d47"/><stop offset="1" stop-color="#282a32"/></linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2.2"/></filter>
+  </defs>
+  <polygon points="12,82 64,108 64,118 12,92" fill="#33353e"/>
+  <polygon points="116,82 64,108 64,118 116,92" fill="#25262d"/>
+  <polygon points="64,56 116,82 64,108 12,82" fill="url(#low)"/>
+  <polygon points="12,60 64,86 64,96 12,70" fill="#3b3e48"/>
+  <polygon points="116,60 64,86 64,96 116,70" fill="#2b2d35"/>
+  <polygon points="64,34 116,60 64,86 12,60" fill="url(#mid)"/>
+  <polygon points="12,38 64,64 64,74 12,48" fill="#474b57"/>
+  <polygon points="116,38 64,64 64,74 116,48" fill="#33363f"/>
+  <polygon points="64,12 116,38 64,64 12,38" fill="url(#top)"/>
+  <g fill="none" stroke="#fff" stroke-linejoin="round">
+    <polyline points="12,92 64,118 116,92" stroke-opacity=".16" stroke-width="1"/>
+    <polyline points="12,70 64,96 116,70" stroke-opacity=".18" stroke-width="1"/>
+    <polyline points="12,48 64,74 116,48" stroke-opacity=".2" stroke-width="1"/>
+    <polygon points="64,12 116,38 64,64 12,38" stroke-opacity=".36" stroke-width="1"/>
+  </g>
+  <g transform="matrix(1 .5 -1 .5 64 12)">
+    <g filter="url(#glow)" opacity=".6">
+      <polyline points="9,11 22,24 9,37" fill="none" stroke="#ffb53f" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <line x1="30.75" y1="35" x2="40.25" y2="35" stroke="#ffb53f" stroke-width="7.5" stroke-linecap="round"/>
+    </g>
+    <polyline points="9,11 22,24 9,37" fill="none" stroke="#ffc35c" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="30.75" y1="35" x2="40.25" y2="35" stroke="#ffc35c" stroke-width="7.5" stroke-linecap="round"/>
+  </g>
 </svg>
