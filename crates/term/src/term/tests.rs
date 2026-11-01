@@ -522,3 +522,21 @@ fn erasing_below_text_that_reached_the_last_column_keeps_its_last_character() {
     term.advance(b"\x1b[1;4H\x1b[J");
     assert_eq!(screen(&term)[0], "abc");
 }
+
+#[test]
+fn text_after_the_screen_starts_over_is_not_part_of_the_line_above_it() {
+    for clear in ["\x1bc", "\x1b[2J\x1b[H", "\x1b[H\x1b[J"] {
+        let mut term = term(4, 2);
+        // The first row of a long line leaves the screen, and the rest of it goes.
+        term.advance(b"aaaabbbbcc");
+        assert!(term.history().is_open());
+        term.advance(b"\x1b[H\x1b[2K\x1b[2;1H\x1b[2K\x1b[H");
+        term.advance(clear.as_bytes());
+        term.advance(b"new\r\n\r\n");
+        assert_eq!(
+            history(&term).last().map(String::as_str),
+            Some("new"),
+            "after {clear:?}"
+        );
+    }
+}

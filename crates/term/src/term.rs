@@ -969,6 +969,7 @@ impl Term {
         self.keyboard = [0; 2];
         self.keyboard_stack = [Vec::new(), Vec::new()];
         self.palette.reset_all();
+        self.history.end_line();
         self.last = None;
         if !self.title.is_empty() {
             self.title.clear();

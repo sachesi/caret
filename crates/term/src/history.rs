@@ -548,6 +548,11 @@ impl History {
         Some(line)
     }
 
+    /// Ends the newest line: the next row pushed starts one of its own.
+    pub fn end_line(&mut self) {
+        self.open = false;
+    }
+
     /// Whether the newest line goes on in the screen's first row.
     #[must_use]
     pub fn is_open(&self) -> bool {

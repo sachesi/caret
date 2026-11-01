@@ -148,6 +148,9 @@ impl Term {
                 for below in line + 1..lines {
                     self.grid().row_mut(below).reset(blank);
                 }
+                if (line, column) == (0, 0) && !self.alt_active {
+                    self.history.end_line();
+                }
             }
             1 => {
                 for above in 0..line {
@@ -172,6 +175,7 @@ impl Term {
                             self.history.push(row);
                         }
                     }
+                    self.history.end_line();
                 }
                 for each in 0..lines {
                     self.grid().row_mut(each).reset(blank);
