@@ -110,7 +110,8 @@ impl Glide {
     }
 
     /// The server's frames say the view is at `offset`. Other than asked, with nothing on
-    /// the way, it moved by itself: history grew under it, or keys sent it elsewhere.
+    /// the way, it moved by itself: history grew under it, or keys sent it elsewhere. Sent to
+    /// the bottom, by output or by the history going, it stays there.
     pub fn shown(&mut self, offset: u32, now: Instant) {
         if offset == self.asked {
             self.waiting = None;
@@ -121,6 +122,13 @@ impl Glide {
                 return;
             }
             self.waiting = None;
+        }
+        if offset == 0 {
+            self.position = 0.0;
+            self.target = 0.0;
+            self.velocity = 0.0;
+            self.asked = 0;
+            return;
         }
         let moved = f64::from(offset) - f64::from(self.asked);
         self.position = (self.position + moved).max(0.0);
@@ -320,8 +328,24 @@ mod tests {
             (glide.target - 12.0).abs() < f64::EPSILON,
             "history grew by three"
         );
+        glide.shown(6, now);
+        assert!((glide.target - 10.0).abs() < f64::EPSILON, "two lines went");
+        assert_eq!(run(&mut glide, &mut now).last().copied(), Some(10.0));
+    }
+
+    #[test]
+    fn a_view_sent_to_the_bottom_on_its_way_up_stays_there() {
+        let mut now = Instant::now();
+        let mut glide = Glide::new(5, now);
+        glide.turn(40.0, 100, now);
+        now += FRAME * 3;
+        glide.step(now);
+        glide.ask(now);
+        glide.shown(glide.asked, now);
         glide.shown(0, now);
-        assert_eq!(run(&mut glide, &mut now).last().copied(), Some(4.0));
+        assert_eq!(glide.ask(now), 0);
+        assert_eq!(run(&mut glide, &mut now).last().copied(), Some(0.0));
+        assert!(glide.is_done());
     }
 
     #[test]

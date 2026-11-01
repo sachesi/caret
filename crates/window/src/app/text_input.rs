@@ -133,6 +133,9 @@ impl App {
             return;
         }
         if let Some(terminal) = self.terminal() {
+            if self.config.scroll_on_keystroke {
+                self.stop_glide(terminal);
+            }
             self.server.send(&Request::Input {
                 terminal,
                 bytes: Bytes(text.into_bytes()),

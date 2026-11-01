@@ -62,6 +62,19 @@ impl App {
         self.draw();
     }
 
+    /// Ends the way of the view of `terminal`, as what sends it elsewhere does: a spring still
+    /// going would ask for rows of its own, against that.
+    pub(super) fn stop_glide(&mut self, terminal: TerminalId) {
+        let stopped = self
+            .tabs
+            .get_mut(self.selected)
+            .and_then(|tab| tab.panes.get_mut(&terminal))
+            .is_some_and(|pane| pane.glide.take().is_some());
+        if stopped {
+            self.dirty = true;
+        }
+    }
+
     /// Keeps a timer going while the tab shown has views on their way, for those left
     /// between two rows when what moved them stops.
     fn rest_later(&mut self) {

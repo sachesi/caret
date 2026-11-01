@@ -488,6 +488,7 @@ impl App {
             self.confirm(dialog, Confirm::Paste { terminal, text });
             return;
         }
+        self.stop_glide(terminal);
         self.server
             .input(terminal, &encode::paste(text, bracketed), true);
     }
