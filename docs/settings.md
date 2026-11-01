@@ -28,6 +28,7 @@ is deleted, and a new window has the defaults.
 | `scroll-on-output` | bool | false |
 | `scroll-on-keystroke` | bool | true |
 | `scroll-under-pointer` | bool | true |
+| `scroll-speed` | 0.1 to 10 | 1 |
 | `program-notifications` | bool | true |
 | `program-clipboard` | bool | true |
 | `audible-bell` | bool | true |

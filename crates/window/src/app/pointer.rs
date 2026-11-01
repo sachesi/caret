@@ -845,7 +845,7 @@ impl PointerHandler for App {
                         let height = f64::from(self.fonts.cell().height) / self.factor();
                         vertical.absolute / height
                     };
-                    self.scrolled(lines);
+                    self.scrolled(lines * self.config.scroll_speed);
                 }
             }
         }
