@@ -2,6 +2,7 @@
 //! the terminal wrapped them, and wrapped again only for the rows someone looks at.
 
 use std::collections::VecDeque;
+use std::ops::{ControlFlow, Range};
 
 use crate::grid::{Row, Text};
 use crate::style::{Cell, Flags, Style};
@@ -106,6 +107,10 @@ impl Line {
         };
         self.prompt |= row.prompt;
         self.text.reserve(end);
+        // A single run is all most lines have, and there are thousands of lines.
+        if self.runs.is_empty() {
+            self.runs.reserve_exact(1);
+        }
         let mut column = 0;
         while column < end {
             let cell = row.cells[column];
@@ -166,19 +171,41 @@ impl Line {
     /// The line wrapped into rows `columns` wide, padded with blanks of `pad`.
     #[must_use]
     pub fn wrap(&self, columns: usize, pad: Style) -> Vec<Row> {
+        self.wrap_rows(columns, pad, 0..usize::MAX)
+    }
+
+    /// Rows `wanted` of the line wrapped into rows `columns` wide, padded with blanks of
+    /// `pad`. A line can be as long as the history, and a view shows a screenful of it.
+    #[must_use]
+    pub fn wrap_rows(&self, columns: usize, pad: Style, wanted: Range<usize>) -> Vec<Row> {
         let columns = columns.max(1);
-        let mut rows = vec![Row::new(columns, pad)];
-        rows[0].prompt = self.prompt;
+        let new_row = |at: usize| {
+            wanted.contains(&at).then(|| {
+                let mut row = Row::new(columns, pad);
+                row.prompt = self.prompt && at == 0;
+                row
+            })
+        };
+        // In a line of one cell to a character, each row's start can be worked out.
+        let at = if self.is_plain() {
+            wanted.start.min(self.width() / columns)
+        } else {
+            0
+        };
+        let mut rows = Vec::new();
+        let mut at = at;
+        let mut row = new_row(at);
         let mut column = 0;
         let mut dropped = false;
-        self.each_cell(|cell, text| {
+        self.each_cell_from(at * columns, |cell, text| {
             if cell.style.flags.contains(Flags::SPACER) {
                 if !dropped {
-                    let last = rows.len() - 1;
-                    rows[last].set(column, cell);
+                    if let Some(row) = &mut row {
+                        row.set(column, cell);
+                    }
                     column += 1;
                 }
-                return;
+                return ControlFlow::Continue(());
             }
             let width = if cell.style.flags.contains(Flags::WIDE) {
                 2
@@ -188,41 +215,85 @@ impl Line {
             // A character wider than a row is left out, with its second half.
             dropped = width > columns;
             if dropped {
-                return;
+                return ControlFlow::Continue(());
             }
             if column + width > columns {
-                let last = rows.len() - 1;
-                if column < columns {
-                    // The cell a wide character did not fit in stays blank.
-                    let mut padding = Cell::blank(pad);
-                    padding.style.flags.insert(Flags::SPACER);
-                    rows[last].set(column, padding);
+                if let Some(mut full) = row.take() {
+                    if column < columns {
+                        // The cell a wide character did not fit in stays blank.
+                        let mut padding = Cell::blank(pad);
+                        padding.style.flags.insert(Flags::SPACER);
+                        full.set(column, padding);
+                    }
+                    full.wrapped = true;
+                    rows.push(full);
                 }
-                rows[last].wrapped = true;
-                rows.push(Row::new(columns, pad));
+                at += 1;
+                if at >= wanted.end {
+                    return ControlFlow::Break(());
+                }
+                row = new_row(at);
                 column = 0;
             }
-            let last = rows.len() - 1;
-            match text {
-                Some(text) => rows[last].set_cluster(column, cell, text),
-                None => rows[last].set(column, cell),
+            if let Some(row) = &mut row {
+                match text {
+                    Some(text) => row.set_cluster(column, cell, text),
+                    None => row.set(column, cell),
+                }
             }
             column += 1;
+            ControlFlow::Continue(())
         });
+        rows.extend(row);
         rows
+    }
+
+    /// Whether each cell is one byte of its text.
+    fn is_plain(&self) -> bool {
+        self.wide.is_empty() && self.clusters.is_empty() && self.text.len() == self.width()
+    }
+
+    /// The cell each of rows `wanted` starts with when wrapped `columns` wide.
+    #[must_use]
+    pub fn row_starts_in(&self, columns: usize, wanted: Range<usize>) -> Vec<usize> {
+        if self.wide.is_empty() {
+            return wanted.map(|row| row * columns.max(1)).collect();
+        }
+        let starts = self.row_starts(columns);
+        starts[wanted.start.min(starts.len())..wanted.end.min(starts.len())].to_vec()
     }
 
     /// Calls `each` with every cell in order, and its text where that is more than its
     /// character.
     fn each_cell(&self, mut each: impl FnMut(Cell, Option<&str>)) {
-        let mut bytes = 0;
+        self.each_cell_from(0, |cell, text| {
+            each(cell, text);
+            ControlFlow::Continue(())
+        });
+    }
+
+    /// The same from cell `from` on, until `each` breaks. Past the first cell only in a
+    /// line [`Line::is_plain`], where a cell's place in the text is known.
+    fn each_cell_from(
+        &self,
+        from: usize,
+        mut each: impl FnMut(Cell, Option<&str>) -> ControlFlow<()>,
+    ) {
+        let from = from.min(self.width()) as u32;
+        let mut bytes = from as usize;
         let mut wide = self.wide.iter().peekable();
         let mut clusters = self.clusters.iter().peekable();
         let mut runs = self.runs.iter();
         let mut run = runs.next().copied().unwrap_or((u32::MAX, Style::default()));
         let mut in_run = 0;
+        let mut before = from;
+        while before >= run.0 {
+            before -= run.0;
+            run = runs.next().copied().unwrap_or((u32::MAX, Style::default()));
+        }
+        in_run += before;
         let mut spacer_next = false;
-        for index in 0..self.cells {
+        for index in from..self.cells {
             if in_run == run.0 {
                 run = runs.next().copied().unwrap_or((u32::MAX, Style::default()));
                 in_run = 0;
@@ -232,22 +303,27 @@ impl Line {
             if spacer_next {
                 spacer_next = false;
                 style.flags.insert(Flags::SPACER);
-                each(Cell::blank(style), None);
+                if each(Cell::blank(style), None).is_break() {
+                    return;
+                }
                 continue;
             }
             if wide.next_if(|&&at| at == index).is_some() {
                 style.flags.insert(Flags::WIDE);
                 spacer_next = true;
             }
-            if let Some(&(_, length)) = clusters.next_if(|&&(at, _)| at == index) {
+            let flow = if let Some(&(_, length)) = clusters.next_if(|&&(at, _)| at == index) {
                 let text = &self.text[bytes..bytes + length as usize];
                 bytes += length as usize;
                 let c = text.chars().next().unwrap_or(' ');
-                each(Cell { c, style }, Some(text));
+                each(Cell { c, style }, Some(text))
             } else {
                 let c = self.text[bytes..].chars().next().unwrap_or(' ');
                 bytes += c.len_utf8();
-                each(Cell { c, style }, None);
+                each(Cell { c, style }, None)
+            };
+            if flow.is_break() {
+                return;
             }
         }
     }
@@ -564,6 +640,63 @@ mod tests {
             again.append(row);
         }
         assert_eq!(again, line);
+    }
+
+    #[test]
+    fn some_rows_of_a_line_are_the_same_as_when_all_are_made() {
+        let red = Style {
+            fg: Color::indexed(1),
+            ..Style::default()
+        };
+        let mut styled = row("abcdefghijkl", 12, true);
+        for cell in &mut styled.cells[3..8] {
+            cell.style = red;
+        }
+        let mut marked = row("ab", 12, true);
+        marked.add_mark(1, '\u{301}');
+        for (name, rows) in [
+            ("plain", vec![row("abcdefghijklmnopqrstuvwxyz", 40, false)]),
+            ("runs", vec![styled.clone(), styled]),
+            ("wide", vec![row("a日b日日c日日日日d", 40, false)]),
+            ("marks", vec![marked, row("cd", 12, false)]),
+            ("non-ASCII", vec![row("éèêëāăą", 12, false)]),
+            ("empty", vec![row("", 12, false)]),
+        ] {
+            let mut line = Line {
+                prompt: true,
+                ..Line::default()
+            };
+            for row in &rows {
+                line.append(row);
+            }
+            for columns in 1..14 {
+                let all = line.wrap(columns, Style::default());
+                let starts = line.row_starts(columns);
+                let same = |one: &Row, other: &Row| {
+                    assert_eq!(one.cells, other.cells, "{name} at {columns}");
+                    assert_eq!(one.wrapped, other.wrapped, "{name} at {columns}");
+                    assert_eq!(one.prompt, other.prompt, "{name} at {columns}");
+                    assert!(one.is_consistent());
+                    for column in 0..one.len() {
+                        assert_eq!(one.text(column), other.text(column), "{name} at {columns}");
+                    }
+                };
+                for first in 0..all.len() {
+                    for count in 1..=all.len() - first {
+                        let some = line.wrap_rows(columns, Style::default(), first..first + count);
+                        assert_eq!(some.len(), count, "{name} at {columns}: {first}, {count}");
+                        for (one, other) in some.iter().zip(&all[first..]) {
+                            same(one, other);
+                        }
+                        assert_eq!(
+                            line.row_starts_in(columns, first..first + count),
+                            starts[first..first + count],
+                            "{name} at {columns}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]

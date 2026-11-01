@@ -161,10 +161,13 @@ impl View {
         let screen = term.screen_places();
         let history = term.history();
         let columns = term.columns();
-        let mut wrapped: Option<(usize, Vec<Row>, Vec<usize>)> = None;
-        self.sources(term)
-            .into_iter()
-            .map(|source| match source {
+        // The rows of one history line, from one on, and where each starts.
+        let mut wrapped: Option<(usize, usize, Vec<Row>, Vec<usize>)> = None;
+        let sources = self.sources(term);
+        sources
+            .iter()
+            .enumerate()
+            .map(|(at, &source)| match source {
                 Source::Screen(row) => Shown {
                     row: Cow::Borrowed(term.screen().row(row)),
                     place: Place {
@@ -173,17 +176,26 @@ impl View {
                     },
                 },
                 Source::History(index, row) => {
-                    if wrapped.as_ref().is_none_or(|(at, ..)| *at != index) {
+                    if wrapped.as_ref().is_none_or(|(line, ..)| *line != index) {
                         let line = history.line(index);
+                        let count = sources[at..]
+                            .iter()
+                            .take_while(
+                                |source| matches!(source, Source::History(same, _) if *same == index),
+                            )
+                            .count();
                         wrapped = Some((
                             index,
-                            line.wrap(columns, Style::default()),
-                            line.row_starts(columns),
+                            row,
+                            line.wrap_rows(columns, Style::default(), row..row + count),
+                            line.row_starts_in(columns, row..row + count),
                         ));
                     }
                     let (row, cell) = wrapped.as_mut().map_or_else(
                         || (Row::new(columns, Style::default()), 0),
-                        |(_, rows, starts)| (std::mem::take(&mut rows[row]), starts[row]),
+                        |(_, first, rows, starts)| {
+                            (std::mem::take(&mut rows[row - *first]), starts[row - *first])
+                        },
                     );
                     Shown {
                         row: Cow::Owned(row),
