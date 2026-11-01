@@ -24,7 +24,7 @@ clap_complete_nushell = "4.6"
 foldhash = "0.2"
 fontdb = { version = "0.24", default-features = false, features = ["std", "fs", "memmap"] }
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
-harfrust = "0.13"
+harfrust = "0.15"
 libc.workspace = true
 rustix = { version = "1", features = ["event", "fs", "termios"] }
 shlex = "1"
