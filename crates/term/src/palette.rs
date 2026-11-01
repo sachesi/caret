@@ -1,7 +1,7 @@
 //! The colours a terminal's cells resolve to: the 16 its client chose, the 256-colour cube
 //! and grey ramp, and what programs changed through escape sequences.
 
-use crate::style::Color;
+use crate::style::{Color, ColorKind};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct Rgb {
@@ -123,11 +123,11 @@ impl Palette {
     /// `color` used as a foreground (`background` false) or a background.
     #[must_use]
     pub fn resolve(&self, color: Color, background: bool) -> Rgb {
-        match color {
-            Color::Rgb(r, g, b) => Rgb { r, g, b },
-            Color::Indexed(index) => self.slot(usize::from(index)).unwrap_or_default(),
-            Color::Default if background => self.slot(BACKGROUND).unwrap_or_default(),
-            Color::Default => self.slot(FOREGROUND).unwrap_or_default(),
+        match color.kind() {
+            ColorKind::Rgb(r, g, b) => Rgb { r, g, b },
+            ColorKind::Indexed(index) => self.slot(usize::from(index)).unwrap_or_default(),
+            ColorKind::Default if background => self.slot(BACKGROUND).unwrap_or_default(),
+            ColorKind::Default => self.slot(FOREGROUND).unwrap_or_default(),
         }
     }
 
@@ -245,7 +245,7 @@ mod tests {
         let mut palette = Palette::default();
         palette.set(1, Rgb::from_u32(0x123456));
         assert_eq!(
-            palette.resolve(Color::Indexed(1), false),
+            palette.resolve(Color::indexed(1), false),
             Rgb::from_u32(0x123456)
         );
         palette.reset(1);

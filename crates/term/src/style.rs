@@ -1,10 +1,15 @@
 //! What a cell holds: its character, colours, attributes and link.
 
-/// A colour as a program gave it, resolved to red, green and blue by whoever draws it.
-#[derive(Debug, Clone, Copy, Default, Eq)]
-pub enum Color {
+/// A colour as a program gave it, resolved to red, green and blue by whoever draws it. It is
+/// held as one number so that styles compare in one step: every cell's is compared as
+/// history is kept, which takes a quarter of the time output goes through otherwise.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct Color(u32);
+
+/// What a [`Color`] holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorKind {
     /// The default foreground or background, whichever the colour is used as.
-    #[default]
     Default,
     /// One of the 256 colours of the palette.
     Indexed(u8),
@@ -12,26 +17,31 @@ pub enum Color {
 }
 
 impl Color {
-    /// The colour in one number, which compares in one step where the variants would
-    /// take several: every cell's style is compared as history is kept.
-    fn packed(self) -> u32 {
-        match self {
-            Self::Default => 0,
-            Self::Indexed(index) => 1 << 24 | u32::from(index),
-            Self::Rgb(r, g, b) => 2 << 24 | u32::from(r) << 16 | u32::from(g) << 8 | u32::from(b),
+    pub const DEFAULT: Self = Self(0);
+
+    #[must_use]
+    pub const fn indexed(index: u8) -> Self {
+        Self(1 << 24 | index as u32)
+    }
+
+    #[must_use]
+    pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
+        Self(2 << 24 | (r as u32) << 16 | (g as u32) << 8 | b as u32)
+    }
+
+    #[must_use]
+    pub const fn kind(self) -> ColorKind {
+        match self.0 >> 24 {
+            0 => ColorKind::Default,
+            1 => ColorKind::Indexed(self.0 as u8),
+            _ => ColorKind::Rgb((self.0 >> 16) as u8, (self.0 >> 8) as u8, self.0 as u8),
         }
     }
 }
 
-impl PartialEq for Color {
-    fn eq(&self, other: &Self) -> bool {
-        self.packed() == other.packed()
-    }
-}
-
-impl std::hash::Hash for Color {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.packed().hash(state);
+impl std::fmt::Debug for Color {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.kind().fmt(f)
     }
 }
 
@@ -182,6 +192,18 @@ mod tests {
     #[test]
     fn cells_stay_small() {
         assert_eq!(size_of::<Cell>(), 20);
+    }
+
+    #[test]
+    fn a_color_gives_back_what_it_was_made_of() {
+        assert_eq!(Color::default(), Color::DEFAULT);
+        assert_eq!(Color::DEFAULT.kind(), ColorKind::Default);
+        assert_eq!(Color::indexed(0).kind(), ColorKind::Indexed(0));
+        assert_eq!(Color::indexed(255).kind(), ColorKind::Indexed(255));
+        assert_eq!(Color::rgb(0, 0, 0).kind(), ColorKind::Rgb(0, 0, 0));
+        assert_eq!(Color::rgb(1, 2, 3).kind(), ColorKind::Rgb(1, 2, 3));
+        assert_ne!(Color::indexed(0), Color::DEFAULT);
+        assert_ne!(Color::rgb(0, 0, 0), Color::indexed(0));
     }
 
     #[test]

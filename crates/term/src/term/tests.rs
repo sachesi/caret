@@ -130,14 +130,14 @@ fn graphic_rendition_sets_colours_and_attributes() {
     let x = cells[0].style;
     assert!(x.flags.contains(Flags::BOLD));
     assert_eq!(x.flags.underline(), Underline::Curly);
-    assert_eq!(x.fg, Color::Indexed(196));
-    assert_eq!(x.bg, Color::Rgb(1, 2, 3));
-    assert_eq!(x.underline, Color::Rgb(9, 8, 7));
+    assert_eq!(x.fg, Color::indexed(196));
+    assert_eq!(x.bg, Color::rgb(1, 2, 3));
+    assert_eq!(x.underline, Color::rgb(9, 8, 7));
     let y = cells[1].style;
     assert!(!y.flags.contains(Flags::BOLD));
     assert_eq!(y.flags.underline(), Underline::None);
-    assert_eq!(y.fg, Color::Default);
-    assert_eq!(y.bg, Color::Rgb(1, 2, 3));
+    assert_eq!(y.fg, Color::DEFAULT);
+    assert_eq!(y.bg, Color::rgb(1, 2, 3));
     assert_eq!(cells[2].style, Style::default());
 }
 

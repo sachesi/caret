@@ -59,8 +59,8 @@ pub fn capture(
     link: Option<&Link>,
 ) -> Screen {
     let (columns, lines) = (term.columns(), term.lines());
-    let background = palette::rgb(palette.resolve(Color::Default, true));
-    let foreground = palette::rgb(palette.resolve(Color::Default, false));
+    let background = palette::rgb(palette.resolve(Color::DEFAULT, true));
+    let foreground = palette::rgb(palette.resolve(Color::DEFAULT, false));
     let offset = view.offset(term);
     let style = term.cursor_style();
     let mut frame = Frame {
@@ -147,9 +147,10 @@ pub fn capture(
             if flags.contains(Flags::INVERSE) {
                 std::mem::swap(&mut fg, &mut bg);
             }
-            let underline = match style.underline {
-                Color::Default => fg,
-                color => palette::rgb(palette.resolve(color, false)),
+            let underline = if style.underline == Color::DEFAULT {
+                fg
+            } else {
+                palette::rgb(palette.resolve(style.underline, false))
             };
             if text.is_none() && bg == background && lines_drawn == CellFlags::empty() {
                 continue;

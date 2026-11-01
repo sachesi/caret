@@ -532,13 +532,13 @@ impl Term {
                 27 => flags.remove(Flags::INVERSE),
                 28 => flags.remove(Flags::HIDDEN),
                 29 => flags.remove(Flags::STRIKEOUT),
-                value @ 30..=37 => style.fg = Color::Indexed(value as u8 - 30),
-                value @ 40..=47 => style.bg = Color::Indexed(value as u8 - 40),
-                value @ 90..=97 => style.fg = Color::Indexed(value as u8 - 90 + 8),
-                value @ 100..=107 => style.bg = Color::Indexed(value as u8 - 100 + 8),
-                39 => style.fg = Color::Default,
-                49 => style.bg = Color::Default,
-                59 => style.underline = Color::Default,
+                value @ 30..=37 => style.fg = Color::indexed(value as u8 - 30),
+                value @ 40..=47 => style.bg = Color::indexed(value as u8 - 40),
+                value @ 90..=97 => style.fg = Color::indexed(value as u8 - 90 + 8),
+                value @ 100..=107 => style.bg = Color::indexed(value as u8 - 100 + 8),
+                39 => style.fg = Color::DEFAULT,
+                49 => style.bg = Color::DEFAULT,
+                59 => style.underline = Color::DEFAULT,
                 kind @ (38 | 48 | 58) => {
                     let color = if group.len() > 1 {
                         extended_color(&group[1..], true)
@@ -571,9 +571,9 @@ impl Term {
 /// then red, green and blue, with or without a colour space before them.
 fn extended_color(values: &[u16], colon: bool) -> Option<Color> {
     match values {
-        [5, index, ..] => Some(Color::Indexed(*index as u8)),
-        [2, _, r, g, b, ..] if colon => Some(Color::Rgb(*r as u8, *g as u8, *b as u8)),
-        [2, r, g, b] => Some(Color::Rgb(*r as u8, *g as u8, *b as u8)),
+        [5, index, ..] => Some(Color::indexed(*index as u8)),
+        [2, _, r, g, b, ..] if colon => Some(Color::rgb(*r as u8, *g as u8, *b as u8)),
+        [2, r, g, b] => Some(Color::rgb(*r as u8, *g as u8, *b as u8)),
         _ => None,
     }
 }
@@ -581,11 +581,11 @@ fn extended_color(values: &[u16], colon: bool) -> Option<Color> {
 /// A colour given in the groups after 38, 48 or 58, split by `;`, taking those it uses.
 fn extended_from_groups<'a>(groups: &mut impl Iterator<Item = &'a [u16]>) -> Option<Color> {
     match groups.next()?.first()? {
-        5 => Some(Color::Indexed(*groups.next()?.first()? as u8)),
+        5 => Some(Color::indexed(*groups.next()?.first()? as u8)),
         2 => {
             let mut next = || groups.next().and_then(|group| group.first().copied());
             let (r, g, b) = (next()?, next()?, next()?);
-            Some(Color::Rgb(r as u8, g as u8, b as u8))
+            Some(Color::rgb(r as u8, g as u8, b as u8))
         }
         _ => None,
     }

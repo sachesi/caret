@@ -570,7 +570,7 @@ mod tests {
     fn styles_are_kept_as_runs() {
         let mut styled = row("abcd", 4, false);
         let red = Style {
-            fg: Color::Indexed(1),
+            fg: Color::indexed(1),
             ..Style::default()
         };
         styled.cells[1].style = red;
