@@ -89,6 +89,8 @@ pub struct Config {
     pub scroll_on_output: bool,
     pub scroll_on_keystroke: bool,
     pub scroll_under_pointer: bool,
+    /// What the wheel and the touchpad scroll by is multiplied by this.
+    pub scroll_speed: f64,
     /// Programs may set the clipboard, and show notifications while out of sight.
     pub program_clipboard: bool,
     pub program_notifications: bool,
@@ -148,6 +150,7 @@ impl Default for Config {
             scroll_on_output: false,
             scroll_on_keystroke: true,
             scroll_under_pointer: true,
+            scroll_speed: 1.0,
             program_clipboard: true,
             program_notifications: true,
             audible_bell: true,
@@ -394,6 +397,13 @@ impl Config {
             "scroll-on-output" => self.scroll_on_output = boolean()?,
             "scroll-on-keystroke" => self.scroll_on_keystroke = boolean()?,
             "scroll-under-pointer" => self.scroll_under_pointer = boolean()?,
+            "scroll-speed" => {
+                self.scroll_speed = item
+                    .as_float()
+                    .or_else(|| item.as_integer().map(|speed| speed as f64))
+                    .filter(|speed| (0.1..=10.0).contains(speed))
+                    .ok_or("a number from 0.1 to 10")?;
+            }
             "program-clipboard" => self.program_clipboard = boolean()?,
             "program-notifications" => self.program_notifications = boolean()?,
             "audible-bell" => self.audible_bell = boolean()?,
@@ -535,6 +545,8 @@ const STARTER: &str = r##"# Caret's settings. Take the # off a setting to change
 #scroll-on-keystroke = true
 # Whether the wheel scrolls the pane under the pointer, and not the focused one.
 #scroll-under-pointer = true
+# How fast the wheel and the touchpad scroll; 1 is three lines a notch of the wheel.
+#scroll-speed = 1
 # Whether programs may put text on the clipboard, and show notifications while
 # their tab is out of sight.
 #program-clipboard = true
@@ -912,6 +924,15 @@ mod tests {
     fn the_wheel_follows_the_pointer_unless_told_not_to() {
         assert!(Config::default().scroll_under_pointer);
         assert!(!parse("scroll-under-pointer = false").scroll_under_pointer);
+    }
+
+    #[test]
+    fn the_scroll_speed_is_a_number_within_reason() {
+        assert!((Config::default().scroll_speed - 1.0).abs() < f64::EPSILON);
+        assert!((parse("scroll-speed = 2.5").scroll_speed - 2.5).abs() < f64::EPSILON);
+        assert!((parse("scroll-speed = 2").scroll_speed - 2.0).abs() < f64::EPSILON);
+        assert!((parse("scroll-speed = 0").scroll_speed - 1.0).abs() < f64::EPSILON);
+        assert!((parse("scroll-speed = 11").scroll_speed - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
