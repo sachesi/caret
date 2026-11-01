@@ -1590,10 +1590,14 @@ impl App {
                 .map(|text| text.as_bytes().to_vec()),
         };
         if let Some(bytes) = bytes {
+            let bottom = press != Press::Up && self.config.scroll_on_keystroke;
+            if bottom {
+                self.stop_glide(terminal);
+            }
             self.server.send(&Request::Input {
                 terminal,
                 bytes: Bytes(bytes),
-                bottom: press != Press::Up && self.config.scroll_on_keystroke,
+                bottom,
             });
             if press == Press::Down {
                 crate::timings::key();
@@ -1698,6 +1702,7 @@ impl App {
         let Some(terminal) = self.terminal() else {
             return false;
         };
+        self.stop_glide(terminal);
         self.server.send(&Request::Scroll { terminal, scroll });
         true
     }

@@ -211,14 +211,7 @@ impl App {
             line: Some(line),
             ..held
         });
-        // A spring still going would ask for rows of its own, against the pointer.
-        if let Some(pane) = self
-            .tabs
-            .get_mut(self.selected)
-            .and_then(|tab| tab.panes.get_mut(&held.terminal))
-        {
-            pane.glide = None;
-        }
+        self.stop_glide(held.terminal);
         self.server.send(&Request::Scroll {
             terminal: held.terminal,
             scroll: Scroll::To { line },
