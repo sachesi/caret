@@ -257,9 +257,9 @@ impl TextCursor {
 }
 
 /// What a held mouse button moves.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum Drag {
-    Divider(Divider),
+    Dividers(Vec<Divider>),
     Pane(TerminalId),
     /// The program asked for the mouse.
     Program(TerminalId),
@@ -749,8 +749,9 @@ impl Client {
                 }
             }
             MouseAction::Press => {
-                if let Some(divider) = placed.divider_at(point).filter(|_| left) {
-                    self.drag = Some(Drag::Divider(divider));
+                let dividers = placed.dividers_at(point, 0.0);
+                if left && !dividers.is_empty() {
+                    self.drag = Some(Drag::Dividers(dividers));
                     return;
                 }
                 let Some(terminal) = placed.pane_at(point) else {
@@ -763,14 +764,14 @@ impl Client {
                     self.drag = Some(Drag::Program(terminal));
                 }
             }
-            MouseAction::Motion => match self.drag {
-                Some(Drag::Divider(divider)) => {
-                    let share =
-                        divider.share_at(if divider.vertical { point.0 } else { point.1 }, 1);
-                    self.send(&Request::Divide {
-                        terminal: divider.before,
-                        share,
-                    });
+            MouseAction::Motion => match self.drag.clone() {
+                Some(Drag::Dividers(dividers)) => {
+                    for divider in dividers {
+                        self.send(&Request::Divide {
+                            terminal: divider.before,
+                            share: divider.share_under(point, 1),
+                        });
+                    }
                 }
                 Some(Drag::Program(terminal)) => {
                     self.report(terminal, mouse);

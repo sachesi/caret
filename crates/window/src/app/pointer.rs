@@ -66,8 +66,8 @@ pub struct Pointer {
     /// pressed, and whether it has been dragged since.
     pub(super) dragged_session: Option<(SessionId, (f64, f64), bool)>,
     pub(super) dragged_row: Option<(TerminalId, (f64, f64), bool)>,
-    /// The divider between panes held by the left button, which follows the pointer.
-    dividing: Option<Divider>,
+    /// The dividers between panes held by the left button, which follow the pointer.
+    dividing: Vec<Divider>,
     /// The pane held by the left button, to move where it is let go of.
     pub(super) moving: Option<TerminalId>,
     /// The button a program was told is held, to tell it of motion and release.
@@ -113,37 +113,52 @@ impl App {
         (x * self.factor(), y * self.factor())
     }
 
-    /// Moves the divider held to where the pointer is, resizing the panes on each side.
+    /// How far from where dividers meet a press still takes hold of them all, in device
+    /// pixels.
+    fn junction_reach(&self) -> f64 {
+        f64::from(self.gap()) / 2.0
+    }
+
+    /// Moves the dividers held to where the pointer is, resizing the panes around them.
     fn divide(&mut self) {
-        let Some(divider) = self.pointer.dividing else {
+        let point = self.device_point();
+        let gap = self.gap();
+        let Some(tab) = self.tabs.get_mut(self.selected) else {
             return;
         };
-        let (x, y) = self.device_point();
-        let share = divider.share_at(if divider.vertical { x } else { y }, self.gap());
-        if let Some(tab) = self.tabs.get_mut(self.selected)
-            && tab.root.divide(divider.before, share)
-        {
+        let mut moved = false;
+        for divider in &self.pointer.dividing {
+            moved |= tab
+                .root
+                .divide(divider.before, divider.share_under(point, gap));
+        }
+        if moved {
             self.resize_panes(self.selected);
             self.dirty = true;
             self.draw();
         }
     }
 
-    /// Lets go of the divider held, telling the server where it is now.
-    fn let_go_of_divider(&mut self) {
-        let Some(divider) = self.pointer.dividing.take() else {
-            return;
-        };
-        let share = self
-            .tabs
-            .get(self.selected)
-            .and_then(|tab| tab.root.share(divider.before));
-        if let Some(share) = share {
-            self.server.send(&Request::Divide {
-                terminal: divider.before,
-                share,
-            });
+    /// Lets go of the dividers held, telling the server where they are now.
+    fn let_go_of_dividers(&mut self) {
+        for divider in std::mem::take(&mut self.pointer.dividing) {
+            let share = self
+                .tabs
+                .get(self.selected)
+                .and_then(|tab| tab.root.share(divider.before));
+            if let Some(share) = share {
+                self.server.send(&Request::Divide {
+                    terminal: divider.before,
+                    share,
+                });
+            }
         }
+    }
+
+    /// The dividers a press where the pointer is would take hold of.
+    pub(super) fn dividers_under_pointer(&self) -> Vec<Divider> {
+        self.placed()
+            .dividers_at(self.device_point(), self.junction_reach())
     }
 
     /// Where the pointer is, in logical pixels from the window's corner.
@@ -180,10 +195,13 @@ impl App {
 
     /// The cursor's shape where the pointer is.
     pub(super) fn set_cursor(&mut self) {
-        let divider = self
-            .pointer
-            .dividing
-            .or_else(|| self.placed().divider_at(self.device_point()));
+        let dividers = if self.pointer.dividing.is_empty() {
+            self.dividers_under_pointer()
+        } else {
+            self.pointer.dividing.clone()
+        };
+        let upright = dividers.iter().any(|divider| divider.vertical);
+        let level = dividers.iter().any(|divider| !divider.vertical);
         let shape = match self.chrome.hovered {
             _ if self.pointer.moving.is_some() => Shape::Grabbing,
             _ if matches!(self.pointer.dragged_session, Some((_, _, true)))
@@ -192,8 +210,9 @@ impl App {
                 Shape::Grabbing
             }
             Some(part) => cursor(part),
-            None if divider.is_some_and(|divider| divider.vertical) => Shape::ColResize,
-            None if divider.is_some() => Shape::RowResize,
+            None if upright && level => Shape::AllScroll,
+            None if upright => Shape::ColResize,
+            None if level => Shape::RowResize,
             None if self.modifiers.ctrl && self.chrome.link.is_some() => Shape::Pointer,
             None if self.grid.mode.intersects(Mode::MOUSE_MODE) => Shape::Default,
             None => Shape::Text,
@@ -437,8 +456,8 @@ impl App {
         } else if self.pointer.moving.is_some() {
             self.drop_pane();
             self.set_cursor();
-        } else if self.pointer.dividing.is_some() {
-            self.let_go_of_divider();
+        } else if !self.pointer.dividing.is_empty() {
+            self.let_go_of_dividers();
             self.set_cursor();
         } else if self.chrome.pressed.is_some() {
             self.released_frame();
@@ -503,14 +522,15 @@ impl App {
             self.dirty = true;
             self.draw();
         }
+        if button == BUTTON_LEFT {
+            let dividers = self.dividers_under_pointer();
+            if !dividers.is_empty() {
+                self.pointer.dividing = dividers;
+                return;
+            }
+        }
         let placed = self.placed();
         let at = self.device_point();
-        if button == BUTTON_LEFT
-            && let Some(divider) = placed.divider_at(at)
-        {
-            self.pointer.dividing = Some(divider);
-            return;
-        }
         if button == BUTTON_LEFT
             && (self.control || self.modifiers.alt)
             && let Some(pane) = placed.pane_at(at)
@@ -634,7 +654,7 @@ impl App {
         } else if self.pointer.moving.is_some() {
             self.dirty = true;
             self.draw();
-        } else if self.pointer.dividing.is_some() {
+        } else if !self.pointer.dividing.is_empty() {
             self.divide();
         } else if self.dragging() {
             self.moved(position);
@@ -664,7 +684,9 @@ impl App {
 
     /// The terminal keeps a drag that began in it, wherever the pointer goes.
     fn dragging(&self) -> bool {
-        self.pointer.selecting || self.pointer.reported.is_some() || self.pointer.dividing.is_some()
+        self.pointer.selecting
+            || self.pointer.reported.is_some()
+            || !self.pointer.dividing.is_empty()
     }
 
     /// Scrolls by `lines`, up for negative ones, as the program or the view takes it.

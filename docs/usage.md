@@ -80,8 +80,9 @@ foreground asks first.
 
 Ctrl+Shift+E splits the pane with a new one to its right, Ctrl+Shift+O with one below,
 and the terminal's menu has both. Alt and the arrows go to the pane that way, a click
-goes to the one clicked, and dragging the gap between two panes moves it. Ctrl+Shift+W
-closes the pane, and the tab with its last one.
+goes to the one clicked, and dragging the gap between two panes moves it. Dragging from
+where two gaps meet moves both at once. Ctrl+Shift+W closes the pane, and the tab with its
+last one.
 
 Presets in the terminal's menu lays out a tab by a layout from the settings, with its
 programs and directories, as described under [split presets](settings.md#split-presets).

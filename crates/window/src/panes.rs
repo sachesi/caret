@@ -21,6 +21,16 @@ impl Rect {
             && y < f64::from(self.y + self.height)
     }
 
+    /// How far `point` is outside the rectangle, by the farther of the two axes.
+    fn distance(&self, (x, y): (f64, f64)) -> f64 {
+        let along = |at: f64, start: i32, length: i32| {
+            (f64::from(start) - at)
+                .max(at - f64::from(start + length))
+                .max(0.0)
+        };
+        along(x, self.x, self.width).max(along(y, self.y, self.height))
+    }
+
     fn center(&self) -> (i32, i32) {
         (self.x + self.width / 2, self.y + self.height / 2)
     }
@@ -48,6 +58,28 @@ impl Divider {
             .round()
             .clamp(1.0, f64::from(WHOLE - 1)) as u16
     }
+
+    /// The share of the room the first side takes with the divider following `point`.
+    pub fn share_under(&self, (x, y): (f64, f64), gap: i32) -> u16 {
+        self.share_at(if self.vertical { x } else { y }, gap)
+    }
+}
+
+/// The square where an upright and a level divider meet, when one ends against the other.
+fn junction(upright: &Divider, level: &Divider) -> Option<Rect> {
+    let (u, l) = (upright.gap, level.gap);
+    let level_ends = (l.x + l.width == u.x || l.x == u.x + u.width)
+        && l.y >= u.y
+        && l.y + l.height <= u.y + u.height;
+    let upright_ends = (u.y + u.height == l.y || u.y == l.y + l.height)
+        && u.x >= l.x
+        && u.x + u.width <= l.x + l.width;
+    (level_ends || upright_ends).then_some(Rect {
+        x: u.x,
+        y: l.y,
+        width: u.width,
+        height: l.height,
+    })
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -71,11 +103,47 @@ impl Placed {
             .map(|&(pane, _)| pane)
     }
 
-    pub fn divider_at(&self, point: (f64, f64)) -> Option<Divider> {
+    fn divider_at(&self, point: (f64, f64)) -> Option<Divider> {
         self.dividers
             .iter()
             .find(|divider| divider.gap.contains(point))
             .copied()
+    }
+
+    /// The dividers a drag from `point` moves: those meeting at the junction nearest it,
+    /// if one is within `reach` pixels, or else the divider under it. Dividers lined up
+    /// across a junction all meet there and stay lined up.
+    pub fn dividers_at(&self, point: (f64, f64), reach: f64) -> Vec<Divider> {
+        let meetings: Vec<(Rect, Divider, Divider)> = self
+            .dividers
+            .iter()
+            .filter(|upright| upright.vertical)
+            .flat_map(|upright| {
+                self.dividers
+                    .iter()
+                    .filter(|level| !level.vertical)
+                    .filter_map(|level| Some((junction(upright, level)?, *upright, *level)))
+            })
+            .collect();
+        let nearest = meetings
+            .iter()
+            .map(|&(square, ..)| (square, square.distance(point)))
+            .filter(|&(_, distance)| distance <= reach)
+            .min_by(|one, other| one.1.total_cmp(&other.1));
+        let Some((nearest, _)) = nearest else {
+            return self.divider_at(point).into_iter().collect();
+        };
+        let mut held = Vec::new();
+        for &(square, upright, level) in &meetings {
+            if square == nearest {
+                for divider in [upright, level] {
+                    if !held.contains(&divider) {
+                        held.push(divider);
+                    }
+                }
+            }
+        }
+        held
     }
 }
 
@@ -334,12 +402,53 @@ mod tests {
                 ),
             ]
         );
-        let divider = placed.divider_at((115.0, 50.0)).unwrap();
+        let divider = placed.dividers_at((115.0, 50.0), 0.0)[0];
         assert_eq!(divider.before, TerminalId(2));
         assert_eq!(divider.share_at(115.0, 10), WHOLE / 2);
         assert_eq!(divider.share_at(65.0, 10), WHOLE / 4);
         assert_eq!(placed.pane_at((130.0, 100.0)), Some(TerminalId(3)));
         assert_eq!(placed.pane_at((115.0, 100.0)), None);
+    }
+
+    #[test]
+    fn a_drag_from_where_two_dividers_meet_moves_both() {
+        let mut root = tree();
+        let placed = place(&root, AREA, 10);
+        let held = placed.dividers_at((115.0, 75.0), 0.0);
+        assert_eq!(held.len(), 2);
+        for divider in &held {
+            assert!(root.divide(divider.before, divider.share_under((65.0, 50.0), 10)));
+        }
+        let moved = place(&root, AREA, 10);
+        assert_eq!(moved.rect(TerminalId(1)).unwrap().width, 50);
+        assert_eq!(moved.rect(TerminalId(2)).unwrap().height, 25);
+    }
+
+    #[test]
+    fn a_junction_reaches_a_little_past_its_square_and_no_further() {
+        let placed = place(&tree(), AREA, 10);
+        assert_eq!(placed.dividers_at((125.0, 65.0), 5.0).len(), 2);
+        assert_eq!(placed.dividers_at((125.0, 65.0), 4.0).len(), 0);
+        assert_eq!(placed.dividers_at((115.0, 50.0), 5.0).len(), 1);
+        assert_eq!(placed.dividers_at((130.0, 100.0), 5.0).len(), 0);
+    }
+
+    #[test]
+    fn dividers_lined_up_across_a_junction_move_together() {
+        let grid = |right_share| {
+            let mut root = Node::Pane {
+                terminal: TerminalId(1),
+            };
+            root.split(TerminalId(1), TerminalId(2), true);
+            root.split(TerminalId(1), TerminalId(3), false);
+            root.split(TerminalId(2), TerminalId(4), false);
+            root.divide(TerminalId(4), right_share);
+            root
+        };
+        let held = place(&grid(WHOLE / 2), AREA, 10).dividers_at((115.0, 75.0), 0.0);
+        assert_eq!(held.len(), 3);
+        let held = place(&grid(WHOLE / 4), AREA, 10).dividers_at((115.0, 75.0), 0.0);
+        assert_eq!(held.len(), 2);
     }
 
     #[test]

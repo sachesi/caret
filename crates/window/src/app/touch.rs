@@ -94,9 +94,8 @@ impl TouchHandler for App {
         }
         self.pointer.position = position;
         self.hover();
-        let direct = self.part().is_some()
-            || self.control
-            || self.placed().divider_at(self.device_point()).is_some();
+        let direct =
+            self.part().is_some() || self.control || !self.dividers_under_pointer().is_empty();
         self.touch.finger = Some(Finger {
             id,
             start: position,
