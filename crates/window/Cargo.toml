@@ -40,5 +40,8 @@ tracing-subscriber.workspace = true
 xkbcommon = { version = "0.9", default-features = false }
 zbus = "5"
 
+[dev-dependencies]
+caret-term.workspace = true
+
 [lints]
 workspace = true
