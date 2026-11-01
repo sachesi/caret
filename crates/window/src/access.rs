@@ -32,7 +32,7 @@ pub struct Character {
 
 /// The terminal as it is drawn: its rows, the cursor and the selection in cells, where
 /// it is in the window and how big a cell is, in logical pixels.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Terminal {
     pub rows: Vec<Vec<Character>>,
     pub cursor: Option<(u16, u16)>,
@@ -42,14 +42,14 @@ pub struct Terminal {
     pub cell: (f64, f64),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct Menu {
     /// Each item's label and whether it can be chosen.
     pub items: Vec<(String, bool)>,
     pub focused: Option<usize>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct Dialog {
     pub heading: String,
     pub body: String,
@@ -61,7 +61,7 @@ pub struct Dialog {
 }
 
 /// Everything told, gathered from the window when it changes.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Scene {
     pub title: String,
     /// Each tab's label and whether it is the one shown.

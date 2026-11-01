@@ -1,14 +1,31 @@
 //! Screen readers: the window tells one what it shows while one listens, and does what
 //! one asks of its tabs, menus and dialogs.
 
+use std::time::{Duration, Instant};
+
 use accesskit::{
     Action, ActionHandler, ActionRequest, ActivationHandler, DeactivationHandler, TreeUpdate,
 };
 use accesskit_unix::Adapter;
 use smithay_client_toolkit::reexports::calloop::channel::{Channel, Sender};
+use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 
 use super::App;
 use crate::access::{self, Scene, Target};
+
+/// How often a screen reader is told of a screen that keeps changing. Making and comparing
+/// the whole tree took most of the window's time during long output, and no one can listen
+/// to the rows of a flood.
+const TELL_EVERY: Duration = Duration::from_millis(100);
+
+/// What a screen reader was last told, and when.
+#[derive(Default)]
+pub(super) struct Told {
+    scene: Option<Scene>,
+    at: Option<Instant>,
+    /// A timer will tell it of what changed since.
+    waiting: bool,
+}
 
 /// What a screen reader did, heard on the accessibility bus's thread.
 pub(super) enum Heard {
@@ -53,8 +70,10 @@ impl App {
         match heard {
             Heard::Listening(listening) => {
                 self.listened = listening;
+                // A reader that comes back has to be given the tree again.
+                self.told.scene = None;
                 if listening {
-                    self.tell_reader();
+                    self.tell_reader_now();
                 }
             }
             Heard::Asked(request) if request.action == Action::Click => {
@@ -69,13 +88,44 @@ impl App {
         }
     }
 
-    /// Tells a listening screen reader what the window shows now.
+    /// Tells a listening screen reader what the window shows, now or soon.
     pub(super) fn tell_reader(&mut self) {
+        if !self.listened || self.told.waiting {
+            return;
+        }
+        let wait = self
+            .told
+            .at
+            .and_then(|at| TELL_EVERY.checked_sub(at.elapsed()))
+            .unwrap_or_default();
+        if wait.is_zero() {
+            self.tell_reader_now();
+            return;
+        }
+        let timer = self
+            .events
+            .insert_source(Timer::from_duration(wait), |_, (), app| {
+                app.told.waiting = false;
+                app.tell_reader_now();
+                TimeoutAction::Drop
+            });
+        match timer {
+            Ok(_) => self.told.waiting = true,
+            Err(error) => tracing::warn!("timing what a screen reader is told: {error}"),
+        }
+    }
+
+    fn tell_reader_now(&mut self) {
         if !self.listened {
             return;
         }
         let scene = self.scene();
-        self.reader.update_if_active(|| access::tree(&scene));
+        self.told.at = Some(Instant::now());
+        // The cursor's blinking draws frames that change nothing a reader is told.
+        if self.told.scene.as_ref() != Some(&scene) {
+            self.reader.update_if_active(|| access::tree(&scene));
+            self.told.scene = Some(scene);
+        }
     }
 
     fn scene(&self) -> Scene {

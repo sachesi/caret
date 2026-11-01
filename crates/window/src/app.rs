@@ -304,8 +304,9 @@ struct App {
     exit: bool,
     /// Tells screen readers what the window shows.
     reader: accesskit_unix::Adapter,
-    /// A screen reader listens, so is told of each frame.
+    /// A screen reader listens, so is told of what frames show.
     listened: bool,
+    told: screen_reader::Told,
 }
 
 /// Protocols the window uses where the compositor offers them.
@@ -503,6 +504,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         exit: false,
         reader,
         listened: false,
+        told: screen_reader::Told::default(),
     };
     app.activate_at_start();
 
