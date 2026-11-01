@@ -159,12 +159,14 @@ impl Term {
                         .iter()
                         .rposition(|row| row.occupied() > 0 || row.prompt)
                         .map_or(0, |last| last + 1);
-                    let mut kept = rows[..used].to_vec();
-                    if let Some(last) = kept.last_mut() {
-                        last.wrapped = false;
-                    }
-                    for row in &kept {
-                        self.history.push(row);
+                    for (index, row) in rows.iter().take(used).enumerate() {
+                        if index + 1 == used && row.wrapped {
+                            let mut last = row.clone();
+                            last.wrapped = false;
+                            self.history.push(&last);
+                        } else {
+                            self.history.push(row);
+                        }
                     }
                 }
                 for each in 0..lines {

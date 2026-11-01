@@ -1,5 +1,7 @@
 //! The visible screen: rows of cells, and which rows changed since they were last taken.
 
+use std::collections::VecDeque;
+
 use crate::style::{Cell, Flags, Style};
 
 /// Bytes of text one cell keeps. Marks past it are dropped: a program could otherwise pile
@@ -306,7 +308,9 @@ pub enum Text<'a> {
 
 #[derive(Debug, Clone)]
 pub struct Grid {
-    rows: Vec<Row>,
+    /// A queue, as scrolling the whole screen is done for every line of output and then
+    /// moves no row but the one going round.
+    rows: VecDeque<Row>,
     columns: usize,
     dirty: Vec<bool>,
     /// The highest row output wrote to since it was last taken, where that row is now:
@@ -318,7 +322,7 @@ impl Grid {
     #[must_use]
     pub fn new(columns: usize, lines: usize) -> Self {
         Self {
-            rows: vec![Row::new(columns, Style::default()); lines],
+            rows: VecDeque::from(vec![Row::new(columns, Style::default()); lines]),
             columns,
             dirty: vec![true; lines],
             written: Some(0),
@@ -358,7 +362,7 @@ impl Grid {
     }
 
     #[must_use]
-    pub fn rows(&self) -> &[Row] {
+    pub fn rows(&self) -> &VecDeque<Row> {
         &self.rows
     }
 
@@ -390,11 +394,15 @@ impl Grid {
         mut gone: impl FnMut(&Row),
     ) {
         let count = count.min(bottom + 1 - top);
-        for row in &mut self.rows[top..top + count] {
+        for row in self.rows.range_mut(top..top + count) {
             gone(row);
             row.reset(style);
         }
-        self.rows[top..=bottom].rotate_left(count);
+        if top == 0 && bottom + 1 == self.rows.len() {
+            self.rows.rotate_left(count);
+        } else {
+            self.rows.make_contiguous()[top..=bottom].rotate_left(count);
+        }
         self.dirty[top..=bottom].fill(true);
         // Rows moved off the top keep their text, in the history or nowhere; rows moved
         // within the screen lose what they were.
@@ -409,8 +417,12 @@ impl Grid {
     /// top and dropping those pushed past the bottom.
     pub fn scroll_down(&mut self, top: usize, bottom: usize, count: usize, style: Style) {
         let count = count.min(bottom + 1 - top);
-        self.rows[top..=bottom].rotate_right(count);
-        for row in &mut self.rows[top..top + count] {
+        if top == 0 && bottom + 1 == self.rows.len() {
+            self.rows.rotate_right(count);
+        } else {
+            self.rows.make_contiguous()[top..=bottom].rotate_right(count);
+        }
+        for row in self.rows.range_mut(top..top + count) {
             row.reset(style);
         }
         self.dirty[top..=bottom].fill(true);
@@ -420,14 +432,14 @@ impl Grid {
     /// Takes every row out, leaving none, for a resize to make them again.
     pub fn take_rows(&mut self) -> Vec<Row> {
         self.dirty.clear();
-        std::mem::take(&mut self.rows)
+        std::mem::take(&mut self.rows).into()
     }
 
     /// Puts `rows` in, each `columns` wide.
     pub fn set_rows(&mut self, rows: Vec<Row>, columns: usize) {
         self.columns = columns;
         self.dirty = vec![true; rows.len()];
-        self.rows = rows;
+        self.rows = rows.into();
     }
 }
 
