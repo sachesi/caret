@@ -210,6 +210,21 @@ impl Parser {
                     continue;
                 }
             }
+            // Coloured text is mostly the parameters of its colours.
+            if matches!(self.state, State::CsiEntry | State::CsiParam) {
+                let run = bytes[index..]
+                    .iter()
+                    .position(|byte| !matches!(byte, b'0'..=b'9' | b':' | b';'))
+                    .unwrap_or(bytes.len() - index);
+                if run > 0 {
+                    for &byte in &bytes[index..index + run] {
+                        self.param(byte);
+                    }
+                    self.state = State::CsiParam;
+                    index += run;
+                    continue;
+                }
+            }
             self.byte(perform, bytes[index]);
             index += 1;
         }
