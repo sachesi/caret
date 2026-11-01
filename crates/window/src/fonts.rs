@@ -12,8 +12,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use caret_protocol::{BOLD, Glyph, GlyphText, ITALIC};
 use foldhash::fast::RandomState;
 use harfrust::{
-    Direction, Feature, Script, ShapeOptions, ShapePlan, ShaperData, ShaperInstance, Tag,
-    UnicodeBuffer, Variation,
+    Buffer as ShapeBuffer, Direction, Feature, Font as ShapeFont, Script, ShapeOptions, ShapePlan,
+    ShaperFont, Tag,
 };
 use swash::FontRef;
 use swash::scale::image::{Content, Image};
@@ -139,11 +139,6 @@ impl Face {
 
     fn font(&self) -> Option<FontRef<'_>> {
         FontRef::from_index(self.bytes(), self.index as usize)
-    }
-
-    /// The face as the shaper reads it.
-    fn tables(&self) -> Option<harfrust::FontRef<'_>> {
-        harfrust::FontRef::from_index(self.bytes(), self.index).ok()
     }
 
     fn has(&self, c: char) -> bool {
@@ -719,22 +714,22 @@ type PlanKey = (bool, Direction, Option<Script>);
 
 /// What shaping in a face at a weight reads from the font once.
 struct Shaping {
-    data: ShaperData,
-    instance: Option<ShaperInstance>,
+    font: ShapeFont,
     /// Plans take longer to make than shaping a line with.
     plans: HashMap<PlanKey, ShapePlan>,
 }
 
 impl Shaping {
     fn new(face: &Face) -> Option<Self> {
-        let font = face.tables()?;
-        let instance = face.weight.map(|value| {
-            let tag = Tag::new(b"wght");
-            ShaperInstance::from_variations(&font, [Variation { tag, value }])
-        });
+        let mut font = ShapeFont::new(Arc::clone(&face.data), face.index)?;
+        if let Some(value) = face.weight {
+            font = font
+                .instance_builder()
+                .variations([(Tag::new(b"wght"), value)])
+                .build();
+        }
         Some(Self {
-            data: ShaperData::new(&font),
-            instance,
+            font,
             plans: HashMap::new(),
         })
     }
@@ -756,30 +751,24 @@ impl Fonts {
             Entry::Occupied(known) => known.into_mut(),
             Entry::Vacant(place) => place.insert(Shaping::new(face)?),
         };
-        let font = face.tables()?;
-        let shaper = shaping
-            .data
-            .shaper(&font)
-            .instance(shaping.instance.as_ref())
-            .build();
-        let units = f32::from(u16::try_from(shaper.units_per_em()).ok()?);
-        let to_pixels = size / units;
-        let mut buffer = UnicodeBuffer::new();
+        let shaper = ShaperFont::new(&shaping.font);
+        let to_pixels = size / f32::from(shaping.font.units_per_em());
+        let mut buffer = ShapeBuffer::new();
         buffer.push_str(text);
         buffer.guess_segment_properties();
         // Text of no script of its own, such as symbols, has none, which the plan must
         // be made for as well.
-        let script = Some(buffer.script()).filter(|&script| script != harfrust::script::UNKNOWN);
+        let script = buffer.script().filter(|&script| script != Script::UNKNOWN);
         let direction = buffer.direction();
         let plan = shaping
             .plans
             .entry((terminal, direction, script))
-            .or_insert_with(|| ShapePlan::new(&shaper, direction, script, None, features));
+            .or_insert_with(|| ShapePlan::new(&shaping.font, direction, script, None, features));
         let options = ShapeOptions::new().plan(Some(plan)).features(features);
-        let shaped = shaper.shape(buffer, options);
+        harfrust::shape(&shaper, &mut buffer, options).ok()?;
         let mut pen = 0.0f32;
         let mut glyphs = Vec::new();
-        for (info, position) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {
+        for (info, position) in buffer.glyph_infos().iter().zip(buffer.glyph_positions()) {
             let advance = position.x_advance as f32 * to_pixels;
             if let Ok(id) = u16::try_from(info.glyph_id) {
                 glyphs.push(Shaped {
@@ -1021,7 +1010,7 @@ fn compose(placed: &[(i32, i32, Image)]) -> Option<Raster> {
 
 /// Whether the font at `index` of `data` draws glyphs in colours of its own.
 fn colored(data: &[u8], index: u32) -> bool {
-    harfrust::FontRef::from_index(data, index).is_ok_and(|font| {
+    skrifa::FontRef::from_index(data, index).is_ok_and(|font| {
         [b"COLR", b"CBDT", b"sbix"]
             .iter()
             .any(|tag| font.table_data(Tag::new(tag)).is_some())
