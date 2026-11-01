@@ -149,7 +149,7 @@ impl App {
                 .collect(),
             cursor: self
                 .grid
-                .cursor
+                .cursor_in_view()
                 .map(|cursor| (cursor.point.line, cursor.point.column)),
             selection: self.grid.selection(),
             bounds,

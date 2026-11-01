@@ -28,8 +28,9 @@ pub use wire::{Bytes, DecodeError, Wire};
 pub const MAGIC: [u8; 8] = *b"caret\0\0\0";
 pub const OLDEST: u16 = 1;
 /// Version 2 adds split panes; version 4 lays a tab out in one step; version 5 lets a client
-/// ask which session a terminal is in, and have every client let a session go.
-pub const NEWEST: u16 = 5;
+/// ask which session a terminal is in, and have every client let a session go; version 6
+/// sends the row under a view scrolled up, as the line after the screen's last.
+pub const NEWEST: u16 = 6;
 
 /// The largest message either side reads; a frame of a huge screen is a few megabytes.
 pub const LONGEST: usize = 64 << 20;

@@ -67,7 +67,7 @@ impl TextInput {
 impl App {
     /// Tells the input method where the cursor is, for it to place what it shows there.
     pub(super) fn place_text_input(&mut self) {
-        let Some(cursor) = self.grid.cursor else {
+        let Some(cursor) = self.grid.cursor_in_view() else {
             return;
         };
         let scale = self.factor();
@@ -93,7 +93,7 @@ impl App {
 
     /// Where the text being composed shows: over the cursor's cell, in device pixels.
     pub(super) fn place_preedit(&mut self) {
-        let Some(cursor) = self.grid.cursor else {
+        let Some(cursor) = self.grid.cursor_in_view() else {
             return;
         };
         let cell = self.fonts.cell();

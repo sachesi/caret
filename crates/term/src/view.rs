@@ -115,7 +115,16 @@ impl View {
     }
 
     fn sources(&self, term: &Term) -> Vec<Source> {
-        let lines = term.lines();
+        self.first_sources(term, term.lines())
+    }
+
+    /// The same, and the row under them where the view is scrolled up.
+    fn sources_and_below(&self, term: &Term) -> Vec<Source> {
+        let below = usize::from(self.anchor(term).is_some());
+        self.first_sources(term, term.lines() + below)
+    }
+
+    fn first_sources(&self, term: &Term, lines: usize) -> Vec<Source> {
         let mut sources = Vec::with_capacity(lines);
         if let Some((mut index, mut row)) = self.anchor(term) {
             let history = term.history();
@@ -129,17 +138,21 @@ impl View {
                 row = 0;
             }
         }
-        let screen = lines - sources.len();
+        let screen = (lines - sources.len()).min(term.lines());
         sources.extend((0..screen).map(Source::Screen));
         sources
     }
 
     /// The place of the first cell of each row shown.
     fn places(&self, term: &Term) -> Vec<Place> {
+        Self::places_of(term, self.sources(term))
+    }
+
+    fn places_of(term: &Term, sources: Vec<Source>) -> Vec<Place> {
         let screen = term.screen_places();
         let history = term.history();
         let mut starts: Option<(usize, Vec<usize>)> = None;
-        self.sources(term)
+        sources
             .into_iter()
             .map(|source| match source {
                 Source::Screen(row) => Place {
@@ -165,12 +178,22 @@ impl View {
     /// screen's.
     #[must_use]
     pub fn shown<'a>(&self, term: &'a Term) -> Vec<Shown<'a>> {
+        Self::rows_of(term, &self.sources(term))
+    }
+
+    /// The same, and the row under them where the view is scrolled up, which shows as the
+    /// view moves by less than a row.
+    #[must_use]
+    pub fn shown_and_below<'a>(&self, term: &'a Term) -> Vec<Shown<'a>> {
+        Self::rows_of(term, &self.sources_and_below(term))
+    }
+
+    fn rows_of<'a>(term: &'a Term, sources: &[Source]) -> Vec<Shown<'a>> {
         let screen = term.screen_places();
         let history = term.history();
         let columns = term.columns();
         // The rows of one history line, from one on, and where each starts.
         let mut wrapped: Option<(usize, usize, Vec<Row>, Vec<usize>)> = None;
-        let sources = self.sources(term);
         sources
             .iter()
             .enumerate()
@@ -459,9 +482,25 @@ impl View {
     /// The first and last cell selected that are shown, as lines and columns of the view.
     #[must_use]
     pub fn selected_cells(&self, term: &Term) -> Option<((usize, usize), (usize, usize))> {
+        self.selected_among(term, &self.places(term))
+    }
+
+    /// The same, counting the row under those shown where the view is scrolled up.
+    #[must_use]
+    pub fn selected_cells_and_below(
+        &self,
+        term: &Term,
+    ) -> Option<((usize, usize), (usize, usize))> {
+        self.selected_among(term, &Self::places_of(term, self.sources_and_below(term)))
+    }
+
+    fn selected_among(
+        &self,
+        term: &Term,
+        places: &[Place],
+    ) -> Option<((usize, usize), (usize, usize))> {
         let (first, last) = self.selected(term)?;
         let columns = term.columns();
-        let places = self.places(term);
         let ends_after = |row: &Place, place: Place| {
             row.line > place.line || (row.line == place.line && row.cell + columns > place.cell)
         };

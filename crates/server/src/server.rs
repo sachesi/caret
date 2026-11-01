@@ -42,6 +42,9 @@ const DETACH_EVERYONE: u16 = 5;
 /// The first protocol version with split panes.
 const PANES: u16 = 2;
 
+/// The first protocol version whose clients keep the row under a view scrolled up.
+const ROW_BELOW: u16 = 6;
+
 /// Containers a terminal keeps track of, innermost last. Any program's output can claim to
 /// enter one, and only a shell that says when commands run tells them apart.
 const MOST_CONTAINERS: usize = 16;
@@ -320,7 +323,12 @@ impl Server {
     /// Lets `client` see `terminal`.
     fn show(&self, terminal: &Terminal, client: ClientId) {
         if let Some(state) = self.clients.get(&client) {
-            terminal.show(client, state.writer.clone(), self.look_of(client));
+            terminal.show(
+                client,
+                state.writer.clone(),
+                self.look_of(client),
+                state.version >= ROW_BELOW,
+            );
         }
     }
 

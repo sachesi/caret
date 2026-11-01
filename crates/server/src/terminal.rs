@@ -109,6 +109,7 @@ enum Order {
         client: ClientId,
         writer: Outbox,
         look: Look,
+        row_below: bool,
     },
     Hide(ClientId),
     Look(ClientId, Look),
@@ -528,11 +529,13 @@ impl Terminal {
     }
 
     /// Lets `client` see the terminal, through frames sent to `writer`.
-    pub fn show(&self, client: ClientId, writer: Outbox, look: Look) {
+    /// Has `client` shown the terminal, sent the row under its view if `row_below`.
+    pub fn show(&self, client: ClientId, writer: Outbox, look: Look, row_below: bool) {
         self.order(Order::Show {
             client,
             writer,
             look,
+            row_below,
         });
     }
 
@@ -884,6 +887,7 @@ impl Worker {
                 client,
                 writer,
                 look,
+                row_below,
             } => {
                 let mut viewer = Viewer {
                     writer,
@@ -892,7 +896,7 @@ impl Worker {
                     scroll_on_output: false,
                     wants_frame: false,
                     dirty: true,
-                    sent: Sent::default(),
+                    sent: Sent::new(row_below),
                     hover: None,
                     focused: true,
                     search: None,
