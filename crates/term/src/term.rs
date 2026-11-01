@@ -1126,6 +1126,13 @@ impl Perform for Term {
         }
         let columns = self.columns();
         let mut rest = text;
+        // Only its first letter can continue a cluster: no ASCII character joins the next.
+        if self.modes.graphemes
+            && let Some((&first, after)) = rest.split_first()
+        {
+            self.put(char::from(first));
+            rest = after;
+        }
         while !rest.is_empty() {
             if self.cursor.pending && self.modes.autowrap {
                 self.wrap();

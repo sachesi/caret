@@ -110,6 +110,16 @@ fn marks_join_the_character_before() {
 }
 
 #[test]
+fn a_letter_after_a_prepended_mark_joins_it_when_clusters_are_asked_for() {
+    let mut term = Term::new(10, 2, Options::default());
+    term.advance("\x1b[?2027h\u{600}ab".as_bytes());
+    let row = term.screen().row(0);
+    assert_eq!(row.text(0), Text::Cluster("\u{600}a"));
+    assert_eq!(row.text(2), Text::Char('b'));
+    assert_eq!(term.cursor_at(), (0, 3));
+}
+
+#[test]
 fn grapheme_clusters_join_when_asked() {
     let family = "👩\u{200d}💻";
     let plain = fed(8, 1, family);
