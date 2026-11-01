@@ -71,6 +71,7 @@ pub fn capture(
     let background = palette::rgb(palette.resolve(Color::DEFAULT, true));
     let foreground = palette::rgb(palette.resolve(Color::DEFAULT, false));
     let offset = view.offset(term);
+    let row_below = usize::from(sent.row_below && offset > 0);
     let style = term.cursor_style();
     let mut frame = Frame {
         columns: columns as u16,
@@ -91,7 +92,7 @@ pub fn capture(
             Shape::Underline => CursorShape::Underline,
             Shape::Beam => CursorShape::Beam,
         };
-        (line < lines).then(|| Cursor {
+        (line < lines + row_below).then(|| Cursor {
             point: Point {
                 line: line as u16,
                 column: column as u16,
@@ -103,7 +104,12 @@ pub fn capture(
                 .contains(Flags::WIDE),
         })
     });
-    frame.selection = view.selected_cells(term).map(|(start, end)| {
+    let selected = if sent.row_below {
+        view.selected_cells_and_below(term)
+    } else {
+        view.selected_cells(term)
+    };
+    frame.selection = selected.map(|(start, end)| {
         let point = |(line, column): (usize, usize)| Point {
             line: line as u16,
             column: column as u16,
@@ -117,13 +123,18 @@ pub fn capture(
 
     // What a row's cells are made from beside the row itself.
     let same_look = sent.columns == columns as u16
-        && sent.rows.len() == lines
+        && sent.rows.len() == lines + usize::from(sent.row_below)
         && link.is_none()
         && !sent.linked
         && sent.palette.as_ref() == Some(palette);
-    let shown_rows = view.shown(term);
-    let mut rows = Vec::with_capacity(shown_rows.len());
-    let mut stamps = Vec::with_capacity(shown_rows.len());
+    let shown_rows = if sent.row_below {
+        view.shown_and_below(term)
+    } else {
+        view.shown(term)
+    };
+    let held = lines + usize::from(sent.row_below);
+    let mut rows = Vec::with_capacity(held);
+    let mut stamps = Vec::with_capacity(held);
     for (line, shown) in shown_rows.iter().enumerate() {
         let row = &shown.row;
         let stamp = row.stamp();
@@ -204,6 +215,10 @@ pub fn capture(
             cells,
         }));
     }
+    // At the bottom there is no row below: the client keeps what it has of that place, which
+    // the zero stamp has compared again when a row comes back there.
+    rows.resize(held, None);
+    stamps.resize(held, 0);
     Screen {
         frame,
         rows,
@@ -237,6 +252,8 @@ fn row_bytes(row: &Row) -> usize {
 /// What a client was last sent of a screen.
 #[derive(Debug, Default)]
 pub struct Sent {
+    /// The client also keeps the row under its view, while the view is scrolled up.
+    row_below: bool,
     columns: u16,
     rows: Vec<Row>,
     /// The stamp of the row each line showed; zero for one that is still to be sent.
@@ -246,6 +263,16 @@ pub struct Sent {
     linked: bool,
     /// All but the rows of its last frame.
     last: Frame,
+}
+
+impl Sent {
+    /// What a new client was sent, nothing yet, who may be sent the row under its view.
+    pub fn new(row_below: bool) -> Self {
+        Self {
+            row_below,
+            ..Self::default()
+        }
+    }
 }
 
 impl Screen {
@@ -281,6 +308,7 @@ impl Screen {
         let mut changed = Vec::new();
         for (line, (row, stamp)) in rows.into_iter().zip(stamps).enumerate() {
             let Some(row) = row else {
+                sent.stamps[line] = stamp;
                 continue;
             };
             if !all && sent.rows[line] == row {
@@ -360,15 +388,83 @@ mod tests {
             };
             assert!(whole);
             self.frames += 1;
-            self.rows.resize(usize::from(frame.lines), Vec::new());
+            self.rows.resize(usize::from(frame.lines) + 1, Vec::new());
             for row in frame.rows {
                 self.rows[usize::from(row.line)] = row.cells;
+            }
+        }
+
+        fn holds_what_a_new_client_is_sent(
+            &self,
+            term: &Term,
+            view: &View,
+            palette: &Palette,
+            link: Option<&Link>,
+            seed: u64,
+        ) {
+            let mut sent = Sent::new(self.sent.row_below);
+            let new = capture(term, view, palette, true, link, &sent);
+            let (whole, _) = new.changes(&mut sent, None).expect("all of it");
+            assert!(whole.rows.len() >= term.lines(), "seed {seed}");
+            for row in whole.rows {
+                assert_eq!(
+                    self.rows[usize::from(row.line)],
+                    row.cells,
+                    "seed {seed}, line {}",
+                    row.line
+                );
             }
         }
     }
 
     /// Whatever happened in between, the rows a client put together from its frames are
     /// the ones a client new to the terminal would be sent.
+    #[test]
+    fn the_row_below_a_scrolled_view_comes_as_the_line_after_the_screen() {
+        let term = term("1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n7");
+        let mut view = View::default();
+        let palette = palette();
+        let mut sent = Sent::new(true);
+        let frame = |view: &View, sent: &mut Sent| {
+            capture(&term, view, &palette, true, None, sent)
+                .changes(sent, None)
+                .map(|(frame, _)| frame)
+        };
+        let bottom = frame(&view, &mut sent).expect("a first frame");
+        assert!(bottom.rows.iter().all(|row| usize::from(row.line) < 4));
+        view.scroll(&term, 1);
+        let up = frame(&view, &mut sent).expect("a scrolled frame");
+        let last = up
+            .rows
+            .iter()
+            .find(|row| row.line == 4)
+            .expect("the row below");
+        assert_eq!(text(last), "7");
+        assert_eq!(
+            up.cursor.expect("the cursor").point.line,
+            4,
+            "in the row below"
+        );
+        assert!(frame(&view, &mut sent).is_none(), "nothing more to send");
+        view.scroll(&term, -1);
+        let down = frame(&view, &mut sent).expect("a frame at the bottom");
+        assert!(down.rows.iter().all(|row| usize::from(row.line) < 4));
+        assert_eq!(down.cursor.expect("the cursor").point.line, 3);
+    }
+
+    #[test]
+    fn a_client_of_an_older_version_is_sent_no_row_below() {
+        let term = term("1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n7");
+        let mut view = View::default();
+        view.scroll(&term, 1);
+        let mut sent = Sent::new(false);
+        let (frame, _) = capture(&term, &view, &palette(), true, None, &sent)
+            .changes(&mut sent, None)
+            .expect("a frame");
+        assert!(frame.rows.iter().all(|row| usize::from(row.line) < 4));
+        assert!(frame.cursor.is_none(), "the cursor is below the view");
+    }
+
     #[test]
     fn frames_add_up_to_the_whole_screen() {
         const OUTPUT: [&str; 18] = [
@@ -404,6 +500,10 @@ mod tests {
             let mut base = palette::base(&palette::fallback());
             // One takes every frame, and one takes a frame now and then.
             let (mut often, mut seldom) = (Client::default(), Client::default());
+            let mut with_row_below = Client {
+                sent: Sent::new(true),
+                ..Client::default()
+            };
             for _ in 0..300 {
                 match below(24) {
                     0 => term.resize(10 + below(20), 3 + below(6)),
@@ -421,34 +521,21 @@ mod tests {
                     .flatten();
                 let palette = term.palette().clone();
                 often.take_frame(&term, &view, &palette, link.as_ref());
+                with_row_below.take_frame(&term, &view, &palette, link.as_ref());
                 if below(4) == 0 {
                     seldom.take_frame(&term, &view, &palette, link.as_ref());
                 }
-                let new = capture(
+                often.holds_what_a_new_client_is_sent(&term, &view, &palette, link.as_ref(), seed);
+                with_row_below.holds_what_a_new_client_is_sent(
                     &term,
                     &view,
                     &palette,
-                    true,
                     link.as_ref(),
-                    &Sent::default(),
+                    seed,
                 );
-                let (whole, _) = new.changes(&mut Sent::default(), None).expect("all of it");
-                assert_eq!(whole.rows.len(), term.lines(), "seed {seed}");
-                for row in whole.rows {
-                    assert_eq!(
-                        often.rows[usize::from(row.line)],
-                        row.cells,
-                        "seed {seed}, line {}",
-                        row.line
-                    );
-                }
             }
             seldom.take_frame(&term, &view, &term.palette().clone(), None);
-            let new = capture(&term, &view, term.palette(), true, None, &Sent::default());
-            let (whole, _) = new.changes(&mut Sent::default(), None).expect("all of it");
-            for row in whole.rows {
-                assert_eq!(seldom.rows[usize::from(row.line)], row.cells, "seed {seed}");
-            }
+            seldom.holds_what_a_new_client_is_sent(&term, &view, term.palette(), None, seed);
             assert!(often.frames >= seldom.frames);
         }
     }

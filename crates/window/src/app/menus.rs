@@ -412,7 +412,7 @@ impl App {
     /// Where the terminal's menu opens from the keys: under the cursor, or where other
     /// menus the keys open go while it is out of sight.
     pub(super) fn cursor_menu_at(&self) -> (f32, f32) {
-        let Some(cursor) = self.grid.cursor else {
+        let Some(cursor) = self.grid.cursor_in_view() else {
             return self.keyed_menu_at();
         };
         let (scale, cell, margin) = (self.factor(), self.fonts.cell(), self.chrome.margin());

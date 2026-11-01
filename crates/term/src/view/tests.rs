@@ -265,3 +265,26 @@ fn an_address_is_found_and_a_word_selected_in_a_line_as_long_as_the_history() {
     };
     assert_eq!(word_edge(&term, long, false), filler.len() + 1 + 22);
 }
+
+#[test]
+fn the_row_below_a_scrolled_view_is_the_one_a_row_further_down_shows_last() {
+    let mut term = Term::new(5, 3, Options::default());
+    term.advance(b"1\r\n2\r\nlong line\r\n4\r\n5\r\n6\r\n7");
+    let mut view = View::default();
+    assert_eq!(
+        view.shown_and_below(&term).len(),
+        3,
+        "nothing is below the screen"
+    );
+    let texts = |rows: Vec<Shown<'_>>| -> Vec<String> {
+        rows.iter().map(|shown| row_text(&shown.row)).collect()
+    };
+    for offset in 1..=term.history().rows() {
+        view.set_offset(&term, offset);
+        let with_below = texts(view.shown_and_below(&term));
+        assert_eq!(with_below.len(), 4);
+        assert_eq!(with_below[..3], texts(view.shown(&term)));
+        view.set_offset(&term, offset - 1);
+        assert_eq!(with_below[1..], texts(view.shown(&term)));
+    }
+}

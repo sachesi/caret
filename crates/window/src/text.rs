@@ -201,7 +201,10 @@ impl Screen {
             }
         }
         self.background = frame.background;
-        self.cursor = frame.cursor.map(|cursor| cursor.point);
+        self.cursor = frame
+            .cursor
+            .map(|cursor| cursor.point)
+            .filter(|point| point.line < frame.lines);
         if let Some(cursor) = frame.cursor {
             self.cursor_shape = cursor.shape;
         }

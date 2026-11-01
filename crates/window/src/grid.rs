@@ -119,14 +119,26 @@ impl Grid {
             .collect()
     }
 
-    /// The selection's first and last cell, as line and column.
+    /// The cursor, unless it is on the row under the view.
+    pub fn cursor_in_view(&self) -> Option<Cursor> {
+        self.cursor
+            .filter(|cursor| usize::from(cursor.point.line) < self.lines)
+    }
+
+    /// The first and last cell selected in the view, as line and column.
     pub fn selection(&self) -> Option<((u16, u16), (u16, u16))> {
-        self.selection.map(|selection| {
-            (
-                (selection.start.line, selection.start.column),
-                (selection.end.line, selection.end.column),
-            )
-        })
+        let selection = self.selection?;
+        let lines = u16::try_from(self.lines).ok()?;
+        if selection.start.line >= lines {
+            return None;
+        }
+        let end = if selection.end.line < lines {
+            (selection.end.line, selection.end.column)
+        } else {
+            let last_column = u16::try_from(self.columns.saturating_sub(1)).ok()?;
+            (lines - 1, last_column)
+        };
+        Some(((selection.start.line, selection.start.column), end))
     }
 
     /// The cells of `columns` on `lines` seen from afar, as 0xRRGGBBAA: a cell with a
@@ -455,6 +467,33 @@ mod tests {
         assert_eq!(grid.cells[0].glyph, 7);
         assert_eq!(grid.cells[0].flags & HAS_BACKGROUND, 0);
         assert_eq!(grid.take_stale(), [1]);
+    }
+
+    #[test]
+    fn what_is_on_the_row_under_the_view_is_not_in_view() {
+        let mut grid = Grid::default();
+        let mut under = frame(Vec::new(), None);
+        under.cursor = Some(Cursor {
+            point: Point { line: 3, column: 1 },
+            shape: CursorShape::Block,
+            wide: false,
+        });
+        under.selection = Some(Selection {
+            start: Point { line: 2, column: 1 },
+            end: Point { line: 3, column: 0 },
+            block: false,
+        });
+        grid.apply(under.clone(), Fixed(1));
+        assert_eq!(grid.cursor_in_view(), None);
+        assert!(grid.cursor.is_some(), "it still draws as the view moves");
+        assert_eq!(grid.selection(), Some(((2, 1), (2, 3))));
+        under.selection = Some(Selection {
+            start: Point { line: 3, column: 0 },
+            end: Point { line: 3, column: 2 },
+            block: false,
+        });
+        grid.apply(under, Fixed(1));
+        assert_eq!(grid.selection(), None);
     }
 
     #[test]
