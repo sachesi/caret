@@ -19,6 +19,8 @@ const MIN_WIDTH: f32 = 160.0;
 const MAX_WIDTH: f32 = 560.0;
 const RADIUS: f32 = 12.0;
 const ITEM_RADIUS: f32 = 6.0;
+/// Kept clear above and below a lit item, so that two lit ones next to each other stay apart.
+const ITEM_GAP: f32 = 1.0;
 /// The heading's height, the dot before a label and the room it takes, and the height
 /// of a preview under its item's label.
 const HEADING: f32 = 30.0;
@@ -477,11 +479,12 @@ impl Painter<'_> {
                 || chrome.over(Part::MenuClose(index), false));
         if lit {
             let shade = colors.flat[usize::from(chrome.over(part, true))];
+            let gap = (ITEM_GAP * scale).round();
             quads.push(rounded(
                 x + inset,
-                top,
+                top + gap,
                 width - 2.0 * inset,
-                item_height,
+                item_height - 2.0 * gap,
                 ITEM_RADIUS * scale,
                 shade,
             ));
