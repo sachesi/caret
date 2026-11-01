@@ -281,6 +281,33 @@ fn client(random: &mut Random, term: &Term, view: &mut View, seed: u64) {
         assert!(top <= bottom && bottom < term.lines(), "seed {seed}");
         assert!(right < term.columns(), "seed {seed}");
     }
+    let with_below = view.shown_and_below(term);
+    assert!(with_below.len() <= term.lines() + 1, "seed {seed}");
+    assert_eq!(
+        with_below.len() > term.lines(),
+        view.offset(term) > 0,
+        "seed {seed}: a row under the view is only there scrolled up"
+    );
+    for (row, same) in with_below.iter().zip(&shown) {
+        assert_eq!(row.row.cells, same.row.cells, "seed {seed}");
+    }
+    for row in &with_below {
+        assert_eq!(row.row.len(), term.columns(), "seed {seed}");
+    }
+    let selected = view.selected_cells(term);
+    match view.selected_cells_and_below(term) {
+        Some((start, (bottom, right))) => {
+            assert!(
+                start.0 <= bottom && bottom < with_below.len(),
+                "seed {seed}"
+            );
+            assert!(right < term.columns(), "seed {seed}");
+            if let Some((first, _)) = selected {
+                assert_eq!(start, first, "seed {seed}");
+            }
+        }
+        None => assert_eq!(selected, None, "seed {seed}"),
+    }
     let _ = view.at_bottom(term);
 }
 
