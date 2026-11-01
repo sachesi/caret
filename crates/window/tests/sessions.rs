@@ -354,6 +354,18 @@ fn a_command_run_in_a_session_acts_on_that_session() {
 }
 
 #[test]
+fn a_program_finds_its_parent_called_after_the_terminal() {
+    let sandbox = Sandbox::new();
+    let session = sandbox.new_session(&[
+        "sh",
+        "-c",
+        "printf '[%s/%s]' \"$(cat /proc/$PPID/comm)\" \"$(tr '\\0' '\\n' </proc/$PPID/cmdline | head -n 1)\"; exec cat",
+    ]);
+    let shown = sandbox.show(&session);
+    shown.sees("[caret/caret]");
+}
+
+#[test]
 fn a_program_that_cannot_start_leaves_a_session_saying_so() {
     let sandbox = Sandbox::new();
     let session = sandbox.new_session(&["/no/such/program"]);

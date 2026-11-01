@@ -14,6 +14,16 @@ use caret_protocol::Size;
 /// The limit on open files the server was started with, once it raised its own.
 static STARTED_WITH: OnceLock<libc::rlimit> = OnceLock::new();
 
+/// Takes the terminal's name for this process, before any thread starts. What starts the
+/// server has that as the first word of its command line too: a program asking which
+/// terminal it runs in reads both of its parent, and believes the line only if it begins
+/// with the name.
+#[expect(unsafe_code, reason = "a process's name is only set through libc")]
+pub fn name_after_the_terminal() {
+    // SAFETY: the option reads the live, terminated string the pointer is to.
+    unsafe { libc::prctl(libc::PR_SET_NAME, c"caret".as_ptr()) };
+}
+
 /// Lets the server open as many files as it may. Each terminal takes five descriptors and
 /// each client three, so the usual limit of 1024 is reached at about 200 panes. Programs
 /// still start with the limit they would have had, as some cannot take a larger one.

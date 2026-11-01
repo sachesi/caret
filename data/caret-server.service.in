@@ -3,4 +3,4 @@ Description=Caret terminal server
 Requires=caret-server.socket
 
 [Service]
-ExecStart=@bindir@/caret-server
+ExecStart=@@bindir@/caret-server caret
