@@ -45,7 +45,7 @@ pub struct PresetPane {
 }
 
 impl Preset {
-    /// The preset `name` as `table` of the settings file gives it, or what is wrong with it.
+    /// The preset `name` as `table`, its file, gives it, or what is wrong with it.
     pub fn read(name: &str, table: &dyn TableLike) -> Result<Self, String> {
         let mut layout = None;
         let mut shortcut = None;

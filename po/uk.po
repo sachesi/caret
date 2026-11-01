@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-11-01 08:49+0200\n"
+"POT-Creation-Date: 2026-11-01 08:51+0200\n"
 "PO-Revision-Date: 2026-10-31 12:30+0200\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Ukrainian\n"
@@ -27,7 +27,8 @@ msgstr "Цей термінал не зміг запустити програм�
 #: crates/window/src/app.rs:951
 #, rust-format
 msgid "The settings file cannot be read and is not used: {why}"
-msgstr "Файл налаштувань не вдається прочитати, і він не використовується: {why}"
+msgstr ""
+"Файл налаштувань не вдається прочитати, і він не використовується: {why}"
 
 #: crates/window/src/app/attention.rs:74
 msgid "Command Finished"
@@ -471,18 +472,22 @@ msgid "Save"
 msgstr "Зберегти"
 
 #: crates/window/src/app/presets.rs:348
+msgid "A preset’s name cannot start with a dot or hold a slash"
+msgstr "Назва пресета не може починатися з крапки або містити скісну риску"
+
+#: crates/window/src/app/presets.rs:360
 #, rust-format
 msgid "There is already a preset “{name}”"
 msgstr "Пресет «{name}» вже є"
 
-#: crates/window/src/app/presets.rs:412
+#: crates/window/src/app/presets.rs:424
 #, rust-format
 msgid "Saved preset “{name}”"
 msgstr "Пресет «{name}» збережено"
 
-#: crates/window/src/app/presets.rs:414
-msgid "Could not write the settings file"
-msgstr "Не вдалося записати файл налаштувань"
+#: crates/window/src/app/presets.rs:426
+msgid "Could not write the preset"
+msgstr "Не вдалося записати пресет"
 
 #: crates/window/src/app/sessions.rs:302
 msgid "Close Session…"

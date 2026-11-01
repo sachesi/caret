@@ -89,21 +89,25 @@ the main menu or with `caret --profile NAME`:
 ## Split presets
 
 A split preset is a layout of panes under a name, offered by Presets in the terminal's
-menu and the main menu, and by `caret --preset NAME` for a new window:
+menu and the main menu, and by `caret --preset NAME` for a new window. Each is a file of
+its own in `~/.config/caret/presets/`, named for the preset, so `presets/dev.toml` is the
+preset `dev`:
 
-    [split-presets.dev]
     layout = "editor 60% | (logs / shell)"
     shortcut = "Ctrl+Alt+P"
 
-    [split-presets.dev.panes.editor]
+    [panes.editor]
     command = "nvim"
     directory = "~/src/app"
 
-    [split-presets.dev.panes.logs]
+    [panes.logs]
     command = "journalctl -f"
 
-    [split-presets.dev.panes.shell]
+    [panes.shell]
     keep = true
+
+The menu lists them in the order of their names. A preset's file can be broken without
+touching the settings or the other presets.
 
 `layout` draws the panes by name: `|` puts them side by side and `/` one under another,
 with parentheses around a group where the two meet. A percent after a pane or group is
@@ -125,10 +129,10 @@ new tab.
 
 A preset that cannot be used is left out of the menu, and a toast says why when the window
 opens or the settings change, with every such preset in the log. Save Layout as Preset,
-under Presets in a tab with several panes, writes the tab's layout here, with each pane's
-directory and the command line running in it. The focused pane is the kept one, if it runs
-no program of its own. To have a saved layout start where you are, take the `directory`
-lines out of it.
+under Presets in a tab with several panes, writes the tab's layout to a new file there,
+with each pane's directory and the command line running in it. The focused pane is the
+kept one, if it runs no program of its own. To have a saved layout start where you are,
+take the `directory` lines out of it.
 
 ## Keys
 

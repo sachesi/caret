@@ -343,7 +343,19 @@ impl App {
         if name.is_empty() || self.saving.is_some() {
             return;
         }
-        if self.config.presets.iter().any(|preset| preset.name == name) {
+        if !config::valid_preset_name(&name) {
+            self.toast(gettext(
+                "A preset’s name cannot start with a dot or hold a slash",
+            ));
+            return;
+        }
+        let in_use = self.config.presets.iter().any(|preset| preset.name == name)
+            || self
+                .config
+                .wrong_presets
+                .iter()
+                .any(|(wrong, _)| *wrong == name);
+        if in_use {
             self.toast(gettext_f(
                 "There is already a preset “{name}”",
                 &[("name", &name)],
@@ -411,7 +423,7 @@ impl App {
         let message = if config::add_preset(&saving.name, &layout, &panes) {
             gettext_f("Saved preset “{name}”", &[("name", &saving.name)])
         } else {
-            gettext("Could not write the settings file")
+            gettext("Could not write the preset")
         };
         self.toast(message);
     }

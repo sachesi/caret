@@ -1,6 +1,8 @@
-//! The settings in `config.toml`, in Caret's directory of the user's configuration.
+//! The settings in `config.toml` and the split presets in `presets/`, in Caret's directory
+//! of the user's configuration.
 
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fmt::Write as _;
 use std::mem::MaybeUninit;
 use std::os::fd::{AsFd, OwnedFd};
@@ -16,8 +18,8 @@ use crate::palette;
 use crate::presets::{Preset, SavedPane};
 use crate::shortcuts::{self, Action, Shortcut};
 
-/// The table of split presets.
-const PRESETS: &str = "split-presets";
+/// The directory of split presets, a file for each, beside `config.toml`.
+const PRESETS: &str = "presets";
 
 /// The font size when neither the settings nor the desktop name one.
 const POINTS: f32 = 11.0;
@@ -168,26 +170,34 @@ impl Config {
             return Self::default();
         };
         let mut config = match std::fs::read_to_string(&path) {
-            Ok(text) => Self::parse(&path, &text, profile),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Self::default(),
+            Ok(text) => Self {
+                found: true,
+                ..Self::parse(&path, &text, profile)
+            },
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Self::default(),
             Err(error) => {
                 tracing::warn!("reading {}: {error}", path.display());
                 Self {
+                    found: true,
                     unreadable: Some(error.to_string()),
                     ..Self::default()
                 }
             }
         };
-        config.found = true;
+        if let Some(directory) = presets_directory() {
+            config.read_presets(&directory);
+        }
         config
     }
 
     /// What a window using these settings goes on with once the files read as `loaded`. A
-    /// file that cannot be read changes nothing, nor does one that has gone: some editors
-    /// move it away for a moment as they save it.
+    /// `config.toml` that cannot be read changes nothing but the presets, nor does one that
+    /// has gone: some editors move it away for a moment as they save it.
     pub fn reloaded(&self, loaded: Self) -> Self {
         if loaded.unreadable.is_some() || (self.found && !loaded.found) {
             Self {
+                presets: loaded.presets,
+                wrong_presets: loaded.wrong_presets,
                 unreadable: loaded.unreadable,
                 ..self.clone()
             }
@@ -215,7 +225,6 @@ impl Config {
             tracing::warn!("{}: `profiles` is not a table", path.display());
         }
         config.take(path, "", document.as_table());
-        config.read_presets(path, &document);
         let Some(profile) = profile else {
             return config;
         };
@@ -235,7 +244,7 @@ impl Config {
             match key {
                 "keys" => self.bind(path, prefix, item),
                 // Read apart, by `parse`.
-                "profiles" | PRESETS if prefix.is_empty() => {}
+                "profiles" if prefix.is_empty() => {}
                 _ => {
                     if let Err(expected) = self.set(key, item) {
                         tracing::warn!("{}: `{prefix}{key}` is not {expected}", path.display());
@@ -245,24 +254,38 @@ impl Config {
         }
     }
 
-    /// Takes the valid presets of `document`, warning of each of the others.
-    fn read_presets(&mut self, path: &Path, document: &DocumentMut) {
-        let Some(item) = document.get(PRESETS) else {
-            return;
+    /// Takes the valid presets among the files in `directory`, in the order of their names,
+    /// warning of each of the others.
+    fn read_presets(&mut self, directory: &Path) {
+        let entries = match std::fs::read_dir(directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(error) => {
+                tracing::warn!("reading {}: {error}", directory.display());
+                return;
+            }
         };
-        let Some(presets) = item.as_table_like() else {
-            tracing::warn!("{}: `{PRESETS}` is not a table", path.display());
-            return;
-        };
-        for (name, item) in presets.iter() {
-            let preset = item
-                .as_table_like()
-                .ok_or_else(|| "it is not a table".to_owned())
-                .and_then(|table| Preset::read(name, table));
-            match preset {
+        let mut files: Vec<PathBuf> = entries
+            .filter_map(|entry| Some(entry.ok()?.path()))
+            .filter(|file| {
+                file.extension()
+                    .is_some_and(|extension| extension == "toml")
+            })
+            .collect();
+        files.sort();
+        for file in files {
+            let Some(name) = file
+                .file_stem()
+                .and_then(OsStr::to_str)
+                .filter(|name| valid_preset_name(name))
+            else {
+                tracing::warn!("{}: not a name for a preset", file.display());
+                continue;
+            };
+            match read_preset(name, &file) {
                 Ok(preset) => self.presets.push(preset),
                 Err(why) => {
-                    tracing::warn!("{}: `{PRESETS}.{name}`: {why}", path.display());
+                    tracing::warn!("{}: {why}", file.display());
                     self.wrong_presets.push((name.to_owned(), why));
                 }
             }
@@ -421,6 +444,15 @@ impl Config {
     }
 }
 
+/// The preset `name` in `file`, or what is wrong with it.
+fn read_preset(name: &str, file: &Path) -> Result<Preset, String> {
+    let text = std::fs::read_to_string(file).map_err(|error| error.to_string())?;
+    let document = text
+        .parse::<DocumentMut>()
+        .map_err(|error| problem(&text, &error))?;
+    Preset::read(name, document.as_table())
+}
+
 /// What is wrong with the TOML `text`, and on which line, in one line.
 fn problem(text: &str, error: &toml_edit::TomlError) -> String {
     let message = error.message().trim();
@@ -440,6 +472,16 @@ pub fn path() -> Option<PathBuf> {
         .map(PathBuf::from)
         .or_else(|| std::env::home_dir().map(|home| home.join(".config")))?;
     Some(base.join("caret").join("config.toml"))
+}
+
+/// The directory of split presets.
+fn presets_directory() -> Option<PathBuf> {
+    Some(path()?.parent()?.join(PRESETS))
+}
+
+/// Whether a preset can be called `name`, which names its file.
+pub fn valid_preset_name(name: &str) -> bool {
+    !name.is_empty() && !name.starts_with('.') && !name.contains(['/', '\0'])
 }
 
 /// What `config.toml` starts as when it is opened to edit: every setting at its
@@ -506,14 +548,14 @@ const STARTER: &str = r##"# Caret's settings. Take the # off a setting to change
 # with `keep`, or the first without a command. A tab with several panes, or a layout
 # with a command in every pane, opens a new tab. A pane's name can be used twice. In
 # `layout`, | is side by side, / is one under another, and a percent is a size. They
-# are in the terminal's menu and the main menu, and with caret --preset NAME.
-# [split-presets.dev]
+# are in the terminal's menu and the main menu, and with caret --preset NAME. Each is
+# a file in the presets directory beside this one, such as presets/dev.toml:
 # layout = "editor 60% | (logs / shell)"
 # shortcut = "Ctrl+Alt+P"
-# [split-presets.dev.panes.editor]
+# [panes.editor]
 # command = "nvim"
 # directory = "~/src/app"
-# [split-presets.dev.panes.shell]
+# [panes.shell]
 # keep = true
 
 # Profiles are settings of their own for the windows opened with them, from the
@@ -637,15 +679,35 @@ pub fn write(key: &str, value: impl Into<Value>) {
     edit(|document| document[key] = value);
 }
 
-/// Adds the preset `name` to `config.toml`, keeping the rest of the file as it is; whether
-/// it is there now.
+/// Writes the preset `name` to its file; whether it is there now. One already there stays.
 pub fn add_preset(name: &str, layout: &str, panes: &[SavedPane]) -> bool {
-    edit(|document| add_preset_to(document, name, layout, panes))
+    presets_directory().is_some_and(|directory| write_preset(&directory, name, layout, panes))
 }
 
-fn add_preset_to(document: &mut DocumentMut, name: &str, layout: &str, panes: &[SavedPane]) {
-    let mut preset = Table::new();
-    preset["layout"] = toml_edit::value(layout);
+fn write_preset(directory: &Path, name: &str, layout: &str, panes: &[SavedPane]) -> bool {
+    if !valid_preset_name(name) {
+        return false;
+    }
+    let file = directory.join(format!("{name}.toml"));
+    if file.exists() {
+        tracing::warn!("not writing {}: it is there already", file.display());
+        return false;
+    }
+    // Written beside it and renamed to it, so that no reader sees half a file.
+    let written = directory.join(format!("{name}.toml.new"));
+    let saved = std::fs::create_dir_all(directory)
+        .and_then(|()| std::fs::write(&written, preset_text(layout, panes)))
+        .and_then(|()| std::fs::rename(&written, &file));
+    if let Err(error) = saved {
+        tracing::warn!("writing {}: {error}", file.display());
+        return false;
+    }
+    true
+}
+
+fn preset_text(layout: &str, panes: &[SavedPane]) -> String {
+    let mut document = DocumentMut::new();
+    document["layout"] = toml_edit::value(layout);
     let mut tables = Table::new();
     tables.set_implicit(true);
     for pane in panes {
@@ -664,16 +726,9 @@ fn add_preset_to(document: &mut DocumentMut, name: &str, layout: &str, panes: &[
         }
     }
     if !tables.is_empty() {
-        preset["panes"] = Item::Table(tables);
+        document["panes"] = Item::Table(tables);
     }
-    let presets = document.entry(PRESETS).or_insert_with(|| {
-        let mut presets = Table::new();
-        presets.set_implicit(true);
-        Item::Table(presets)
-    });
-    if let Some(presets) = presets.as_table_mut() {
-        presets[name] = Item::Table(preset);
-    }
+    document.to_string()
 }
 
 /// Changes `config.toml` with `change`, keeping the rest of the file as it is; whether it
@@ -719,16 +774,18 @@ pub fn scheme_path(name: &str) -> Option<PathBuf> {
     )
 }
 
-/// Watches the directory `config.toml` is in and the one of colour schemes in it, made
+/// Watches the directory `config.toml` is in and those of colour schemes and presets in it, made
 /// if they are missing, so that changes to the files are seen however an editor saves
 /// them.
 pub fn watch() -> std::io::Result<OwnedFd> {
     let path = path().ok_or_else(|| std::io::Error::other("no home directory"))?;
     let directory = path.parent().unwrap_or(&path);
     let schemes = directory.join("schemes");
+    let presets = directory.join(PRESETS);
     std::fs::create_dir_all(&schemes)?;
+    std::fs::create_dir_all(&presets)?;
     let watch = inotify::init(inotify::CreateFlags::CLOEXEC | inotify::CreateFlags::NONBLOCK)?;
-    for directory in [directory, &schemes] {
+    for directory in [directory, &schemes, &presets] {
         inotify::add_watch(
             &watch,
             directory,
@@ -741,8 +798,8 @@ pub fn watch() -> std::io::Result<OwnedFd> {
     Ok(watch)
 }
 
-/// Reads every event waiting on `watch`, saying whether one was about `config.toml` or
-/// a colour scheme's file.
+/// Reads every event waiting on `watch`, saying whether one was about `config.toml`, a
+/// colour scheme's file or a preset's.
 pub fn changed(watch: impl AsFd) -> bool {
     let mut buffer = [MaybeUninit::uninit(); 4096];
     let mut events = inotify::Reader::new(watch, &mut buffer);
@@ -967,12 +1024,21 @@ mod tests {
     }
 
     #[test]
-    fn valid_presets_are_taken_in_the_file_s_order_and_a_saved_one_reads_back() {
-        let mut config = parse(
-            "[split-presets.two]\nlayout = \"a | b\"\n\
-             [split-presets.wrong]\nlayout = \"a\"\n\
-             [split-presets.one]\nlayout = \"a / b\"\n",
-        );
+    fn valid_presets_are_taken_by_file_name_and_a_saved_one_reads_back() {
+        let directory = std::env::temp_dir().join(format!("caret-presets-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let write = |name: &str, text: &str| std::fs::write(directory.join(name), text).unwrap();
+        write("two.toml", "layout = \"a | b\"\n");
+        write("wrong.toml", "layout = \"a\"\n");
+        write("broken.toml", "layout = \"a | b\"\nlayout = \"c | d\"\n");
+        write("one.toml", "layout = \"a / b\"\n");
+        write(".hidden.toml", "layout = \"a / b\"\n");
+        write("notes.txt", "layout = \"a / b\"\n");
+        let read = || {
+            let mut config = Config::default();
+            config.read_presets(&directory);
+            config
+        };
         let names = |config: &Config| {
             config
                 .presets
@@ -980,36 +1046,64 @@ mod tests {
                 .map(|preset| preset.name.clone())
                 .collect::<Vec<_>>()
         };
-        assert_eq!(names(&config), ["two", "one"]);
+        let config = read();
+        assert_eq!(names(&config), ["one", "two"]);
+        assert_eq!(config.wrong_presets[0].0, "broken");
+        assert!(config.wrong_presets[0].1.starts_with("line 2: "));
+        assert_eq!(config.wrong_presets[1].0, "wrong");
 
-        let mut document = "font = \"Mono 11\"\n# Mine.\n[split-presets.two]\nlayout = \"a | b\"\n"
-            .parse::<DocumentMut>()
-            .unwrap();
-        add_preset_to(
-            &mut document,
-            "my layout",
-            "pane1 60% | pane2 40%",
-            &[
-                SavedPane {
-                    name: "pane1".to_owned(),
-                    command: Some("top".to_owned()),
-                    directory: None,
-                    keep: false,
-                },
-                SavedPane {
-                    name: "pane2".to_owned(),
-                    command: None,
-                    directory: Some("/tmp".to_owned()),
-                    keep: true,
-                },
-            ],
-        );
-        let text = document.to_string();
-        assert!(text.contains("# Mine."), "{text}");
-        config = parse(&text);
-        assert_eq!(names(&config), ["two", "my layout"]);
-        assert_eq!(config.presets[1].kept().name, "pane2");
-        assert_eq!(config.presets[1].shape.panes()[0].command, ["top"]);
+        let panes = [
+            SavedPane {
+                name: "pane1".to_owned(),
+                command: Some("top".to_owned()),
+                directory: None,
+                keep: false,
+            },
+            SavedPane {
+                name: "pane2".to_owned(),
+                command: None,
+                directory: Some("/tmp".to_owned()),
+                keep: true,
+            },
+        ];
+        let layout = "pane1 60% | pane2 40%";
+        assert!(write_preset(&directory, "my layout", layout, &panes));
+        assert!(!write_preset(&directory, "my layout", "a | b", &[]));
+        let config = read();
+        assert_eq!(names(&config), ["my layout", "one", "two"]);
+        assert_eq!(config.presets[0].kept().name, "pane2");
+        assert_eq!(config.presets[0].shape.panes()[0].command, ["top"]);
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn a_preset_s_name_has_to_make_a_file_name() {
+        assert!(valid_preset_name("my layout"));
+        assert!(!valid_preset_name(""));
+        assert!(!valid_preset_name(".dev"));
+        assert!(!valid_preset_name("../dev"));
+        assert!(!valid_preset_name("a/b"));
+    }
+
+    #[test]
+    fn presets_follow_their_files_while_config_toml_cannot_be_read() {
+        let open = Config {
+            found: true,
+            ..parse("font = \"Mono 11\"\n")
+        };
+        let directory =
+            std::env::temp_dir().join(format!("caret-kept-presets-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("dev.toml"), "layout = \"a | b\"\n").unwrap();
+        let mut broken = Config {
+            found: true,
+            ..parse("font = ")
+        };
+        broken.read_presets(&directory);
+        let kept = open.reloaded(broken);
+        assert_eq!(kept.font.as_deref(), Some("Mono"));
+        assert_eq!(kept.presets[0].name, "dev");
+        std::fs::remove_dir_all(&directory).unwrap();
     }
 
     #[test]

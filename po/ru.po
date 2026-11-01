@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-11-01 08:49+0200\n"
+"POT-Creation-Date: 2026-11-01 08:51+0200\n"
 "PO-Revision-Date: 2026-10-31 12:30+0200\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Russian\n"
@@ -472,18 +472,22 @@ msgid "Save"
 msgstr "Сохранить"
 
 #: crates/window/src/app/presets.rs:348
+msgid "A preset’s name cannot start with a dot or hold a slash"
+msgstr "Имя пресета не может начинаться с точки или содержать косую черту"
+
+#: crates/window/src/app/presets.rs:360
 #, rust-format
 msgid "There is already a preset “{name}”"
 msgstr "Пресет «{name}» уже есть"
 
-#: crates/window/src/app/presets.rs:412
+#: crates/window/src/app/presets.rs:424
 #, rust-format
 msgid "Saved preset “{name}”"
 msgstr "Пресет «{name}» сохранён"
 
-#: crates/window/src/app/presets.rs:414
-msgid "Could not write the settings file"
-msgstr "Не удалось записать файл настроек"
+#: crates/window/src/app/presets.rs:426
+msgid "Could not write the preset"
+msgstr "Не удалось записать пресет"
 
 #: crates/window/src/app/sessions.rs:302
 msgid "Close Session…"
