@@ -103,7 +103,7 @@ swash does not draw, are painted by `color_glyph.rs` from skrifa's description o
 
     just run [-e COMMAND…]   # debug build, as io.github.sachesi.caret.Devel
     just check               # fmt, clippy -D warnings, validators, catalogues
-    just test                # the unit tests
+    just test                # the tests, which run the server and `caret session` too
     just deny                # advisories, licences and sources of the dependencies
     just bench               # how fast the release build is, in a headless session
 
