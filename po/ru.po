@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-11-01 14:25+0200\n"
+"POT-Creation-Date: 2026-11-01 14:43+0200\n"
 "PO-Revision-Date: 2026-10-31 12:30+0200\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Russian\n"
@@ -16,15 +16,15 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
-#: crates/window/src/app.rs:699
+#: crates/window/src/app.rs:706
 msgid "The text is too long to paste"
 msgstr "Текст слишком длинный для вставки"
 
-#: crates/window/src/app.rs:743
+#: crates/window/src/app.rs:750
 msgid "This terminal could not run its program"
 msgstr "Этот терминал не смог запустить программу"
 
-#: crates/window/src/app.rs:951
+#: crates/window/src/app.rs:979
 #, rust-format
 msgid "The settings file cannot be read and is not used: {why}"
 msgstr "Файл настроек не удаётся прочитать, и он не используется: {why}"
@@ -149,7 +149,7 @@ msgstr[2] "{count} сеансов завершатся вместе с этим 
 msgid "The session “{session}” will end with this window."
 msgstr "Сеанс «{session}» завершится вместе с этим окном."
 
-#: crates/window/src/app/confirm.rs:470 crates/window/src/app/menus.rs:630
+#: crates/window/src/app/confirm.rs:470 crates/window/src/app/menus.rs:714
 msgid "Detach"
 msgstr "Отсоединить"
 
@@ -169,7 +169,7 @@ msgstr ""
 "Эта программа не отмечает вставленный текст, поэтому каждая строка "
 "выполнится, как если бы её набрали и нажали Enter."
 
-#: crates/window/src/app/confirm.rs:485 crates/window/src/app/menus.rs:176
+#: crates/window/src/app/confirm.rs:485 crates/window/src/app/menus.rs:180
 #: crates/window/src/app/shortcut_list.rs:71
 msgid "Paste"
 msgstr "Вставить"
@@ -204,152 +204,157 @@ msgstr ""
 msgid "Moving panes needs a newer terminal server"
 msgstr "Для перемещения панелей нужен более новый терминальный сервер"
 
-#: crates/window/src/app/menus.rs:106 crates/window/src/app/menus.rs:194
+#: crates/window/src/app/menus.rs:110 crates/window/src/app/menus.rs:198
 #: crates/window/src/app/shortcut_list.rs:23
 #: data/io.github.sachesi.caret.desktop:17
 msgid "New Window"
 msgstr "Новое окно"
 
-#: crates/window/src/app/menus.rs:107 crates/window/src/app/menus.rs:196
+#: crates/window/src/app/menus.rs:111 crates/window/src/app/menus.rs:200
 #: crates/window/src/app/sessions.rs:292
 #: crates/window/src/app/shortcut_list.rs:25
 msgid "New Tab"
 msgstr "Новая вкладка"
 
-#: crates/window/src/app/menus.rs:108 crates/window/src/app/menus.rs:422
-#: crates/window/src/app/menus.rs:597 crates/window/src/app/shortcut_list.rs:26
+#: crates/window/src/app/menus.rs:112 crates/window/src/app/menus.rs:261
+#: crates/window/src/app/menus.rs:496 crates/window/src/app/menus.rs:681
+#: crates/window/src/app/shortcut_list.rs:26
 msgid "New Session"
 msgstr "Новый сеанс"
 
-#: crates/window/src/app/menus.rs:113
+#: crates/window/src/app/menus.rs:117
 #, rust-format
 msgid "New “{profile}” Window"
 msgstr "Новое окно «{profile}»"
 
-#: crates/window/src/app/menus.rs:124 crates/window/src/app/sessions.rs:304
+#: crates/window/src/app/menus.rs:128 crates/window/src/app/sessions.rs:304
 msgid "Detach Session"
 msgstr "Отсоединить сеанс"
 
-#: crates/window/src/app/menus.rs:129
+#: crates/window/src/app/menus.rs:133
 msgid "Detach Window"
 msgstr "Отсоединить окно"
 
-#: crates/window/src/app/menus.rs:132 crates/window/src/app/shortcut_list.rs:60
+#: crates/window/src/app/menus.rs:136 crates/window/src/app/shortcut_list.rs:60
 msgid "Sessions…"
 msgstr "Сеансы…"
 
-#: crates/window/src/app/menus.rs:134 crates/window/src/app/sessions.rs:299
+#: crates/window/src/app/menus.rs:138 crates/window/src/app/sessions.rs:299
 msgid "Rename Session…"
 msgstr "Переименовать сеанс…"
 
-#: crates/window/src/app/menus.rs:142 crates/window/src/app/menus.rs:215
+#: crates/window/src/app/menus.rs:146 crates/window/src/app/menus.rs:219
 #: crates/window/src/app/shortcut_list.rs:31
 msgid "Full Screen"
 msgstr "Во весь экран"
 
-#: crates/window/src/app/menus.rs:144 crates/window/src/app/shortcut_list.rs:90
+#: crates/window/src/app/menus.rs:148 crates/window/src/app/shortcut_list.rs:90
 msgid "Preferences"
 msgstr "Параметры"
 
-#: crates/window/src/app/menus.rs:145 crates/window/src/app/shortcut_list.rs:91
+#: crates/window/src/app/menus.rs:149 crates/window/src/app/shortcut_list.rs:91
 #: crates/window/src/app/shortcut_list.rs:97
 msgid "Keyboard Shortcuts"
 msgstr "Комбинации клавиш"
 
-#: crates/window/src/app/menus.rs:146
+#: crates/window/src/app/menus.rs:150
 msgid "About Caret"
 msgstr "О Caret"
 
-#: crates/window/src/app/menus.rs:175 crates/window/src/app/shortcut_list.rs:70
+#: crates/window/src/app/menus.rs:179 crates/window/src/app/shortcut_list.rs:70
 msgid "Copy"
 msgstr "Копировать"
 
-#: crates/window/src/app/menus.rs:177 crates/window/src/app/shortcut_list.rs:72
+#: crates/window/src/app/menus.rs:181 crates/window/src/app/shortcut_list.rs:72
 msgid "Select All"
 msgstr "Выделить всё"
 
-#: crates/window/src/app/menus.rs:179 crates/window/src/app/shortcut_list.rs:73
+#: crates/window/src/app/menus.rs:183 crates/window/src/app/shortcut_list.rs:73
 msgid "Deselect"
 msgstr "Снять выделение"
 
-#: crates/window/src/app/menus.rs:186
+#: crates/window/src/app/menus.rs:190
 msgid "Open Link"
 msgstr "Открыть ссылку"
 
-#: crates/window/src/app/menus.rs:187
+#: crates/window/src/app/menus.rs:191
 msgid "Copy Link Address"
 msgstr "Копировать адрес ссылки"
 
-#: crates/window/src/app/menus.rs:197
+#: crates/window/src/app/menus.rs:201
 msgid "Find…"
 msgstr "Найти…"
 
-#: crates/window/src/app/menus.rs:200 crates/window/src/app/shortcut_list.rs:38
+#: crates/window/src/app/menus.rs:204 crates/window/src/app/shortcut_list.rs:38
 msgid "Split Right"
 msgstr "Разделить вправо"
 
-#: crates/window/src/app/menus.rs:201 crates/window/src/app/shortcut_list.rs:39
+#: crates/window/src/app/menus.rs:205 crates/window/src/app/shortcut_list.rs:39
 msgid "Split Down"
 msgstr "Разделить вниз"
 
-#: crates/window/src/app/menus.rs:209 crates/window/src/app/shortcut_list.rs:40
+#: crates/window/src/app/menus.rs:213 crates/window/src/app/shortcut_list.rs:40
 msgid "Close Pane"
 msgstr "Закрыть панель"
 
-#: crates/window/src/app/menus.rs:214
+#: crates/window/src/app/menus.rs:218
 msgid "Title Bar"
 msgstr "Заголовок окна"
 
-#: crates/window/src/app/menus.rs:218 crates/window/src/app/shortcut_list.rs:24
+#: crates/window/src/app/menus.rs:222 crates/window/src/app/shortcut_list.rs:24
 msgid "Close Window"
 msgstr "Закрыть окно"
 
-#: crates/window/src/app/menus.rs:219
+#: crates/window/src/app/menus.rs:223
 msgid "Main Menu"
 msgstr "Главное меню"
 
-#: crates/window/src/app/menus.rs:231
+#: crates/window/src/app/menus.rs:274
 msgid "Rename Tab…"
 msgstr "Переименовать вкладку…"
 
-#: crates/window/src/app/menus.rs:232 crates/window/src/app/shortcut_list.rs:27
+#: crates/window/src/app/menus.rs:279
+msgid "Move to Session"
+msgstr "Переместить в сеанс"
+
+#: crates/window/src/app/menus.rs:284 crates/window/src/app/shortcut_list.rs:27
 msgid "Close Tab"
 msgstr "Закрыть вкладку"
 
-#: crates/window/src/app/menus.rs:334
+#: crates/window/src/app/menus.rs:408
 msgid "Could not make the settings file"
 msgstr "Не удалось создать файл параметров"
 
-#: crates/window/src/app/menus.rs:362
+#: crates/window/src/app/menus.rs:436
 msgid "Listing sessions needs a newer terminal server"
 msgstr "Для списка сеансов нужен более новый терминальный сервер"
 
-#: crates/window/src/app/menus.rs:401
+#: crates/window/src/app/menus.rs:475
 msgid "In This Window"
 msgstr "В этом окне"
 
-#: crates/window/src/app/menus.rs:402
+#: crates/window/src/app/menus.rs:476
 msgid "In Other Windows"
 msgstr "В других окнах"
 
-#: crates/window/src/app/menus.rs:403
+#: crates/window/src/app/menus.rs:477
 msgid "Detached"
 msgstr "Отсоединённые"
 
-#: crates/window/src/app/menus.rs:413
+#: crates/window/src/app/menus.rs:487
 msgid "Open All Detached"
 msgstr "Открыть все отсоединённые"
 
-#: crates/window/src/app/menus.rs:415
+#: crates/window/src/app/menus.rs:489
 msgid "Close All Detached…"
 msgstr "Закрыть все отсоединённые…"
 
-#: crates/window/src/app/menus.rs:452
+#: crates/window/src/app/menus.rs:526
 #, rust-format
 msgid "{session} · {title}"
 msgstr "{session} · {title}"
 
-#: crates/window/src/app/menus.rs:460
+#: crates/window/src/app/menus.rs:534
 #, rust-format
 msgid "{count} tab"
 msgid_plural "{count} tabs"
@@ -357,7 +362,7 @@ msgstr[0] "{count} вкладка"
 msgstr[1] "{count} вкладки"
 msgstr[2] "{count} вкладок"
 
-#: crates/window/src/app/menus.rs:469
+#: crates/window/src/app/menus.rs:543
 #, rust-format
 msgid "{count} pane"
 msgid_plural "{count} panes"
@@ -365,41 +370,41 @@ msgstr[0] "{count} панель"
 msgstr[1] "{count} панели"
 msgstr[2] "{count} панелей"
 
-#: crates/window/src/app/menus.rs:474
+#: crates/window/src/app/menus.rs:548
 #, rust-format
 msgid "{tabs}, {panes}"
 msgstr "{tabs}, {panes}"
 
-#: crates/window/src/app/menus.rs:560
+#: crates/window/src/app/menus.rs:644
 msgid "New sessions need a newer terminal server"
 msgstr "Для новых сеансов нужен более новый терминальный сервер"
 
-#: crates/window/src/app/menus.rs:585
+#: crates/window/src/app/menus.rs:669
 #, rust-format
 msgid "Show {session} · {title}"
 msgstr "Показать {session} · {title}"
 
-#: crates/window/src/app/menus.rs:609
+#: crates/window/src/app/menus.rs:693
 msgid "Replace This Window"
 msgstr "Заменить в этом окне"
 
-#: crates/window/src/app/menus.rs:614
+#: crates/window/src/app/menus.rs:698
 msgid "Add to This Window"
 msgstr "Добавить в это окно"
 
-#: crates/window/src/app/menus.rs:622
+#: crates/window/src/app/menus.rs:706
 msgid "Open in New Window"
 msgstr "Открыть в новом окне"
 
-#: crates/window/src/app/menus.rs:628
+#: crates/window/src/app/menus.rs:712
 msgid "Rename…"
 msgstr "Переименовать…"
 
-#: crates/window/src/app/menus.rs:631
+#: crates/window/src/app/menus.rs:715
 msgid "Close…"
 msgstr "Закрыть…"
 
-#: crates/window/src/app/menus.rs:676
+#: crates/window/src/app/menus.rs:760
 #, rust-format
 msgid "{count} detached session"
 msgid_plural "{count} detached sessions"
@@ -407,11 +412,11 @@ msgstr[0] "{count} отсоединённый сеанс"
 msgstr[1] "{count} отсоединённых сеанса"
 msgstr[2] "{count} отсоединённых сеансов"
 
-#: crates/window/src/app/menus.rs:681 crates/window/src/notifications.rs:96
+#: crates/window/src/app/menus.rs:765 crates/window/src/notifications.rs:96
 msgid "Show"
 msgstr "Показать"
 
-#: crates/window/src/app/menus.rs:691
+#: crates/window/src/app/menus.rs:775
 msgid "No windows were detached"
 msgstr "Нет отсоединённых окон"
 
@@ -607,11 +612,11 @@ msgstr "Сеанс {number}"
 msgid "Showing sessions together needs a newer terminal server"
 msgstr "Для показа сеансов вместе нужен более новый терминальный сервер"
 
-#: crates/window/src/app/tabs.rs:814
+#: crates/window/src/app/tabs.rs:815
 msgid "Splitting needs a newer terminal server"
 msgstr "Для разделения нужен более новый терминальный сервер"
 
-#: crates/window/src/app/tabs.rs:822
+#: crates/window/src/app/tabs.rs:823
 msgid "This tab cannot be split any further"
 msgstr "Эту вкладку больше нельзя разделить"
 

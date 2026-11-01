@@ -136,7 +136,7 @@ impl App {
         } else if self.over_other_item()
             && self.chrome.submenu.is_some()
             // A row's context menu stays while the pointer crosses the list to reach it.
-            && self.listed_session(self.submenu_row).is_none()
+            && !self.row_has_menu(self.submenu_row)
         {
             let timer =
                 self.events

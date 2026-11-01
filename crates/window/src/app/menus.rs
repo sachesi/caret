@@ -17,6 +17,10 @@ pub enum Choice {
     Act(Action),
     RenameTab(TerminalId),
     CloseTab(TerminalId),
+    /// Moves the tab with this key to the end of a session.
+    MoveTab(TerminalId, SessionId),
+    /// Moves the tab with this key to a new session in this window.
+    MoveTabToNew(TerminalId),
     /// A new window with the settings of a profile.
     Profile(String),
     Detach,
@@ -227,11 +231,76 @@ impl App {
         let Some(terminal) = self.tabs.get(index).map(|tab| tab.key) else {
             return;
         };
-        let sections = vec![
-            vec![self.item(&gettext("Rename Tab…"), Choice::RenameTab(terminal), true)],
-            vec![self.item(&gettext("Close Tab"), Choice::CloseTab(terminal), true)],
-        ];
-        self.show_menu(sections, self.pointer_at(), false);
+        if self.server.version < 2 {
+            let sections = self.tab_sections(terminal, &[]);
+            self.show_menu(sections, self.pointer_at(), false);
+            return;
+        }
+        let id = self.server.ask(Question::SessionList);
+        self.asked
+            .insert(id, Asked::TabMenu(terminal, self.pointer_at()));
+    }
+
+    /// The menu of the tab with this key, on the strip or beside its row in a session's
+    /// list. Menus go one level deep, so the sessions to move it to are in the menu itself.
+    pub(super) fn tab_sections(
+        &mut self,
+        key: TerminalId,
+        sessions: &[SessionEntry],
+    ) -> Vec<Vec<(Item, Choice)>> {
+        self.learn_sessions(sessions);
+        let home = self.tab_of(key).map(|index| self.tabs[index].session);
+        let tabs_at_home = self
+            .tabs
+            .iter()
+            .filter(|tab| Some(tab.session) == home)
+            .count();
+        let mut targets = Vec::new();
+        // A session's only tab would be just as alone in a new one.
+        if !sessions.is_empty() && tabs_at_home > 1 {
+            targets.push(self.item(&gettext("New Session"), Choice::MoveTabToNew(key), true));
+        }
+        for entry in sessions.iter().filter(|entry| Some(entry.session) != home) {
+            let label = format!(
+                "{} · {}",
+                self.session_label(entry.session),
+                self.listed_title(entry)
+            );
+            let mut item = self.item(&label, Choice::MoveTab(key, entry.session), true);
+            item.0.dot = self.session_color(entry.session);
+            targets.push(item);
+        }
+        let mut sections = vec![vec![self.item(
+            &gettext("Rename Tab…"),
+            Choice::RenameTab(key),
+            true,
+        )]];
+        if !targets.is_empty() {
+            let mut section = vec![self.title_item(&gettext("Move to Session"))];
+            section.extend(targets);
+            sections.push(section);
+        }
+        sections.push(vec![self.item(
+            &gettext("Close Tab"),
+            Choice::CloseTab(key),
+            true,
+        )]);
+        sections
+    }
+
+    /// Shows the menu of the tab listed at `row` beside it, if the list has not changed
+    /// since it was asked for.
+    pub(super) fn tab_row_menu(
+        &mut self,
+        key: TerminalId,
+        row: usize,
+        keyed: bool,
+        sessions: &[SessionEntry],
+    ) {
+        if self.choices.get(row) == Some(&Choice::ShowTab(key)) {
+            let sections = self.tab_sections(key, sessions);
+            self.show_submenu(row, sections, keyed);
+        }
     }
 
     pub(super) fn close_menu(&mut self) {
@@ -294,6 +363,11 @@ impl App {
                 if let Some(index) = self.tab_of(terminal) {
                     self.close_tab(index);
                 }
+            }
+            Some(Choice::MoveTab(key, session)) => self.move_tab_to(key, session, usize::MAX),
+            Some(Choice::MoveTabToNew(key)) => {
+                let id = self.server.ask(Question::NewSession);
+                self.asked.insert(id, Asked::TabToSession(key));
             }
             Some(Choice::Profile(profile)) => self.new_window(Some(&profile)),
             Some(Choice::Detach) => self.end(true),
@@ -510,14 +584,20 @@ impl App {
         }
     }
 
-    /// The Sessions list's row a press is holding, for a long press to open its menu.
+    /// The list's row a press is holding, for a long press to open its menu.
     pub(super) fn pressed_listed_row(&self) -> Option<usize> {
         match self.chrome.pressed {
-            Some(Part::MenuItem(index)) => {
-                Some(index).filter(|&index| self.listed_session(index).is_some())
-            }
+            Some(Part::MenuItem(index)) => Some(index).filter(|&index| self.row_has_menu(index)),
             _ => None,
         }
+    }
+
+    /// Whether the menu's item at `index` is a session or a tab, with a menu of its own.
+    pub(super) fn row_has_menu(&self, index: usize) -> bool {
+        matches!(
+            self.choices.get(index),
+            Some(Choice::ListedSession(_) | Choice::ShowTab(_))
+        )
     }
 
     /// The context menu of the Sessions list's row at `index`, if it has one, beside the
@@ -526,6 +606,13 @@ impl App {
         if let Some(session) = self.listed_session(index) {
             let sections = self.session_menu(session);
             self.show_submenu(index, sections, keyed);
+        } else if let Some(&Choice::ShowTab(key)) = self.choices.get(index) {
+            if self.server.version < 2 {
+                self.tab_row_menu(key, index, keyed, &[]);
+                return;
+            }
+            let id = self.server.ask(Question::SessionList);
+            self.asked.insert(id, Asked::TabRowMenu(key, index, keyed));
         }
     }
 

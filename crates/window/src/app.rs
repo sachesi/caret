@@ -128,6 +128,13 @@ enum Asked {
     Window(TerminalId),
     /// A session to show in the window, with a tab of its own.
     SessionHere,
+    /// A session to show in the window, for the tab with this key to move to.
+    TabToSession(TerminalId),
+    /// The sessions, to offer in the menu of the tab with this key, at this place.
+    TabMenu(TerminalId, (f32, f32)),
+    /// The same for the menu beside the tab's row in a session's list, shown by the keys
+    /// if the bool is set.
+    TabRowMenu(TerminalId, usize, bool),
     /// The sessions, to offer those the window does not show from its + button.
     NewMenu,
     /// The sessions, to say at the start how many are detached.
@@ -822,6 +829,25 @@ impl App {
     }
 
     /// Does what the window asked the question `id` for with its answer.
+    /// Does what the new `session` was asked for.
+    fn session_made(&mut self, asked: &Asked, session: SessionId) {
+        match *asked {
+            Asked::Window(key) => self.tab_into_window(key, session),
+            Asked::SessionHere => {
+                self.arrive(session);
+                self.sessions.push(session);
+                self.server.send(&Request::Attach { session });
+                self.open_tab_in(session, Command::default());
+            }
+            Asked::TabToSession(key) => {
+                self.sessions.push(session);
+                self.server.send(&Request::Attach { session });
+                self.move_tab_to(key, session, 0);
+            }
+            _ => {}
+        }
+    }
+
     fn answered(&mut self, id: u32, answer: Answer) {
         match (self.asked.remove(&id), answer) {
             (Some(Asked::Session), Answer::Session { session }) => {
@@ -829,16 +855,18 @@ impl App {
                 self.server.send(&Request::Attach { session });
                 self.open_first_tab();
             }
-            (Some(Asked::Window(key)), Answer::Session { session }) => {
-                self.tab_into_window(key, session);
-            }
-            (Some(Asked::SessionHere), Answer::Session { session }) => {
-                self.arrive(session);
-                self.sessions.push(session);
-                self.server.send(&Request::Attach { session });
-                self.open_tab_in(session, Command::default());
-            }
+            (
+                Some(asked @ (Asked::Window(_) | Asked::SessionHere | Asked::TabToSession(_))),
+                Answer::Session { session },
+            ) => self.session_made(&asked, session),
             (Some(Asked::NewMenu), Answer::SessionList { sessions }) => self.new_menu(&sessions),
+            (Some(Asked::TabMenu(key, at)), Answer::SessionList { sessions }) => {
+                let sections = self.tab_sections(key, &sessions);
+                self.show_menu(sections, at, false);
+            }
+            (Some(Asked::TabRowMenu(key, row, keyed)), Answer::SessionList { sessions }) => {
+                self.tab_row_menu(key, row, keyed, &sessions);
+            }
             (Some(Asked::NextCommand(None)), Answer::Command { command }) => {
                 self.open_tab(command);
             }

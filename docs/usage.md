@@ -48,7 +48,8 @@ and options.
 The tab bar shows once there are two tabs. A tab takes its title from the program, which
 sets it with the usual escape sequence; until it does, the tab is named after the
 program. Rename Tab in the tab's context menu gives it a name of your own, which stays
-until you clear it. A tab whose program rings the bell while the tab is in the background is marked
+until you clear it. The same menu moves the tab to another session, or to a new one in the
+window; in a session's list of tabs it opens on a right click on the tab's row. A tab whose program rings the bell while the tab is in the background is marked
 until you look at it, and the bell sounds unless `audible-bell` is off. Tabs can be
 dragged along the strip to reorder them.
 
