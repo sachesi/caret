@@ -40,6 +40,10 @@ const READ_BUDGET: usize = 1 << 20;
 /// alone do not keep Ctrl+C from waiting.
 const READ_TIME: Duration = Duration::from_millis(16);
 
+/// Rounds of reading what a program that exited left behind. It is at most what the
+/// pseudoterminal holds, unless something it started goes on writing there.
+const LEFT_BEHIND: usize = 64;
+
 /// How long a program may hold the screen back while it draws.
 const SYNCHRONIZED: Duration = Duration::from_millis(150);
 
@@ -999,17 +1003,20 @@ impl Worker {
         }
     }
 
-    /// Reads what the program wrote, as much as there is up to the budget.
-    fn read(&mut self) {
+    /// Reads what the program wrote, as much as there is up to the budget, and says whether
+    /// there may be more.
+    fn read(&mut self) -> bool {
         let Some(pty) = &mut self.pty else {
-            return;
+            return false;
         };
         let mut read = 0;
+        let mut more = true;
         let started = Instant::now();
         while read < READ_BUDGET && started.elapsed() < READ_TIME {
             match pty.controller.read(&mut self.buffer) {
                 Ok(0) => {
                     self.reading = false;
+                    more = false;
                     break;
                 }
                 Ok(count) => {
@@ -1019,12 +1026,14 @@ impl Worker {
                 }
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                     self.reading = true;
+                    more = false;
                     break;
                 }
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
                 // EIO while no process has the program's side open.
                 Err(_) => {
                     self.reading = false;
+                    more = false;
                     break;
                 }
             }
@@ -1032,6 +1041,7 @@ impl Worker {
         if read > 0 {
             self.output();
         }
+        more
     }
 
     /// Writes what the program has not read yet, as far as it takes it.
@@ -1123,7 +1133,13 @@ impl Worker {
 
     /// The program exited: what it wrote last is read, and the loop told.
     fn exited(&mut self) {
-        self.read();
+        // One round ends after a time, which on a busy machine may be before its first read
+        // has gone through the emulator, and nothing reads the rest once the program is gone.
+        for _ in 0..LEFT_BEHIND {
+            if !self.read() {
+                break;
+            }
+        }
         let Some(mut pty) = self.pty.take() else {
             return;
         };
@@ -1314,6 +1330,41 @@ mod tests {
             ..asked
         });
         assert_eq!((size.columns, size.lines), (2, 1));
+    }
+
+    #[test]
+    fn what_a_program_wrote_before_it_exited_is_all_read_however_long_that_takes() {
+        // Filling a large screen for each of three bytes takes each read past a round's time.
+        let script =
+            r"i=0; while [ $i -lt 3000 ]; do printf '\033#8'; i=$((i+1)); done; printf end";
+        let size = Size {
+            columns: 400,
+            lines: 100,
+            cell_width: 8,
+            cell_height: 16,
+        };
+        let mut program = std::process::Command::new("sh");
+        program.args(["-c", script]);
+        let pty = Pty::spawn(program, size).expect("sh starts");
+        let ended = pty::wait_readable(&[pty.exited()], Some(Duration::from_secs(20)));
+        assert_eq!(ended.expect("poll works"), [true]);
+        let (events, _heard) = mpsc::channel();
+        let (_orders, received) = mpsc::channel();
+        let (_wake, woken) = UnixStream::pair().expect("a socket pair");
+        let emulator = Emulator {
+            id: TerminalId(1),
+            size,
+            options: caret_term::Options::default(),
+            palette: palette::fallback(),
+            events,
+        };
+        let mut worker = emulator.worker(Some(pty), received, woken);
+        worker.exited();
+        let shown: String = worker.term.screen().row(0).cells[..3]
+            .iter()
+            .map(|cell| cell.c)
+            .collect();
+        assert_eq!(shown, "end");
     }
 
     #[test]
