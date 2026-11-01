@@ -285,6 +285,7 @@ const MAX_LINK_BYTES: usize = 4096;
 pub struct Term {
     parser: Parser,
     main: Grid,
+    /// Without rows until a program first uses it, as most terminals' shells never do.
     alt: Grid,
     alt_active: bool,
     history: History,
@@ -324,7 +325,7 @@ impl Term {
         Self {
             parser: Parser::new(),
             main: Grid::new(columns, lines),
-            alt: Grid::new(columns, lines),
+            alt: Grid::new(columns, 0),
             alt_active: false,
             history: History::new(columns, options.scrollback),
             cursor: Cursor::default(),
@@ -934,8 +935,12 @@ impl Term {
             return;
         }
         self.alt_active = true;
-        if clear {
-            let blank = self.blank();
+        if clear || self.alt.lines() == 0 {
+            let blank = if clear {
+                self.blank()
+            } else {
+                Style::default()
+            };
             let (columns, lines) = (self.columns(), self.lines());
             self.alt
                 .set_rows(vec![Row::new(columns, blank); lines], columns);
@@ -958,7 +963,7 @@ impl Term {
         let (columns, lines) = (self.columns(), self.lines());
         self.leave_alt_screen();
         self.main = Grid::new(columns, lines);
-        self.alt = Grid::new(columns, lines);
+        self.alt = Grid::new(columns, 0);
         self.cursor = Cursor::default();
         self.saved = [Saved::default(); 2];
         self.top = 0;
@@ -1004,7 +1009,9 @@ impl Term {
         }
 
         let mut rows = self.alt.take_rows();
-        rows.resize_with(lines, || Row::new(columns, Style::default()));
+        if !rows.is_empty() {
+            rows.resize_with(lines, || Row::new(columns, Style::default()));
+        }
         for row in &mut rows {
             row.resize(columns, Style::default());
             row.wrapped = false;

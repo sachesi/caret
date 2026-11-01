@@ -540,3 +540,20 @@ fn text_after_the_screen_starts_over_is_not_part_of_the_line_above_it() {
         );
     }
 }
+
+#[test]
+fn the_alternate_screen_takes_memory_once_it_is_used() {
+    let mut term = term(10, 3);
+    assert_eq!(term.alt.lines(), 0);
+    term.resize(20, 5);
+    assert_eq!(term.alt.lines(), 0);
+    // Written to without being cleared first, it is there all the same.
+    term.advance(b"\x1b[?47hup\x1b[?47l");
+    assert_eq!(term.alt.lines(), 5);
+    term.resize(30, 2);
+    assert_eq!((term.alt.lines(), term.alt.row(0).len()), (2, 30));
+    term.advance(b"\x1b[?47h");
+    assert_eq!(screen(&term)[0], "up");
+    term.advance(b"\x1bc");
+    assert_eq!(term.alt.lines(), 0);
+}
