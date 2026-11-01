@@ -26,6 +26,8 @@ BuildRequires:  gettext-tools
 BuildRequires:  AppStream
 BuildRequires:  pkgconfig(wayland-client)
 BuildRequires:  pkgconfig(xkbcommon)
+# Owns the icon directories, which OBS checks the package's files against.
+BuildRequires:  hicolor-icon-theme
 
 Requires:       hicolor-icon-theme
 # The renderer opens libvulkan.so.1 itself, which the automatic dependencies do not see.
