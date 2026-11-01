@@ -14,14 +14,23 @@ pub struct Line {
     text: String,
     /// The number of cells, wide characters counting two.
     cells: u32,
+    /// The number of cells the first style covers, and that style: most lines have only
+    /// one, and every line kept costs its size and an allocation for each list it needs.
+    first_run: (u32, Style),
+    /// What the plainest lines do without.
+    rest: Option<Box<Rest>>,
+    /// A prompt starts in this line.
+    pub prompt: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Rest {
     /// The first cells of characters two cells wide; the second cell has no text.
     wide: Vec<u32>,
     /// Cells whose text is more than one character, and its length in bytes.
     clusters: Vec<(u32, u32)>,
-    /// Each style and the number of cells it covers, in order.
+    /// Each style after the first and the number of cells it covers, in order.
     runs: Vec<(u32, Style)>,
-    /// A prompt starts in this line.
-    pub prompt: bool,
 }
 
 impl Line {
@@ -34,7 +43,7 @@ impl Line {
     /// The rows it takes when wrapped `columns` wide.
     #[must_use]
     pub fn rows(&self, columns: usize) -> usize {
-        if self.wide.is_empty() {
+        if self.wide().is_empty() {
             return self.width().div_ceil(columns.max(1)).max(1);
         }
         self.layout(columns, |_| {})
@@ -67,8 +76,8 @@ impl Line {
     ) -> (usize, usize) {
         let columns = columns.max(1);
         let mut added = 0;
-        let first = self.wide.partition_point(|&at| (at as usize) < cell);
-        let wide = self.wide[first..].iter().map(|&at| at as usize);
+        let first = self.wide().partition_point(|&at| (at as usize) < cell);
+        let wide = self.wide()[first..].iter().map(|&at| at as usize);
         for (at, width) in wide.map(|at| (at, 2)).chain([(self.width(), 0)]) {
             // The narrow cells before the next wide one.
             while cell < at {
@@ -97,6 +106,21 @@ impl Line {
         (added, column)
     }
 
+    fn wide(&self) -> &[u32] {
+        self.rest.as_ref().map_or(&[], |rest| &rest.wide)
+    }
+
+    fn clusters(&self) -> &[(u32, u32)] {
+        self.rest.as_ref().map_or(&[], |rest| &rest.clusters)
+    }
+
+    /// Each style and the number of cells it covers, in order.
+    fn runs(&self) -> impl Iterator<Item = (u32, Style)> {
+        let first = (self.first_run.0 > 0).then_some(self.first_run);
+        let rest = self.rest.as_ref().map_or(&[][..], |rest| &rest.runs);
+        first.into_iter().chain(rest.iter().copied())
+    }
+
     /// Adds the cells of `row`, which follows the line: all of them where the terminal
     /// wrapped it, else those up to the last that shows anything.
     pub fn append(&mut self, row: &Row) {
@@ -107,10 +131,6 @@ impl Line {
         };
         self.prompt |= row.prompt;
         self.text.reserve(end);
-        // A single run is all most lines have, and there are thousands of lines.
-        if self.runs.is_empty() {
-            self.runs.reserve_exact(1);
-        }
         let mut column = 0;
         while column < end {
             let cell = row.cells[column];
@@ -144,12 +164,14 @@ impl Line {
             match row.text(column) {
                 Text::Char(c) => self.text.push(c),
                 Text::Cluster(text) => {
-                    self.clusters.push((self.cells, text.len() as u32));
+                    let cluster = (self.cells, text.len() as u32);
+                    self.rest.get_or_insert_default().clusters.push(cluster);
                     self.text.push_str(text);
                 }
             }
             if flags.contains(Flags::WIDE) {
-                self.wide.push(self.cells);
+                let cell = self.cells;
+                self.rest.get_or_insert_default().wide.push(cell);
             }
             self.push_styles(cell.style, 1);
             self.cells += 1;
@@ -162,9 +184,17 @@ impl Line {
         style
             .flags
             .remove(Flags::WIDE | Flags::SPACER | Flags::CLUSTER);
-        match self.runs.last_mut() {
+        if self.first_run.0 == 0 {
+            self.first_run = (cells, style);
+            return;
+        }
+        let last = match &mut self.rest {
+            Some(rest) if !rest.runs.is_empty() => rest.runs.last_mut(),
+            _ => Some(&mut self.first_run),
+        };
+        match last {
             Some((count, last)) if *last == style => *count += cells,
-            _ => self.runs.push((cells, style)),
+            _ => self.rest.get_or_insert_default().runs.push((cells, style)),
         }
     }
 
@@ -250,13 +280,13 @@ impl Line {
 
     /// Whether each cell is one byte of its text.
     fn is_plain(&self) -> bool {
-        self.wide.is_empty() && self.clusters.is_empty() && self.text.len() == self.width()
+        self.wide().is_empty() && self.clusters().is_empty() && self.text.len() == self.width()
     }
 
     /// The cell each of rows `wanted` starts with when wrapped `columns` wide.
     #[must_use]
     pub fn row_starts_in(&self, columns: usize, wanted: Range<usize>) -> Vec<usize> {
-        if self.wide.is_empty() {
+        if self.wide().is_empty() {
             return wanted.map(|row| row * columns.max(1)).collect();
         }
         let starts = self.row_starts(columns);
@@ -281,21 +311,21 @@ impl Line {
     ) {
         let from = from.min(self.width()) as u32;
         let mut bytes = from as usize;
-        let mut wide = self.wide.iter().peekable();
-        let mut clusters = self.clusters.iter().peekable();
-        let mut runs = self.runs.iter();
-        let mut run = runs.next().copied().unwrap_or((u32::MAX, Style::default()));
+        let mut wide = self.wide().iter().peekable();
+        let mut clusters = self.clusters().iter().peekable();
+        let mut runs = self.runs();
+        let mut run = runs.next().unwrap_or((u32::MAX, Style::default()));
         let mut in_run = 0;
         let mut before = from;
         while before >= run.0 {
             before -= run.0;
-            run = runs.next().copied().unwrap_or((u32::MAX, Style::default()));
+            run = runs.next().unwrap_or((u32::MAX, Style::default()));
         }
         in_run += before;
         let mut spacer_next = false;
         for index in from..self.cells {
             if in_run == run.0 {
-                run = runs.next().copied().unwrap_or((u32::MAX, Style::default()));
+                run = runs.next().unwrap_or((u32::MAX, Style::default()));
                 in_run = 0;
             }
             in_run += 1;
@@ -344,15 +374,6 @@ impl Line {
             bytes += length;
         });
         cells
-    }
-
-    /// The bytes it holds, roughly, for keeping history within its memory.
-    #[must_use]
-    pub fn footprint(&self) -> usize {
-        self.text.len()
-            + self.wide.len() * 4
-            + self.clusters.len() * 8
-            + self.runs.len() * size_of::<(u32, Style)>()
     }
 }
 
@@ -710,10 +731,18 @@ mod tests {
         styled.cells[2].style = red;
         let mut line = Line::default();
         line.append(&styled);
-        assert_eq!(line.runs.len(), 3);
+        assert_eq!(line.runs().count(), 3);
         let rows = line.wrap(4, Style::default());
         assert_eq!(rows[0].cells[2].style, red);
         assert_eq!(rows[0].cells[3].style, Style::default());
+    }
+
+    #[test]
+    fn a_line_of_one_style_holds_nothing_beside_its_text() {
+        let mut line = Line::default();
+        line.append(&row("plain text", 40, false));
+        assert!(line.rest.is_none());
+        assert!(size_of::<Line>() <= 64);
     }
 
     #[test]
