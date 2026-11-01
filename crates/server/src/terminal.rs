@@ -857,6 +857,7 @@ impl Worker {
             Order::Follow(options, palette) => {
                 self.term.set_options(options);
                 self.term.set_palette_base(palette::base(&palette));
+                self.write_replies();
                 self.touch_all();
             }
             Order::Show {
@@ -1052,14 +1053,18 @@ impl Worker {
         }
     }
 
-    /// What the emulator made of new output: replies to write, events to pass on, and
-    /// what the clients see.
-    fn output(&mut self) {
+    fn write_replies(&mut self) {
         let replies = self.term.take_replies();
         if !replies.is_empty() {
             self.unwritten.reply(&replies);
             self.write();
         }
+    }
+
+    /// What the emulator made of new output: replies to write, events to pass on, and
+    /// what the clients see.
+    fn output(&mut self) {
+        self.write_replies();
         let events = self.term.take_events();
         // Of what was read at once, only the last of what replaces the one before reaches
         // the clients, and one bell: a program doing these in a loop would otherwise send

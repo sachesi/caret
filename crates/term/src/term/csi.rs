@@ -93,6 +93,7 @@ impl Term {
                 let (line, column) = (self.origin_line() + 1, self.cursor.column + 1);
                 self.reply(&format!("\x1b[?{line};{column}R"));
             }
+            ([b'?'], b'n') if params.get_or(0, 0) == 996 => self.report_color_scheme(),
             ([], b'r') => self.set_region(params),
             ([], b's') => self.save_cursor(),
             ([], b't') => self.window_operation(params),
@@ -229,6 +230,12 @@ impl Term {
         }
     }
 
+    /// Whether the terminal's own colours are dark or light, whatever the program set.
+    pub(super) fn report_color_scheme(&mut self) {
+        let scheme = if self.palette.base().is_dark() { 1 } else { 2 };
+        self.reply(&format!("\x1b[?997;{scheme}n"));
+    }
+
     fn status_report(&mut self, kind: u16) {
         match kind {
             5 => self.reply("\x1b[0n"),
@@ -362,6 +369,7 @@ impl Term {
                 2004 => self.modes.bracketed_paste = on,
                 2026 => self.modes.synchronized = on,
                 2027 => self.modes.graphemes = on,
+                2031 => self.modes.color_scheme_reports = on,
                 _ => {}
             }
         }
@@ -412,6 +420,7 @@ impl Term {
                 2004 => modes.bracketed_paste.into(),
                 2026 => modes.synchronized.into(),
                 2027 => modes.graphemes.into(),
+                2031 => modes.color_scheme_reports.into(),
                 _ => ModeState::Unknown,
             }
         } else {

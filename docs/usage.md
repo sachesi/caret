@@ -63,6 +63,10 @@ screen (F11, or Full Screen in the main menu). The context menu then has what th
 bar had: a new window, the title bar again, full screen, closing the window and the main
 menu.
 
+A program can ask to be told when Caret's colours go from dark to light or back (mode 2031),
+so that it follows the theme while it runs. The text client passes on the same news from the
+terminal it runs in, where that terminal gives it.
+
 A shell that marks its prompts and commands (OSC 133, which fish does by itself) tells
 Caret when a command starts and ends. A tab whose command is still running after a
 second shows a ring before its title, and one whose command ends while you look

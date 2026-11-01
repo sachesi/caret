@@ -467,3 +467,26 @@ fn inserting_where_a_short_rows_blank_moved_to_the_first_column_is_safe() {
     term.advance("ab日\x1b[A\x1b[1G\x1b[2P\x1b[@".as_bytes());
     assert_eq!(term.screen().row(0).len(), 3);
 }
+
+#[test]
+fn a_program_that_asks_is_told_when_the_colours_go_dark_or_light() {
+    use crate::palette::{Base, Rgb};
+    let with_background = |value| Base {
+        background: Rgb::from_u32(value),
+        ..Base::default()
+    };
+    let mut term = fed(10, 5, "");
+    term.set_palette_base(with_background(0xffffff));
+    assert!(term.take_replies().is_empty(), "nobody asked yet");
+
+    term.advance(b"\x1b[?2031h\x1b[?2031$p\x1b[?996n");
+    assert_eq!(term.take_replies(), b"\x1b[?2031;1$y\x1b[?997;2n");
+    term.set_palette_base(with_background(0xfafafa));
+    assert!(term.take_replies().is_empty(), "still light");
+    term.set_palette_base(with_background(0x1d1d20));
+    assert_eq!(term.take_replies(), b"\x1b[?997;1n");
+
+    term.advance(b"\x1b[?2031l");
+    term.set_palette_base(with_background(0xffffff));
+    assert!(term.take_replies().is_empty(), "no longer asked");
+}

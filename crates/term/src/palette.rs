@@ -38,6 +38,15 @@ pub struct Base {
     pub ansi: [Rgb; 16],
 }
 
+impl Base {
+    /// Whether the background is dark, by how bright it looks.
+    #[must_use]
+    pub fn is_dark(&self) -> bool {
+        let Rgb { r, g, b } = self.background;
+        u32::from(r) * 299 + u32::from(g) * 587 + u32::from(b) * 114 < 128_000
+    }
+}
+
 impl Default for Base {
     fn default() -> Self {
         Self {

@@ -30,12 +30,7 @@ pub struct Host {
 /// Asks the terminal for its colours and whether it can write keys apart, and waits a
 /// second at most for the answers.
 pub fn probe() -> Host {
-    let mut query = String::from("\x1b]10;?\x1b\\\x1b]11;?\x1b\\");
-    for index in 0..16 {
-        let _ = write!(query, "\x1b]4;{index};?\x1b\\");
-    }
-    // Every terminal answers the device attributes, and in order: the end of the answers.
-    query.push_str("\x1b[?u\x1b[c");
+    let query = questions();
     let mut stdout = io::stdout();
     if stdout
         .write_all(query.as_bytes())
@@ -67,6 +62,32 @@ pub fn probe() -> Host {
             Ok(0) | Err(_) => return host,
             Ok(read) => answers.extend_from_slice(&chunk[..read]),
         }
+    }
+}
+
+/// Asks for the terminal's colours, and how it writes keys.
+fn questions() -> String {
+    let mut query = String::from("\x1b]10;?\x1b\\\x1b]11;?\x1b\\");
+    for index in 0..16 {
+        let _ = write!(query, "\x1b]4;{index};?\x1b\\");
+    }
+    // Every terminal answers the device attributes, and in order: the end of the answers.
+    query.push_str("\x1b[?u\x1b[c");
+    query
+}
+
+/// Asks for the terminal's colours again, for answers to arrive as input.
+pub fn ask_again() {
+    let mut stdout = io::stdout();
+    let _ = stdout
+        .write_all(questions().as_bytes())
+        .and_then(|()| stdout.flush());
+}
+
+impl Host {
+    /// Takes in a colour the terminal answered with, as input gave it.
+    pub fn take_color(&mut self, answer: &[u8]) {
+        color(self, answer);
     }
 }
 
@@ -167,6 +188,12 @@ pub enum Input<'a> {
     Mouse(Mouse),
     /// Text, or a key in the old encoding, to pass on as they are.
     Bytes(&'a [u8]),
+    /// The terminal's colours went from dark to light or back.
+    SchemeChanged,
+    /// The terminal answered with a colour.
+    Color(&'a [u8]),
+    /// The terminal has answered all it was asked.
+    Answered,
 }
 
 /// The first input in `bytes`, and how many bytes it took; `enhanced` when the terminal
@@ -186,6 +213,12 @@ pub fn next(bytes: &[u8], enhanced: bool) -> (Input<'_>, usize) {
     let sequence = &bytes[..length];
     let input = if let Some(mouse) = mouse(sequence) {
         Input::Mouse(mouse)
+    } else if matches!(sequence, b"\x1b[?997;1n" | b"\x1b[?997;2n") {
+        Input::SchemeChanged
+    } else if let Some(answer) = color_answer(sequence) {
+        Input::Color(answer)
+    } else if sequence.starts_with(b"\x1b[?") && sequence.last() == Some(&b'c') {
+        Input::Answered
     } else if late_answer(sequence) {
         Input::Bytes(&[])
     } else if let Some(input) = enhanced.then(|| key(sequence)).flatten() {
@@ -221,10 +254,19 @@ fn sequence_length(bytes: &[u8]) -> usize {
     }
 }
 
-/// An answer to [`probe`] that came after it stopped waiting.
+/// What is inside an OSC sequence.
+fn color_answer(sequence: &[u8]) -> Option<&[u8]> {
+    let body = sequence.strip_prefix(b"\x1b]")?;
+    Some(
+        body.strip_suffix(b"\x07")
+            .or_else(|| body.strip_suffix(b"\x1b\\"))
+            .unwrap_or(body),
+    )
+}
+
+/// An answer about the keys, which matter only to [`probe`].
 fn late_answer(sequence: &[u8]) -> bool {
-    sequence.starts_with(b"\x1b]")
-        || (sequence.starts_with(b"\x1b[?") && matches!(sequence.last(), Some(b'c' | b'u')))
+    sequence.starts_with(b"\x1b[?") && sequence.last() == Some(&b'u')
 }
 
 /// The parameters of a CSI sequence ending in `last`.
@@ -403,6 +445,28 @@ mod tests {
     }
 
     #[test]
+    fn the_terminal_s_news_of_its_colours_is_not_taken_for_typing() {
+        assert_eq!(next(b"\x1b[?997;2n", false).0, Input::SchemeChanged);
+        assert_eq!(next(b"\x1b[?997;1n", true).0, Input::SchemeChanged);
+        let answer = b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\x";
+        let (input, used) = next(answer, false);
+        assert_eq!(input, Input::Color(b"11;rgb:ffff/ffff/ffff"));
+        assert_eq!(used, answer.len() - 1);
+        assert_eq!(next(b"\x1b[?62;22c", false).0, Input::Answered);
+
+        let mut host = Host::default();
+        host.take_color(b"11;rgb:ffff/ffff/ffff");
+        assert_eq!(
+            host.background,
+            Some(Rgb {
+                r: 255,
+                g: 255,
+                b: 255
+            })
+        );
+    }
+
+    #[test]
     fn input_splits_into_text_keys_and_mouse_reports() {
         assert_eq!(next(b"ab\x1b[A", false), (Input::Bytes(b"ab"), 2));
         let ctrl = Modifiers {
@@ -425,7 +489,7 @@ mod tests {
             next(b"\x1b[27u", true),
             (Input::Key(Key::Escape, Modifiers::default()), 5)
         );
-        assert_eq!(next(b"\x1b[?62c", true), (Input::Bytes(&[]), 6));
+        assert_eq!(next(b"\x1b[?1u", true), (Input::Bytes(&[]), 5));
         let (input, used) = next(b"\x1b[<40;3;7M", false);
         assert_eq!(used, 10);
         assert_eq!(

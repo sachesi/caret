@@ -143,6 +143,8 @@ pub struct Modes {
     pub synchronized: bool,
     /// Characters are grouped into grapheme clusters, each as wide as Unicode says.
     pub graphemes: bool,
+    /// The program is told when the colours go from dark to light or back.
+    pub color_scheme_reports: bool,
 }
 
 impl Default for Modes {
@@ -162,6 +164,7 @@ impl Default for Modes {
             bracketed_paste: false,
             synchronized: false,
             graphemes: false,
+            color_scheme_reports: false,
         }
     }
 }
@@ -537,8 +540,12 @@ impl Term {
 
     pub fn set_palette_base(&mut self, base: crate::palette::Base) {
         if *self.palette.base() != base {
+            let flipped = self.palette.base().is_dark() != base.is_dark();
             self.palette.set_base(base);
             self.recolored = true;
+            if flipped && self.modes.color_scheme_reports {
+                self.report_color_scheme();
+            }
         }
     }
 

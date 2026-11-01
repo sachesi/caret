@@ -86,11 +86,12 @@ pub fn run(session: SessionId) -> Result<(), String> {
     let _restore = restore;
     // The other screen, the cursor hidden until a pane shows its own, mouse reports while
     // a button is held, and keys written apart where the terminal can.
-    print!("\x1b[?1049h\x1b[?25l\x1b[?1002h\x1b[?1006h");
+    // Told when its colours go from dark to light or back.
+    print!("\x1b[?1049h\x1b[?25l\x1b[?1002h\x1b[?1006h\x1b[?2031h");
     if host.enhanced {
         print!("\x1b[>1u");
     }
-    show(&mut stream, session, &host)
+    show(&mut stream, session, host)
 }
 
 /// Gives the user back the terminal as it was, however the client ends. Otherwise a panic
@@ -121,6 +122,7 @@ impl Restore {
             return;
         }
         let mut text = String::new();
+        text.push_str("\x1b[?2031l");
         if self.enhanced {
             text.push_str("\x1b[<u");
         }
@@ -247,6 +249,8 @@ struct Client {
     next: Canvas,
     shown_cursor: Option<TextCursor>,
     colors: Colors,
+    /// What the terminal this runs in said of itself, to tell the server its colours.
+    host: Host,
 }
 
 /// The cursor of the focused pane: its line and column from one, and how it looks.
@@ -291,7 +295,7 @@ enum Drag {
     Program(TerminalId),
 }
 
-fn show(stream: &mut UnixStream, session: SessionId, host: &Host) -> Result<(), String> {
+fn show(stream: &mut UnixStream, session: SessionId, host: Host) -> Result<(), String> {
     let writer = stream.try_clone().map_err(|error| error.to_string())?;
     let (events, received) = mpsc::channel();
     close_on_signals(events.clone());
@@ -341,11 +345,14 @@ fn show(stream: &mut UnixStream, session: SessionId, host: &Host) -> Result<(), 
         } else {
             Colors::True
         },
+        host,
     };
-    client.send(&look(host));
+    let typed = std::mem::take(&mut client.host.typed);
+    let looks = look(&client.host);
+    client.send(&looks);
     client.send(&Request::Attach { session });
-    if !host.typed.is_empty() {
-        client.typed(&host.typed);
+    if !typed.is_empty() {
+        client.typed(&typed);
     }
     loop {
         let first = match received.recv_timeout(Duration::from_millis(250)) {
@@ -620,6 +627,12 @@ impl Client {
             rest = &rest[used.max(1).min(rest.len())..];
             match input {
                 Input::Control => self.control = !self.control,
+                Input::SchemeChanged => host::ask_again(),
+                Input::Color(answer) => self.host.take_color(answer),
+                Input::Answered => {
+                    let looks = look(&self.host);
+                    self.send(&looks);
+                }
                 Input::Mouse(mouse) => self.mouse(mouse),
                 Input::Key(key, modifiers) if self.control => {
                     let bytes = encode::key(key, modifiers, Mode::default()).unwrap_or_default();
