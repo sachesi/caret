@@ -32,6 +32,7 @@ impl Term {
             ([], b'@') => {
                 let (column, blank) = (self.cursor.column, self.blank());
                 self.row().insert(column, count(0), blank);
+                self.cursor.pending = false;
             }
             ([], b'A') => self.move_up(count(0)),
             ([], b'B' | b'e') => self.move_down(count(0)),
@@ -55,6 +56,7 @@ impl Term {
             ([], b'P') => {
                 let (column, blank) = (self.cursor.column, self.blank());
                 self.row().delete(column, count(0), blank);
+                self.cursor.pending = false;
             }
             ([], b'S') => self.scroll_up(count(0)),
             // With five parameters it starts mouse tracking on old xterms, which no one uses.
@@ -63,6 +65,7 @@ impl Term {
                 let (column, blank) = (self.cursor.column, self.blank());
                 let end = column + count(0);
                 self.row().clear(column, end, blank);
+                self.cursor.pending = false;
             }
             ([], b'Z') => self.back_tab(count(0)),
             ([], b'b') => self.repeat(count(0)),

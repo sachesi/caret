@@ -557,3 +557,14 @@ fn the_alternate_screen_takes_memory_once_it_is_used() {
     term.advance(b"\x1bc");
     assert_eq!(term.alt.lines(), 0);
 }
+
+#[test]
+fn editing_at_the_end_of_a_full_line_leaves_the_next_letter_on_it() {
+    for edit in ["\x1b[X", "\x1b[P", "\x1b[@"] {
+        let mut term = term(10, 2);
+        term.advance(b"abcdefghij");
+        term.advance(edit.as_bytes());
+        term.advance(b"Z");
+        assert_eq!(screen(&term), ["abcdefghiZ", ""], "after {edit:?}");
+    }
+}
