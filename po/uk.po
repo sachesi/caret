@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-11-01 14:43+0200\n"
+"POT-Creation-Date: 2026-11-01 23:33+0200\n"
 "PO-Revision-Date: 2026-10-31 12:30+0200\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Ukrainian\n"
@@ -16,15 +16,15 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
-#: crates/window/src/app.rs:706
+#: crates/window/src/app.rs:729
 msgid "The text is too long to paste"
 msgstr "Текст задовгий для вставлення"
 
-#: crates/window/src/app.rs:750
+#: crates/window/src/app.rs:773
 msgid "This terminal could not run its program"
 msgstr "Цей термінал не зміг запустити програму"
 
-#: crates/window/src/app.rs:979
+#: crates/window/src/app.rs:1002
 #, rust-format
 msgid "The settings file cannot be read and is not used: {why}"
 msgstr ""
@@ -149,7 +149,7 @@ msgstr[2] "{count} сеансів завершаться разом із цим 
 msgid "The session “{session}” will end with this window."
 msgstr "Сеанс «{session}» завершиться разом із цим вікном."
 
-#: crates/window/src/app/confirm.rs:470 crates/window/src/app/menus.rs:714
+#: crates/window/src/app/confirm.rs:470 crates/window/src/app/menus.rs:717
 msgid "Detach"
 msgstr "Від’єднати"
 
@@ -174,20 +174,20 @@ msgstr ""
 msgid "Paste"
 msgstr "Вставити"
 
-#: crates/window/src/app/confirm.rs:500
+#: crates/window/src/app/confirm.rs:501
 msgid "A program is still running in this tab and will be stopped."
 msgstr "У цій вкладці ще працює програма, її роботу буде перервано."
 
-#: crates/window/src/app/confirm.rs:501
+#: crates/window/src/app/confirm.rs:502
 msgid "A program is still running in this pane and will be stopped."
 msgstr "У цій панелі ще працює програма, її роботу буде перервано."
 
-#: crates/window/src/app/confirm.rs:503
+#: crates/window/src/app/confirm.rs:504
 #, rust-format
 msgid "“{program}” is still running in this tab and will be stopped."
 msgstr "У цій вкладці ще працює «{program}», і її роботу буде перервано."
 
-#: crates/window/src/app/confirm.rs:507
+#: crates/window/src/app/confirm.rs:508
 #, rust-format
 msgid "“{program}” is still running in this pane and will be stopped."
 msgstr "У цій панелі ще працює «{program}», і її роботу буде перервано."
@@ -211,13 +211,13 @@ msgid "New Window"
 msgstr "Нове вікно"
 
 #: crates/window/src/app/menus.rs:111 crates/window/src/app/menus.rs:200
-#: crates/window/src/app/sessions.rs:292
+#: crates/window/src/app/sessions.rs:291
 #: crates/window/src/app/shortcut_list.rs:25
 msgid "New Tab"
 msgstr "Нова вкладка"
 
 #: crates/window/src/app/menus.rs:112 crates/window/src/app/menus.rs:261
-#: crates/window/src/app/menus.rs:496 crates/window/src/app/menus.rs:681
+#: crates/window/src/app/menus.rs:496 crates/window/src/app/menus.rs:684
 #: crates/window/src/app/shortcut_list.rs:26
 msgid "New Session"
 msgstr "Новий сеанс"
@@ -227,7 +227,7 @@ msgstr "Новий сеанс"
 msgid "New “{profile}” Window"
 msgstr "Нове вікно «{profile}»"
 
-#: crates/window/src/app/menus.rs:128 crates/window/src/app/sessions.rs:304
+#: crates/window/src/app/menus.rs:128 crates/window/src/app/sessions.rs:303
 msgid "Detach Session"
 msgstr "Від’єднати сеанс"
 
@@ -239,7 +239,7 @@ msgstr "Від’єднати вікно"
 msgid "Sessions…"
 msgstr "Сеанси…"
 
-#: crates/window/src/app/menus.rs:138 crates/window/src/app/sessions.rs:299
+#: crates/window/src/app/menus.rs:138 crates/window/src/app/sessions.rs:298
 msgid "Rename Session…"
 msgstr "Перейменувати сеанс…"
 
@@ -375,36 +375,36 @@ msgstr[2] "{count} панелей"
 msgid "{tabs}, {panes}"
 msgstr "{tabs}, {panes}"
 
-#: crates/window/src/app/menus.rs:644
+#: crates/window/src/app/menus.rs:647
 msgid "New sessions need a newer terminal server"
 msgstr "Для нових сеансів потрібен новіший термінальний сервер"
 
-#: crates/window/src/app/menus.rs:669
+#: crates/window/src/app/menus.rs:672
 #, rust-format
 msgid "Show {session} · {title}"
 msgstr "Показати {session} · {title}"
 
-#: crates/window/src/app/menus.rs:693
+#: crates/window/src/app/menus.rs:696
 msgid "Replace This Window"
 msgstr "Замінити в цьому вікні"
 
-#: crates/window/src/app/menus.rs:698
+#: crates/window/src/app/menus.rs:701
 msgid "Add to This Window"
 msgstr "Додати до цього вікна"
 
-#: crates/window/src/app/menus.rs:706
+#: crates/window/src/app/menus.rs:709
 msgid "Open in New Window"
 msgstr "Відкрити в новому вікні"
 
-#: crates/window/src/app/menus.rs:712
+#: crates/window/src/app/menus.rs:715
 msgid "Rename…"
 msgstr "Перейменувати…"
 
-#: crates/window/src/app/menus.rs:715
+#: crates/window/src/app/menus.rs:718
 msgid "Close…"
 msgstr "Закрити…"
 
-#: crates/window/src/app/menus.rs:760
+#: crates/window/src/app/menus.rs:763
 #, rust-format
 msgid "{count} detached session"
 msgid_plural "{count} detached sessions"
@@ -412,32 +412,32 @@ msgstr[0] "{count} від'єднаний сеанс"
 msgstr[1] "{count} від'єднані сеанси"
 msgstr[2] "{count} від'єднаних сеансів"
 
-#: crates/window/src/app/menus.rs:765 crates/window/src/notifications.rs:96
+#: crates/window/src/app/menus.rs:768 crates/window/src/notifications.rs:96
 msgid "Show"
 msgstr "Показати"
 
-#: crates/window/src/app/menus.rs:775
+#: crates/window/src/app/menus.rs:778
 msgid "No windows were detached"
 msgstr "Немає від’єднаних вікон"
 
-#: crates/window/src/app/pointer.rs:858
+#: crates/window/src/app/pointer.rs:903
 #, rust-format
 msgid "Could not open the link: {reason}"
 msgstr "Не вдалося відкрити посилання: {reason}"
 
-#: crates/window/src/app/pointer.rs:867
+#: crates/window/src/app/pointer.rs:910
 msgid "no program opens links"
 msgstr "немає програми, що відкриває посилання"
 
-#: crates/window/src/app/pointer.rs:880
+#: crates/window/src/app/pointer.rs:923
 msgid "it does not exist"
 msgstr "його не існує"
 
-#: crates/window/src/app/pointer.rs:881
+#: crates/window/src/app/pointer.rs:924
 msgid "no program opens it"
 msgstr "немає програми, що його відкриває"
 
-#: crates/window/src/app/pointer.rs:882
+#: crates/window/src/app/pointer.rs:925
 msgid "the program that opens it failed"
 msgstr "програма, що його відкриває, завершилася з помилкою"
 
@@ -494,7 +494,7 @@ msgstr "Пресет «{name}» збережено"
 msgid "Could not write the preset"
 msgstr "Не вдалося записати пресет"
 
-#: crates/window/src/app/sessions.rs:309
+#: crates/window/src/app/sessions.rs:308
 msgid "Close Session…"
 msgstr "Закрити сеанс…"
 
@@ -603,88 +603,88 @@ msgstr "Прокрутити до наступного запрошення"
 msgid "General"
 msgstr "Загальне"
 
-#: crates/window/src/app/tabs.rs:246 crates/window/src/text.rs:924
+#: crates/window/src/app/tabs.rs:250 crates/window/src/text.rs:928
 #, rust-format
 msgid "Session {number}"
 msgstr "Сеанс {number}"
 
-#: crates/window/src/app/tabs.rs:253
+#: crates/window/src/app/tabs.rs:257
 msgid "Showing sessions together needs a newer terminal server"
 msgstr "Для показу сеансів разом потрібен новіший термінальний сервер"
 
-#: crates/window/src/app/tabs.rs:815
+#: crates/window/src/app/tabs.rs:825
 msgid "Splitting needs a newer terminal server"
 msgstr "Для розділення потрібен новіший термінальний сервер"
 
-#: crates/window/src/app/tabs.rs:823
+#: crates/window/src/app/tabs.rs:833
 msgid "This tab cannot be split any further"
 msgstr "Цю вкладку більше не можна розділити"
 
-#: crates/window/src/chrome.rs:1241
+#: crates/window/src/chrome.rs:1290
 msgid "Find in the history"
 msgstr "Пошук в історії"
 
-#: crates/window/src/text.rs:962
+#: crates/window/src/text.rs:966
 msgid "CONTROL"
 msgstr "КЕРУВАННЯ"
 
-#: crates/window/src/text.rs:964
+#: crates/window/src/text.rs:968
 msgid "arrows"
 msgstr "стрілки"
 
-#: crates/window/src/text.rs:964
+#: crates/window/src/text.rs:968
 msgid "focus"
 msgstr "фокус"
 
-#: crates/window/src/text.rs:965
+#: crates/window/src/text.rs:969
 msgid "shift"
 msgstr "shift"
 
-#: crates/window/src/text.rs:965
+#: crates/window/src/text.rs:969
 msgid "swap"
 msgstr "обмін"
 
-#: crates/window/src/text.rs:966
+#: crates/window/src/text.rs:970
 msgid "ctrl"
 msgstr "ctrl"
 
-#: crates/window/src/text.rs:966
+#: crates/window/src/text.rs:970
 msgid "resize"
 msgstr "розмір"
 
-#: crates/window/src/text.rs:967
+#: crates/window/src/text.rs:971
 msgid "tab"
 msgstr "вкладка"
 
-#: crates/window/src/text.rs:968
+#: crates/window/src/text.rs:972
 msgid "split"
 msgstr "розділити"
 
-#: crates/window/src/text.rs:969
+#: crates/window/src/text.rs:973
 msgid "close"
 msgstr "закрити"
 
-#: crates/window/src/text.rs:970
+#: crates/window/src/text.rs:974
 msgid "zoom"
 msgstr "розгорнути"
 
-#: crates/window/src/text.rs:971
+#: crates/window/src/text.rs:975
 msgid "to tab"
 msgstr "у вкладку"
 
-#: crates/window/src/text.rs:972
+#: crates/window/src/text.rs:976
 msgid "detach"
 msgstr "від’єднати"
 
-#: crates/window/src/text.rs:973
+#: crates/window/src/text.rs:977
 msgid "leave"
 msgstr "вихід"
 
-#: crates/window/src/text.rs:1036
+#: crates/window/src/text.rs:1040
 msgid "zoomed"
 msgstr "розгорнуто"
 
-#: crates/window/src/text.rs:1038
+#: crates/window/src/text.rs:1042
 msgid "control"
 msgstr "керування"
 
@@ -703,177 +703,6 @@ msgid "shell;prompt;command;commandline;console;"
 msgstr ""
 "оболонка;запрошення;команда;командний "
 "рядок;консоль;shell;prompt;command;commandline;console;"
-
-#: data/io.github.sachesi.caret.gschema.xml:16
-msgid "Font"
-msgstr "Шрифт"
-
-#: data/io.github.sachesi.caret.gschema.xml:17
-msgid ""
-"A Pango font description such as “Monospace 11”; empty for the desktop's "
-"monospace font."
-msgstr ""
-"Опис шрифту Pango, наприклад «Monospace 11»; порожнє значення — моноширинний "
-"шрифт стільниці."
-
-#: data/io.github.sachesi.caret.gschema.xml:21
-msgid "Font features"
-msgstr "Можливості шрифту"
-
-#: data/io.github.sachesi.caret.gschema.xml:22
-msgid ""
-"OpenType features of the font to turn on or off, as in CSS: “zero, ss01, "
-"calt=0”."
-msgstr ""
-"Можливості OpenType, які слід увімкнути або вимкнути, як у CSS: «zero, ss01, "
-"calt=0»."
-
-#: data/io.github.sachesi.caret.gschema.xml:26
-msgid "Ligatures"
-msgstr "Лігатури"
-
-#: data/io.github.sachesi.caret.gschema.xml:27
-msgid "Whether symbols the font joins, such as -> and !=, are drawn joined."
-msgstr "Чи малювати разом символи, які шрифт з’єднує, наприклад -> та !=."
-
-#: data/io.github.sachesi.caret.gschema.xml:31
-msgid "Light or dark"
-msgstr "Світлий чи темний"
-
-#: data/io.github.sachesi.caret.gschema.xml:32
-msgid "“system” follows the desktop's preference."
-msgstr "«system» слідує налаштуванню стільниці."
-
-#: data/io.github.sachesi.caret.gschema.xml:36
-msgid "Cursor shape"
-msgstr "Форма курсора"
-
-#: data/io.github.sachesi.caret.gschema.xml:37
-msgid "The shape of the cursor until a program asks for another."
-msgstr "Форма курсора, доки програма не попросить іншу."
-
-#: data/io.github.sachesi.caret.gschema.xml:42
-msgid "Lines of history"
-msgstr "Рядків історії"
-
-#: data/io.github.sachesi.caret.gschema.xml:43
-msgid "How many lines that scrolled off the top are kept to scroll back to."
-msgstr ""
-"Скільки рядків, що пішли за верхній край, зберігається для прокручування "
-"назад."
-
-#: data/io.github.sachesi.caret.gschema.xml:47
-msgid "Custom command"
-msgstr "Власна команда"
-
-#: data/io.github.sachesi.caret.gschema.xml:48
-msgid ""
-"A command line that tabs run instead of the shell, split into words the way "
-"the shell does; empty for the shell."
-msgstr ""
-"Командний рядок, який вкладки запускають замість оболонки, поділений на "
-"слова так само, як це робить оболонка; порожній рядок означає оболонку."
-
-#: data/io.github.sachesi.caret.gschema.xml:52
-msgid "Scroll on output"
-msgstr "Прокручування під час виведення"
-
-#: data/io.github.sachesi.caret.gschema.xml:53
-msgid ""
-"Whether output brings a view scrolled back into the history to the bottom."
-msgstr "Чи повертає виведення програми вниз вигляд, прокручений в історію."
-
-#: data/io.github.sachesi.caret.gschema.xml:57
-msgid "Scroll on keystroke"
-msgstr "Прокручування під час натискання клавіш"
-
-#: data/io.github.sachesi.caret.gschema.xml:58
-msgid ""
-"Whether typing or pasting brings a view scrolled back into the history to "
-"the bottom."
-msgstr ""
-"Чи повертає введення або вставлення вниз вигляд, прокручений в історію."
-
-#: data/io.github.sachesi.caret.gschema.xml:62
-msgid "Scroll under pointer"
-msgstr "Прокручування під вказівником"
-
-#: data/io.github.sachesi.caret.gschema.xml:63
-msgid ""
-"Whether the wheel scrolls the pane under the pointer, and not the focused "
-"one."
-msgstr "Чи прокручує коліщатко панель під вказівником, а не активну."
-
-#: data/io.github.sachesi.caret.gschema.xml:67
-msgid "Notifications from programs"
-msgstr "Сповіщення від програм"
-
-#: data/io.github.sachesi.caret.gschema.xml:68
-msgid ""
-"Whether programs can show desktop notifications (OSC 9 and 777) while their "
-"tab is out of sight. Their text can say anything."
-msgstr ""
-"Чи можуть програми показувати сповіщення на стільниці (OSC 9 і 777), поки "
-"їхню вкладку не видно. Їхній текст може бути будь-яким."
-
-#: data/io.github.sachesi.caret.gschema.xml:72
-msgid "Copying by programs"
-msgstr "Копіювання програмами"
-
-#: data/io.github.sachesi.caret.gschema.xml:73
-msgid ""
-"Whether programs can put text on the clipboard (OSC 52), which then pastes "
-"into any program. They can never read it."
-msgstr ""
-"Чи можуть програми додавати текст до буфера обміну (OSC 52), звідки він "
-"вставляється в будь-яку програму. Читати його вони не можуть ніколи."
-
-#: data/io.github.sachesi.caret.gschema.xml:77
-msgid "Terminal bell"
-msgstr "Дзвінок термінала"
-
-#: data/io.github.sachesi.caret.gschema.xml:78
-msgid ""
-"Whether the bell a program rings makes a sound. A tab in the background is "
-"marked either way."
-msgstr ""
-"Чи звучить дзвінок, поданий програмою. Фонова вкладка позначається в будь-"
-"якому разі."
-
-#: data/io.github.sachesi.caret.gschema.xml:82
-msgid "Keep closed windows"
-msgstr "Зберігати закриті вікна"
-
-#: data/io.github.sachesi.caret.gschema.xml:83
-msgid ""
-"Whether closing a window detaches it instead of ending its programs, so that "
-"Reattach Windows brings it back."
-msgstr ""
-"Чи від’єднувати вікно під час закриття замість завершення його програм, щоб "
-"«Повернути вікна» знову його відкрило."
-
-#: data/io.github.sachesi.caret.gschema.xml:87
-msgid "Title bar"
-msgstr "Заголовок вікна"
-
-#: data/io.github.sachesi.caret.gschema.xml:88
-msgid ""
-"Whether windows show the title bar. Without it, the context menu has its "
-"commands."
-msgstr ""
-"Чи показувати заголовок вікна. Без нього його команди є в контекстному меню."
-
-#: data/io.github.sachesi.caret.gschema.xml:92
-msgid "Window size"
-msgstr "Розмір вікна"
-
-#: data/io.github.sachesi.caret.gschema.xml:93
-msgid "The size of new windows; 0 fits 80 columns by 24 lines of the font."
-msgstr "Розмір нових вікон; 0 — 80 стовпців на 24 рядки шрифту."
-
-#: data/io.github.sachesi.caret.gschema.xml:97
-msgid "Window maximized"
-msgstr "Вікно розгорнуте"
 
 #: data/io.github.sachesi.caret.metainfo.xml:9
 msgid ""
@@ -991,6 +820,145 @@ msgstr ""
 #: data/io.github.sachesi.caret.metainfo.xml:54
 msgid "The first release."
 msgstr "Перший випуск."
+
+#~ msgid "Font"
+#~ msgstr "Шрифт"
+
+#~ msgid ""
+#~ "A Pango font description such as “Monospace 11”; empty for the desktop's "
+#~ "monospace font."
+#~ msgstr ""
+#~ "Опис шрифту Pango, наприклад «Monospace 11»; порожнє значення — "
+#~ "моноширинний шрифт стільниці."
+
+#~ msgid "Font features"
+#~ msgstr "Можливості шрифту"
+
+#~ msgid ""
+#~ "OpenType features of the font to turn on or off, as in CSS: “zero, ss01, "
+#~ "calt=0”."
+#~ msgstr ""
+#~ "Можливості OpenType, які слід увімкнути або вимкнути, як у CSS: «zero, "
+#~ "ss01, calt=0»."
+
+#~ msgid "Ligatures"
+#~ msgstr "Лігатури"
+
+#~ msgid "Whether symbols the font joins, such as -> and !=, are drawn joined."
+#~ msgstr "Чи малювати разом символи, які шрифт з’єднує, наприклад -> та !=."
+
+#~ msgid "Light or dark"
+#~ msgstr "Світлий чи темний"
+
+#~ msgid "“system” follows the desktop's preference."
+#~ msgstr "«system» слідує налаштуванню стільниці."
+
+#~ msgid "Cursor shape"
+#~ msgstr "Форма курсора"
+
+#~ msgid "The shape of the cursor until a program asks for another."
+#~ msgstr "Форма курсора, доки програма не попросить іншу."
+
+#~ msgid "Lines of history"
+#~ msgstr "Рядків історії"
+
+#~ msgid "How many lines that scrolled off the top are kept to scroll back to."
+#~ msgstr ""
+#~ "Скільки рядків, що пішли за верхній край, зберігається для прокручування "
+#~ "назад."
+
+#~ msgid "Custom command"
+#~ msgstr "Власна команда"
+
+#~ msgid ""
+#~ "A command line that tabs run instead of the shell, split into words the "
+#~ "way the shell does; empty for the shell."
+#~ msgstr ""
+#~ "Командний рядок, який вкладки запускають замість оболонки, поділений на "
+#~ "слова так само, як це робить оболонка; порожній рядок означає оболонку."
+
+#~ msgid "Scroll on output"
+#~ msgstr "Прокручування під час виведення"
+
+#~ msgid ""
+#~ "Whether output brings a view scrolled back into the history to the bottom."
+#~ msgstr "Чи повертає виведення програми вниз вигляд, прокручений в історію."
+
+#~ msgid "Scroll on keystroke"
+#~ msgstr "Прокручування під час натискання клавіш"
+
+#~ msgid ""
+#~ "Whether typing or pasting brings a view scrolled back into the history to "
+#~ "the bottom."
+#~ msgstr ""
+#~ "Чи повертає введення або вставлення вниз вигляд, прокручений в історію."
+
+#~ msgid "Scroll under pointer"
+#~ msgstr "Прокручування під вказівником"
+
+#~ msgid ""
+#~ "Whether the wheel scrolls the pane under the pointer, and not the focused "
+#~ "one."
+#~ msgstr "Чи прокручує коліщатко панель під вказівником, а не активну."
+
+#~ msgid "Notifications from programs"
+#~ msgstr "Сповіщення від програм"
+
+#~ msgid ""
+#~ "Whether programs can show desktop notifications (OSC 9 and 777) while "
+#~ "their tab is out of sight. Their text can say anything."
+#~ msgstr ""
+#~ "Чи можуть програми показувати сповіщення на стільниці (OSC 9 і 777), поки "
+#~ "їхню вкладку не видно. Їхній текст може бути будь-яким."
+
+#~ msgid "Copying by programs"
+#~ msgstr "Копіювання програмами"
+
+#~ msgid ""
+#~ "Whether programs can put text on the clipboard (OSC 52), which then "
+#~ "pastes into any program. They can never read it."
+#~ msgstr ""
+#~ "Чи можуть програми додавати текст до буфера обміну (OSC 52), звідки він "
+#~ "вставляється в будь-яку програму. Читати його вони не можуть ніколи."
+
+#~ msgid "Terminal bell"
+#~ msgstr "Дзвінок термінала"
+
+#~ msgid ""
+#~ "Whether the bell a program rings makes a sound. A tab in the background "
+#~ "is marked either way."
+#~ msgstr ""
+#~ "Чи звучить дзвінок, поданий програмою. Фонова вкладка позначається в будь-"
+#~ "якому разі."
+
+#~ msgid "Keep closed windows"
+#~ msgstr "Зберігати закриті вікна"
+
+#~ msgid ""
+#~ "Whether closing a window detaches it instead of ending its programs, so "
+#~ "that Reattach Windows brings it back."
+#~ msgstr ""
+#~ "Чи від’єднувати вікно під час закриття замість завершення його програм, "
+#~ "щоб «Повернути вікна» знову його відкрило."
+
+#~ msgid "Title bar"
+#~ msgstr "Заголовок вікна"
+
+#~ msgid ""
+#~ "Whether windows show the title bar. Without it, the context menu has its "
+#~ "commands."
+#~ msgstr ""
+#~ "Чи показувати заголовок вікна. Без нього його команди є в контекстному "
+#~ "меню."
+
+#~ msgid "Window size"
+#~ msgstr "Розмір вікна"
+
+#~ msgid "The size of new windows; 0 fits 80 columns by 24 lines of the font."
+#~ msgstr "Розмір нових вікон; 0 — 80 стовпців на 24 рядки шрифту."
+
+#~ msgid "Window maximized"
+#~ msgstr "Вікно розгорнуте"
 
 #~ msgid ""
 #~ "arrows focus · shift swap · ctrl resize · n p tab · v s split · x close · "

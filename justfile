@@ -34,23 +34,22 @@ build-debug:
 run *args: build-debug
     target/debug/caret {{args}}
 
-# Formatting, clippy, schema, desktop entry, metainfo and catalogues.
+# Formatting, clippy, desktop entry, metainfo and catalogues.
 check:
     cargo fmt --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
-    glib-compile-schemas --strict --dry-run data
     desktop-file-validate data/{{app_id}}.desktop
     appstreamcli validate --no-net data/{{app_id}}.metainfo.xml
     for lang in $(cat po/LINGUAS); do msgfmt -c -o /dev/null po/$lang.po; done
 
-# Regenerate po/caret.pot from the sources, desktop entry, metainfo and schema.
+# Regenerate po/caret.pot from the sources, desktop entry and metainfo.
 pot:
     xgettext --from-code=UTF-8 --package-name=caret --package-version={{version}} \
         --msgid-bugs-address=https://github.com/sachesi/caret/issues \
         --keyword=gettext_f --keyword=ngettext_f:1,2 \
         --add-comments=Translators --sort-by-file -o po/caret.pot $(find crates/window/src -name '*.rs' | sort)
     xgettext -j --from-code=UTF-8 --package-name=caret --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/caret/issues --language=Desktop --sort-by-file -o po/caret.pot data/{{app_id}}.desktop
-    xgettext -j --from-code=UTF-8 --package-name=caret --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/caret/issues --sort-by-file -o po/caret.pot data/{{app_id}}.metainfo.xml data/{{app_id}}.gschema.xml
+    xgettext -j --from-code=UTF-8 --package-name=caret --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/caret/issues --sort-by-file -o po/caret.pot data/{{app_id}}.metainfo.xml
 
 # Merge the current template into every po/<lang>.po.
 po: pot
@@ -82,7 +81,6 @@ install:
     sed 's|@bindir@|{{prefix}}/bin|' data/caret-server.service.in | install -Dm644 /dev/stdin {{unitdir}}/caret-server.service
     msgfmt --desktop --template=data/{{app_id}}.desktop -d po -o - | install -Dm644 /dev/stdin {{datadir}}/applications/{{app_id}}.desktop
     msgfmt --xml --template=data/{{app_id}}.metainfo.xml -d po -o - | install -Dm644 /dev/stdin {{datadir}}/metainfo/{{app_id}}.metainfo.xml
-    install -Dm644 data/{{app_id}}.gschema.xml {{datadir}}/glib-2.0/schemas/{{app_id}}.gschema.xml
     install -Dm644 data/icons/hicolor/scalable/apps/{{app_id}}.svg {{datadir}}/icons/hicolor/scalable/apps/{{app_id}}.svg
     install -Dm644 data/icons/hicolor/symbolic/apps/{{app_id}}-symbolic.svg {{datadir}}/icons/hicolor/symbolic/apps/{{app_id}}-symbolic.svg
     # Shell completions, which ask caret itself what to offer as they go.
@@ -91,7 +89,6 @@ install:
     {{release}}/caret completions fish | install -Dm644 /dev/stdin {{datadir}}/fish/vendor_completions.d/caret.fish
     for lang in $(cat po/LINGUAS); do msgfmt -o - po/$lang.po | install -Dm644 /dev/stdin {{datadir}}/locale/$lang/LC_MESSAGES/caret.mo; done
     # A staged install (DESTDIR) leaves the caches to the package manager's triggers.
-    [ -n "{{destdir}}" ] || glib-compile-schemas {{datadir}}/glib-2.0/schemas
     [ -n "{{destdir}}" ] || update-desktop-database -q {{datadir}}/applications || true
     [ -n "{{destdir}}" ] || gtk4-update-icon-cache -qtf {{datadir}}/icons/hicolor || gtk-update-icon-cache -qtf {{datadir}}/icons/hicolor || true
     @echo "installed to {{prefix}}"
@@ -102,10 +99,8 @@ uninstall:
     rm -f {{datadir}}/bash-completion/completions/caret {{datadir}}/zsh/site-functions/_caret {{datadir}}/fish/vendor_completions.d/caret.fish
     rm -f {{unitdir}}/caret-server.socket {{unitdir}}/caret-server.service
     rm -f {{datadir}}/applications/{{app_id}}.desktop {{datadir}}/metainfo/{{app_id}}.metainfo.xml
-    rm -f {{datadir}}/glib-2.0/schemas/{{app_id}}.gschema.xml
     rm -f {{datadir}}/icons/hicolor/scalable/apps/{{app_id}}.svg {{datadir}}/icons/hicolor/symbolic/apps/{{app_id}}-symbolic.svg
     for lang in $(cat po/LINGUAS); do rm -f {{datadir}}/locale/$lang/LC_MESSAGES/caret.mo; done
-    glib-compile-schemas {{datadir}}/glib-2.0/schemas || true
     update-desktop-database -q {{datadir}}/applications || true
     # A cache that still lists the removed icons hides the same icons installed elsewhere.
     gtk4-update-icon-cache -qtf {{datadir}}/icons/hicolor || gtk-update-icon-cache -qtf {{datadir}}/icons/hicolor || true

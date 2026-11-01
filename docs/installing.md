@@ -36,8 +36,7 @@ The same packages are attached to each [release](https://github.com/sachesi/care
 To build: Rust 1.92 or newer, `just`, `glslc` for the shaders, `pkg-config`, and the
 development packages of libwayland and libxkbcommon. On Fedora that is `glslc
 wayland-devel libxkbcommon-devel just`; on Debian `glslc libwayland-dev libxkbcommon-dev
-pkg-config just`. `just check` also wants `glib-compile-schemas`, `desktop-file-validate`,
-`appstreamcli` and gettext.
+pkg-config just`. `just check` also wants `desktop-file-validate`, `appstreamcli` and gettext.
 
 To run: a Wayland compositor, and the Vulkan loader, `libvulkan.so.1`, with a driver for
 Vulkan 1.3. Mesa's software driver will do where there is no GPU. A session bus is used
@@ -48,7 +47,7 @@ notifications and for screen readers.
 
     just build          # release
     just build-debug
-    just check          # rustfmt, clippy, schema, desktop and metainfo validation, catalogues
+    just check          # rustfmt, clippy, desktop and metainfo validation, catalogues
     just test
     just deny           # advisories, licences and sources of the dependencies
     just run            # debug build, uninstalled, as the separate io.github.sachesi.caret.Devel
@@ -67,11 +66,9 @@ prefix, `/usr/local/share/locale` by default; give the same prefix to `build` an
 
 `install` copies what `just build` produced; it never builds. The default prefix is
 `/usr/local`. It puts `caret` and `caret-server` in `bin`, the server's systemd user
-units in `lib/systemd/user`, and the desktop entry, metainfo, icons, GSettings schema,
-translations and bash, zsh and fish completions under `share`, then compiles the schema and refreshes the desktop and icon
-caches. With `DESTDIR` set, those caches are left to the package manager. The schema is
-there for upgrades: the first start of this version copies settings made in GSettings by
-earlier versions into `config.toml`.
+units in `lib/systemd/user`, and the desktop entry, metainfo, icons, translations and
+bash, zsh and fish completions under `share`, then refreshes the desktop and icon caches.
+With `DESTDIR` set, those caches are left to the package manager.
 
 The first window starts `caret-server` when nothing listens on its socket, and the server
 ends once it keeps no terminal and no window is attached. To have systemd start it

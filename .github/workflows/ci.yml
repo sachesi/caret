@@ -33,7 +33,7 @@ jobs:
           dnf install -y --setopt=install_weak_deps=False
           git-core rust cargo rustfmt clippy just
           glslc wayland-devel libxkbcommon-devel
-          glib2 desktop-file-utils appstream gettext
+          desktop-file-utils appstream gettext
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

@@ -7,7 +7,6 @@ use std::fmt::Write as _;
 use std::mem::MaybeUninit;
 use std::os::fd::{AsFd, OwnedFd};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use caret_protocol::CursorShape;
 use harfrust::Feature;
@@ -653,80 +652,6 @@ fn starter() -> String {
     text
 }
 
-/// Writes the settings the GTK version of Caret kept in `GSettings` to `config.toml`,
-/// those changed from their defaults, the first time the window starts: while the
-/// directory `config.toml` goes in is missing.
-pub fn import() {
-    let Some(path) = path() else {
-        return;
-    };
-    let Some(directory) = path.parent().filter(|directory| !directory.exists()) else {
-        return;
-    };
-    if let Err(error) = std::fs::create_dir_all(directory) {
-        tracing::warn!("making {}: {error}", directory.display());
-        return;
-    }
-    let mut gsettings = Command::new("gsettings");
-    gsettings.args(["list-recursively", crate::APP_ID]);
-    let listed = caret_protocol::start_with_usual_turns(&mut gsettings).output();
-    let listing = match listed {
-        Ok(output) if output.status.success() => output.stdout,
-        // No gsettings or no schema: nothing to bring over.
-        _ => return,
-    };
-    let document = imported(&String::from_utf8_lossy(&listing));
-    if document.is_empty() {
-        return;
-    }
-    if let Err(error) = std::fs::write(&path, document.to_string()) {
-        tracing::warn!("writing {}: {error}", path.display());
-    }
-}
-
-/// The settings in a `gsettings list-recursively` listing that differ from their
-/// defaults, as `config.toml` keeps them.
-fn imported(listing: &str) -> DocumentMut {
-    let defaults = Config::default();
-    let mut document = DocumentMut::new();
-    for line in listing.lines() {
-        let mut words = line.splitn(3, ' ');
-        let (Some(_), Some(key), Some(value)) = (words.next(), words.next(), words.next()) else {
-            continue;
-        };
-        let value = value.trim();
-        let value: Option<Value> = if let Some(lines) = value.strip_prefix("uint32 ") {
-            lines.parse::<i64>().ok().map(Value::from)
-        } else if let Ok(on) = value.parse::<bool>() {
-            Some(Value::from(on))
-        } else {
-            quoted(value).map(Value::from)
-        };
-        let Some(value) = value else {
-            continue;
-        };
-        let item = Item::Value(value);
-        let mut config = defaults.clone();
-        if config.set(key, &item).is_ok() && config != defaults {
-            document.insert(key, item);
-        }
-    }
-    document
-}
-
-/// The text of a string as `GVariant` prints it, in single or double quotes with
-/// backslash escapes.
-fn quoted(value: &str) -> Option<String> {
-    let quote = value.chars().next().filter(|&c| matches!(c, '\'' | '"'))?;
-    let inner = value.strip_prefix(quote)?.strip_suffix(quote)?;
-    let mut text = String::with_capacity(inner.len());
-    let mut chars = inner.chars();
-    while let Some(c) = chars.next() {
-        text.push(if c == '\\' { chars.next()? } else { c });
-    }
-    Some(text)
-}
-
 /// Sets `key` to `value` in `config.toml`, keeping the rest of the file as it is.
 pub fn write(key: &str, value: impl Into<Value>) {
     let value = toml_edit::value(value);
@@ -1113,31 +1038,6 @@ mod tests {
             family_and_size(Config::default().font_for(None)),
             (None, POINTS)
         );
-    }
-
-    #[test]
-    fn settings_changed_in_gsettings_are_brought_over() {
-        let listing = "io.github.sachesi.caret font 'Adwaita Mono 13'\n\
-            io.github.sachesi.caret ligatures false\n\
-            io.github.sachesi.caret font-features 'zero'\n\
-            io.github.sachesi.caret color-scheme 'system'\n\
-            io.github.sachesi.caret scrollback-lines uint32 5000\n\
-            io.github.sachesi.caret custom-command \"tmux new -s 'it'\"\n\
-            io.github.sachesi.caret close-detaches true\n\
-            io.github.sachesi.caret title-bar true\n\
-            io.github.sachesi.caret window-size (0, 0)\n";
-        let document = imported(listing).to_string();
-        let config = parse(&document);
-        assert_eq!(
-            family_and_size(config.font_for(None)),
-            (Some("Adwaita Mono".into()), 13.0)
-        );
-        assert_eq!(config.font_features, features("zero").unwrap_or_default());
-        assert!(!config.ligatures);
-        assert_eq!(config.scrollback_lines, 5000);
-        assert_eq!(config.custom_command, "tmux new -s 'it'");
-        assert!(config.close_detaches);
-        assert!(!document.contains("title-bar") && !document.contains("color-scheme"));
     }
 
     #[test]
