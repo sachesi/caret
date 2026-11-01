@@ -18,6 +18,15 @@ void main() {
         + ivec2(int(index % k.columns) * k.cell_width, int(index / k.columns) * k.cell_height);
     vec2 position;
     if (k.pass == 0u) {
+        // Most cells draw nothing in this pass: their background is the terminal's, under
+        // them all. Each would otherwise shade every pixel it covers to no effect.
+        if (cells[gl_InstanceIndex].flags == 0u && !under_cursor(index)) {
+            gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
+            cell_index = index;
+            local = vec2(0);
+            texel = vec2(0);
+            return;
+        }
         local = corner * vec2(k.cell_width, k.cell_height);
         position = vec2(cell_origin) + local;
         texel = vec2(0);
