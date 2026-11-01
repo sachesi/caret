@@ -76,21 +76,20 @@ install:
     @test -x {{release}}/caret-server || { echo "error: {{release}}/caret-server missing; run 'just build' first" >&2; exit 1; }
     install -Dm755 {{release}}/caret {{bindir}}/caret
     install -Dm755 {{release}}/caret-server {{bindir}}/caret-server
-    mkdir -p {{unitdir}}
     install -Dm644 data/caret-server.socket {{unitdir}}/caret-server.socket
-    sed 's|@bindir@|{{prefix}}/bin|' data/caret-server.service.in > {{unitdir}}/caret-server.service
-    mkdir -p {{datadir}}/applications {{datadir}}/metainfo
-    msgfmt --desktop --template=data/{{app_id}}.desktop -d po -o {{datadir}}/applications/{{app_id}}.desktop
-    msgfmt --xml --template=data/{{app_id}}.metainfo.xml -d po -o {{datadir}}/metainfo/{{app_id}}.metainfo.xml
+    # Whatever is generated goes through install too: a redirect would take its mode from the
+    # umask and the directory's default ACL, and could leave a file only root can read.
+    sed 's|@bindir@|{{prefix}}/bin|' data/caret-server.service.in | install -Dm644 /dev/stdin {{unitdir}}/caret-server.service
+    msgfmt --desktop --template=data/{{app_id}}.desktop -d po -o - | install -Dm644 /dev/stdin {{datadir}}/applications/{{app_id}}.desktop
+    msgfmt --xml --template=data/{{app_id}}.metainfo.xml -d po -o - | install -Dm644 /dev/stdin {{datadir}}/metainfo/{{app_id}}.metainfo.xml
     install -Dm644 data/{{app_id}}.gschema.xml {{datadir}}/glib-2.0/schemas/{{app_id}}.gschema.xml
     install -Dm644 data/icons/hicolor/scalable/apps/{{app_id}}.svg {{datadir}}/icons/hicolor/scalable/apps/{{app_id}}.svg
     install -Dm644 data/icons/hicolor/symbolic/apps/{{app_id}}-symbolic.svg {{datadir}}/icons/hicolor/symbolic/apps/{{app_id}}-symbolic.svg
     # Shell completions, which ask caret itself what to offer as they go.
-    install -d {{datadir}}/bash-completion/completions {{datadir}}/zsh/site-functions {{datadir}}/fish/vendor_completions.d
-    {{release}}/caret completions bash > {{datadir}}/bash-completion/completions/caret
-    {{release}}/caret completions zsh > {{datadir}}/zsh/site-functions/_caret
-    {{release}}/caret completions fish > {{datadir}}/fish/vendor_completions.d/caret.fish
-    for lang in $(cat po/LINGUAS); do install -d {{datadir}}/locale/$lang/LC_MESSAGES; msgfmt -o {{datadir}}/locale/$lang/LC_MESSAGES/caret.mo po/$lang.po; done
+    {{release}}/caret completions bash | install -Dm644 /dev/stdin {{datadir}}/bash-completion/completions/caret
+    {{release}}/caret completions zsh | install -Dm644 /dev/stdin {{datadir}}/zsh/site-functions/_caret
+    {{release}}/caret completions fish | install -Dm644 /dev/stdin {{datadir}}/fish/vendor_completions.d/caret.fish
+    for lang in $(cat po/LINGUAS); do msgfmt -o - po/$lang.po | install -Dm644 /dev/stdin {{datadir}}/locale/$lang/LC_MESSAGES/caret.mo; done
     # A staged install (DESTDIR) leaves the caches to the package manager's triggers.
     [ -n "{{destdir}}" ] || glib-compile-schemas {{datadir}}/glib-2.0/schemas
     [ -n "{{destdir}}" ] || update-desktop-database -q {{datadir}}/applications || true
