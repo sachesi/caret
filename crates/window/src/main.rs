@@ -85,7 +85,6 @@ fn main() -> ExitCode {
         }
         start.attach = cli::Attach::Session(*first);
     }
-    config::import();
     match app::run(start) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

@@ -37,8 +37,7 @@ Before a change goes in:
       box_drawing.rs          box drawing and block characters drawn to fill their cells
       color_glyph.rs          colour glyphs of the COLRv1 table, painted on the CPU
       panes.rs                where a tab's panes go, and the gaps between them
-      config.rs               config.toml, profiles and keys, and bringing over settings
-                              from GSettings once
+      config.rs               config.toml, profiles and keys
       shortcuts.rs, keys.rs   actions and their keys; keys as the terminal encodes them
       desktop.rs              the style and the font from the settings portal
       access.rs               what screen readers are told
@@ -133,8 +132,8 @@ not inside a macro, whose body xgettext skips. Values go in through named placeh
 with `gettext_f` and `ngettext_f` from `crates/window/src/i18n.rs`, `{program}` rather
 than `%s`, so a translation can put them in its own order. Counts use `ngettext` even
 where English would not need it, because the plural rules of other languages do. `just
-pot` regenerates the template from the window's sources, the desktop entry, the metainfo
-and the schema, and `just po` merges it into every `po/<lang>.po`. A new language is a new
+pot` regenerates the template from the window's sources, the desktop entry and the
+metainfo, and `just po` merges it into every `po/<lang>.po`. A new language is a new
 line in `po/LINGUAS` plus the `.po` file. `install` compiles the catalogues and merges the
 desktop and metainfo translations with `msgfmt`.
 

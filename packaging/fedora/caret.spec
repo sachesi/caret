@@ -72,7 +72,6 @@ msgfmt --desktop --template=data/%{app_id}.desktop -d po \
   -o %{buildroot}%{_datadir}/applications/%{app_id}.desktop
 msgfmt --xml --template=data/%{app_id}.metainfo.xml -d po \
   -o %{buildroot}%{_metainfodir}/%{app_id}.metainfo.xml
-install -Dpm 0644 data/%{app_id}.gschema.xml %{buildroot}%{_datadir}/glib-2.0/schemas/%{app_id}.gschema.xml
 install -Dpm 0644 data/icons/hicolor/scalable/apps/%{app_id}.svg \
   %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/%{app_id}.svg
 install -Dpm 0644 data/icons/hicolor/symbolic/apps/%{app_id}-symbolic.svg \
@@ -99,7 +98,6 @@ test -x %{buildroot}%{_bindir}/caret-server
 %{_userunitdir}/caret-server.service
 %{_datadir}/applications/%{app_id}.desktop
 %{_metainfodir}/%{app_id}.metainfo.xml
-%{_datadir}/glib-2.0/schemas/%{app_id}.gschema.xml
 %{_datadir}/icons/hicolor/scalable/apps/%{app_id}.svg
 %{_datadir}/icons/hicolor/symbolic/apps/%{app_id}-symbolic.svg
 
