@@ -34,7 +34,7 @@ pub fn named(keysym: Keysym) -> Option<Key> {
                     .ok()
                     .map(Key::Function);
             }
-            return keysym.key_char().filter(|c| !c.is_control()).map(Key::Char);
+            return None;
         }
     };
     Some(named)
@@ -73,6 +73,22 @@ impl Layouts {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_key_that_types_a_character_has_no_name() {
+        for keysym in [
+            Keysym::a,
+            Keysym::A,
+            Keysym::exclam,
+            Keysym::less,
+            Keysym::space,
+        ] {
+            assert_eq!(named(keysym), None, "{keysym:?}");
+            assert!(matches!(key(keysym), Some(Key::Char(_))), "{keysym:?}");
+        }
+        assert_eq!(named(Keysym::Return), Some(Key::Enter));
+        assert_eq!(named(Keysym::F5), Some(Key::Function(5)));
+    }
 
     #[test]
     fn named_keys_function_keys_and_characters() {
