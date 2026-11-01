@@ -75,10 +75,14 @@ pub struct Grid {
     pub background: Rgb,
     pub cursor_color: Rgb,
     pub mode: Mode,
+    /// Rows of history above the screen, and how far up into it the view is.
+    pub history: u32,
+    pub offset: u32,
     /// The link under the pointer.
     pub hovered: Option<Hovered>,
     selection: Option<Selection>,
-    /// Each line's cells as the server sent them, to resolve again when the atlas is.
+    /// Each line's cells as the server sent them, to resolve again when the atlas is, and
+    /// one line more: the row under a view scrolled up.
     rows: Vec<Vec<Cell>>,
     /// The rows changed since they were last taken to be drawn.
     stale: Vec<bool>,
@@ -179,9 +183,9 @@ impl Grid {
         if (columns, lines) != (self.columns, self.lines) {
             self.columns = columns;
             self.lines = lines;
-            self.cells = vec![GpuCell::default(); columns * lines];
-            self.rows = vec![Vec::new(); lines];
-            self.stale = vec![true; lines];
+            self.cells = vec![GpuCell::default(); columns * (lines + 1)];
+            self.rows = vec![Vec::new(); lines + 1];
+            self.stale = vec![true; lines + 1];
         }
         let old_selection = std::mem::replace(&mut self.selection, frame.selection);
         let old_cursor = std::mem::replace(&mut self.cursor, frame.cursor);
@@ -190,7 +194,7 @@ impl Grid {
         self.background = frame.background;
         for row in frame.rows {
             let line = usize::from(row.line);
-            if line >= lines {
+            if line > lines {
                 continue;
             }
             self.rows[line] = row.cells;
@@ -203,7 +207,7 @@ impl Grid {
         }
         if self.selection != old_selection {
             for line in lines_of(old_selection).chain(lines_of(self.selection)) {
-                if line < lines {
+                if line <= lines {
                     self.select_line(line);
                     self.mark(line);
                 }
@@ -217,7 +221,7 @@ impl Grid {
                 .filter(|cursor| cursor.shape == CursorShape::Block);
             for cursor in blocks {
                 let line = usize::from(cursor.point.line);
-                if line < lines {
+                if line <= lines {
                     self.fill(line, &mut glyphs);
                 }
             }
@@ -225,12 +229,14 @@ impl Grid {
         self.cursor_blinks = frame.cursor_blinks;
         self.cursor_color = frame.cursor_color;
         self.mode = frame.mode;
+        self.history = frame.history;
+        self.offset = frame.offset;
         self.hovered = frame.hovered;
     }
 
     /// Resolves every cell again, with `glyphs` giving glyphs' entries in a new atlas.
     pub fn refill(&mut self, mut glyphs: impl Glyphs) {
-        for line in 0..self.lines {
+        for line in 0..self.rows.len() {
             self.fill(line, &mut glyphs);
         }
     }
@@ -460,7 +466,7 @@ mod tests {
     fn rows_sent_replace_theirs_and_are_stale_until_taken() {
         let mut grid = Grid::default();
         grid.apply(frame(vec![row(0, "ab"), row(1, "c")], None), Fixed(7));
-        assert_eq!(grid.take_stale(), [0, 1, 2]);
+        assert_eq!(grid.take_stale(), [0, 1, 2, 3]);
         assert_eq!(grid.take_stale(), Vec::<usize>::new());
         grid.apply(frame(vec![row(1, "")], None), Fixed(7));
         assert_eq!(grid.cells[4], GpuCell::default());
@@ -508,8 +514,7 @@ mod tests {
             frame(vec![row(0, "abcd"), row(1, "efgh")], Some(selection)),
             Fixed(1),
         );
-        let selected: Vec<bool> = grid
-            .cells
+        let selected: Vec<bool> = grid.cells[..12]
             .iter()
             .map(|cell| cell.flags & SELECTED != 0)
             .collect();

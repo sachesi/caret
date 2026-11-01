@@ -200,6 +200,10 @@ pane under the pointer and leaves the keys where they are; with `scroll-under-po
 it acts on the focused pane. `scroll-speed` makes the wheel and the touchpad go further or
 less far, while a finger stays under the text it touched.
 
+With `smooth-scroll` on, the history moves by the pixel: the wheel's notches ease in and
+out, a touchpad or a finger moves it directly, and it ends on a whole row. The keys still
+scroll by the page, and a program that has the whole screen still gets its arrow keys.
+
 Ctrl+Shift+Up and Ctrl+Shift+Down scroll to the previous and next prompt, in a shell that
 marks them.
 

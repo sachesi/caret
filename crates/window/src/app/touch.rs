@@ -10,6 +10,7 @@ use smithay_client_toolkit::reexports::client::{Connection, QueueHandle};
 use smithay_client_toolkit::seat::touch::TouchHandler;
 
 use super::App;
+use super::gliding::Motion;
 use super::pointer::BUTTON_LEFT;
 
 /// Logical pixels a finger may stray and still be taken for holding still.
@@ -36,6 +37,13 @@ struct Finger {
     direct: bool,
     scrolling: bool,
     held: bool,
+}
+
+impl Touch {
+    /// Whether a finger is on the screen moving the text under it.
+    pub fn holds_a_scroll(&self) -> bool {
+        self.finger.as_ref().is_some_and(|finger| finger.scrolling)
+    }
 }
 
 /// Whether a finger has gone from `start` to `at`, far enough not to be a tap.
@@ -161,7 +169,7 @@ impl TouchHandler for App {
         if finger.scrolling {
             let travelled = position.1 - finger.last.1;
             finger.last = position;
-            self.scrolled(-travelled / height);
+            self.scrolled(-travelled / height, Motion::Touch);
         }
     }
 

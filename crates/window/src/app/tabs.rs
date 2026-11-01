@@ -15,6 +15,7 @@ use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use super::{App, Asked};
 use crate::chrome::{Preview, TabLabel};
 use crate::config::SessionListClick;
+use crate::glide::Glide;
 use crate::grid::{self, Grid, Unresolved};
 use crate::i18n::gettext_f;
 use crate::panes::{self, Direction, Placed, Rect};
@@ -30,6 +31,8 @@ const PREVIEW_COLUMNS: i32 = 64;
 const PREVIEW_LINES: i32 = 20;
 
 pub struct Pane {
+    /// Its view of the history while it moves by less than a row at a time.
+    pub glide: Option<Glide>,
     /// The program's title.
     title: String,
     /// The pane's cells, unless it is the focused one of the tab shown: those are the
@@ -50,6 +53,7 @@ impl Pane {
         Self {
             title,
             grid: Grid::empty(background),
+            glide: None,
             frame_asked: false,
             size: None,
             command: None,
@@ -590,6 +594,7 @@ impl App {
             return;
         };
         pane.frame_asked = false;
+        let offset = frame.offset;
         if index != self.selected {
             // Its glyphs are looked up when it is shown.
             pane.grid.apply(frame, Unresolved);
@@ -613,6 +618,7 @@ impl App {
         if self.config.tab_previews {
             self.refresh_popup();
         }
+        self.rows_came(terminal, offset);
         self.dirty = true;
         self.draw();
     }

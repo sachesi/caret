@@ -20,7 +20,7 @@ use smithay_client_toolkit::compositor::{
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::calloop::generic::Generic;
 use smithay_client_toolkit::reexports::calloop::{
-    self, EventLoop, Interest, LoopHandle, Mode, PostAction,
+    self, EventLoop, Interest, LoopHandle, Mode, PostAction, RegistrationToken,
 };
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::reexports::protocols::xdg::activation::v1::client::xdg_activation_v1::XdgActivationV1;
@@ -107,6 +107,7 @@ mod blink;
 mod clipboard;
 mod confirm;
 mod control;
+mod gliding;
 mod menus;
 mod pointer;
 mod popup;
@@ -297,6 +298,10 @@ struct App {
     keys_here: bool,
     /// Something changed since the last frame was drawn.
     dirty: bool,
+    /// The timer that ends a scroll left between two rows.
+    glide_rest: Option<RegistrationToken>,
+    /// The timer that lets a frame go if the rows it waits for do not come.
+    rows_due: Option<RegistrationToken>,
     /// A frame is with the render thread, which says when the compositor wants the next.
     waiting: bool,
     /// The atlas whose entries the render thread has, and how many of them.
@@ -499,6 +504,8 @@ pub fn run(start: Start) -> Result<(), AppError> {
         focused: false,
         keys_here: false,
         dirty: true,
+        glide_rest: None,
+        rows_due: None,
         waiting: false,
         sent_glyphs: (0, 0),
         exit: false,
@@ -562,12 +569,22 @@ fn begin(server: &mut connection::Connection, start: Start) -> (HashMap<u32, Ask
     (asked, first)
 }
 
+/// A pane as a frame draws it.
+struct ShownPane {
+    terminal: TerminalId,
+    constants: Constants,
+    area: ash::vk::Rect2D,
+    /// It is drawn up from its place, which shows the row under its view.
+    below: bool,
+    moving: bool,
+}
+
 /// The rows that changed in each pane `shown`, drawn with its constants: `window`'s
 /// cells for the focused pane of `tab`, the pane's own for the others.
 fn pane_jobs(
     window: &mut Grid,
     tab: Option<&mut tabs::Tab>,
-    shown: Vec<(TerminalId, Constants)>,
+    shown: Vec<ShownPane>,
 ) -> Vec<PaneJob> {
     let mut window = Some(window);
     let mut others: HashMap<TerminalId, &mut Grid> = tab
@@ -582,8 +599,8 @@ fn pane_jobs(
         .unwrap_or_default();
     shown
         .into_iter()
-        .filter_map(|(terminal, constants)| {
-            let grid = others.remove(&terminal).or_else(|| window.take())?;
+        .filter_map(|pane| {
+            let grid = others.remove(&pane.terminal).or_else(|| window.take())?;
             let columns = grid.columns;
             let rows = grid
                 .take_stale()
@@ -596,11 +613,14 @@ fn pane_jobs(
                 })
                 .collect();
             Some(PaneJob {
-                terminal: terminal.0,
+                terminal: pane.terminal.0,
                 columns,
-                lines: grid.lines,
+                lines: grid.lines + 1,
+                drawn: grid.lines + usize::from(pane.below),
+                area: pane.area,
+                moving: pane.moving,
                 rows,
-                constants,
+                constants: pane.constants,
             })
         })
         .collect()
@@ -1229,6 +1249,7 @@ impl App {
         match rendered {
             Rendered::Ready => {
                 self.waiting = false;
+                self.step_glides();
                 self.draw();
             }
             Rendered::Failed(error) => {
@@ -1244,7 +1265,7 @@ impl App {
         let Some((width, height)) = self.size else {
             return;
         };
-        if !self.dirty || self.waiting {
+        if !self.dirty || self.waiting || self.rows_due.is_some() {
             return;
         }
         self.waiting = true;
@@ -1258,8 +1279,8 @@ impl App {
         let shown = self.shown_panes(&placed, (surface_width, surface_height));
         let constants = shown
             .iter()
-            .find(|(terminal, _)| Some(*terminal) == focused)
-            .map_or(shown[0].1, |&(_, constants)| constants);
+            .find(|pane| Some(pane.terminal) == focused)
+            .map_or(shown[0].constants, |pane| pane.constants);
         let background = self.grid.background;
         self.place_text_input();
         self.place_preedit();
@@ -1377,7 +1398,7 @@ impl App {
     }
 
     /// Each pane shown and what it is drawn with, in a surface `size` big.
-    fn shown_panes(&self, placed: &Placed, size: (u32, u32)) -> Vec<(TerminalId, Constants)> {
+    fn shown_panes(&self, placed: &Placed, size: (u32, u32)) -> Vec<ShownPane> {
         let focused = self.terminal();
         let mut shown = Vec::new();
         for &(terminal, rect) in &placed.panes {
@@ -1389,17 +1410,39 @@ impl App {
                 _ => &self.grid,
             };
             let is_focused = focused == Some(terminal);
-            shown.push((
+            let shift = self.glide_shift(terminal);
+            shown.push(ShownPane {
                 terminal,
-                self.constants(grid, (rect.x, rect.y), is_focused, size),
-            ));
+                constants: self.constants(grid, (rect.x, rect.y - shift), is_focused, size),
+                area: ash::vk::Rect2D {
+                    offset: ash::vk::Offset2D {
+                        x: rect.x.max(0),
+                        y: rect.y.max(0),
+                    },
+                    extent: ash::vk::Extent2D {
+                        width: rect.width.max(0) as u32,
+                        height: rect.height.max(0) as u32,
+                    },
+                },
+                below: shift > 0,
+                moving: self.is_gliding(terminal),
+            });
         }
         // Before the first tab, the window's empty cells.
         if shown.is_empty() {
-            shown.push((
-                TerminalId(0),
-                self.constants(&self.grid, self.origin(), true, size),
-            ));
+            shown.push(ShownPane {
+                terminal: TerminalId(0),
+                constants: self.constants(&self.grid, self.origin(), true, size),
+                area: ash::vk::Rect2D {
+                    offset: ash::vk::Offset2D::default(),
+                    extent: ash::vk::Extent2D {
+                        width: size.0,
+                        height: size.1,
+                    },
+                },
+                below: false,
+                moving: false,
+            });
         }
         shown
     }

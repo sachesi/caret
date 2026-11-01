@@ -11,6 +11,7 @@ mod config;
 mod connection;
 mod desktop;
 mod fonts;
+mod glide;
 mod gpu;
 mod grid;
 mod i18n;

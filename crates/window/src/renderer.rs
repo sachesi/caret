@@ -51,7 +51,15 @@ pub const CURSOR_FOCUSED: u32 = 32;
 pub struct PaneJob {
     pub terminal: u32,
     pub columns: usize,
+    /// The lines kept of it, and those drawn: all but the row under its view, unless it
+    /// shows as the pane is drawn off its place.
     pub lines: usize,
+    pub drawn: usize,
+    /// Where it is on the surface; it stays inside while drawn off its place.
+    pub area: vk::Rect2D,
+    /// It looks different each frame, so that the next one comes when the compositor wants
+    /// it, whether or not it moved by a whole pixel in this one.
+    pub moving: bool,
     /// Each changed row's line and cells.
     pub rows: Vec<(usize, Vec<GpuCell>)>,
     pub constants: Constants,
@@ -109,6 +117,13 @@ impl Constants {
             cursor_line: 0,
             cursor_shape: 0,
             cursor_color: 0,
+            ..self
+        }
+    }
+
+    fn without_origin_y(self) -> Self {
+        Self {
+            origin_y: 0,
             ..self
         }
     }
@@ -178,6 +193,20 @@ fn changed_rects(
         }
     }
     rects
+}
+
+/// A pane's `area` as the part of an `extent` image it shows on.
+fn area_rect(area: vk::Rect2D, extent: vk::Extent2D) -> vk::RectLayerKHR {
+    let x = area.offset.x.clamp(0, extent.width as i32);
+    let y = area.offset.y.clamp(0, extent.height as i32);
+    vk::RectLayerKHR {
+        offset: vk::Offset2D { x, y },
+        extent: vk::Extent2D {
+            width: area.extent.width.min(extent.width - x as u32),
+            height: area.extent.height.min(extent.height - y as u32),
+        },
+        layer: 0,
+    }
 }
 
 struct Buffer {
@@ -406,10 +435,16 @@ impl Renderer {
             draw_quads(0..under);
             device.cmd_bind_pipeline(commands, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
             for pane in &job.panes {
-                let cells = (pane.columns * pane.lines) as u32;
+                let cells = (pane.columns * pane.drawn) as u32;
                 if cells == 0 {
                     continue;
                 }
+                let off_its_place = pane.drawn == pane.lines;
+                device.cmd_set_scissor(
+                    commands,
+                    0,
+                    &[if off_its_place { pane.area } else { area }],
+                );
                 for pass in 0..2 {
                     let constants = Constants {
                         pass,
@@ -425,6 +460,7 @@ impl Renderer {
                     device.cmd_draw(commands, 6, cells, 0, pane.constants.first);
                 }
             }
+            device.cmd_set_scissor(commands, 0, &[area]);
             draw_quads(under..job.quads.len());
             device.cmd_end_rendering(commands);
         }
@@ -518,15 +554,26 @@ impl Renderer {
         for pane in &job.panes {
             let mirror = self.mirrors.get(&pane.terminal)?;
             let before = mirror.presented?;
-            if before.without_cursor() != pane.constants.without_cursor() {
+            let at_rest = before.origin_y == pane.constants.origin_y;
+            if before.without_cursor().without_origin_y()
+                != pane.constants.without_cursor().without_origin_y()
+            {
                 return None;
             }
+            if pane.moving || !at_rest {
+                rects.push(area_rect(pane.area, extent));
+                continue;
+            }
             let moved = before.cursor() != pane.constants.cursor();
-            let lines = mirror.changed.iter().enumerate().map(|(line, &changed)| {
-                let line = line as i32;
-                changed
-                    || (moved && (line == before.cursor_line || line == pane.constants.cursor_line))
-            });
+            let lines = mirror.changed[..pane.drawn]
+                .iter()
+                .enumerate()
+                .map(|(line, &changed)| {
+                    let line = line as i32;
+                    changed
+                        || (moved
+                            && (line == before.cursor_line || line == pane.constants.cursor_line))
+                });
             rects.extend(changed_rects(lines, &pane.constants, self.reach, extent));
         }
         Some(rects)
