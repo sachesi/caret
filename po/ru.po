@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-11-01 08:51+0200\n"
+"POT-Creation-Date: 2026-11-01 11:38+0200\n"
 "PO-Revision-Date: 2026-10-31 12:30+0200\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Russian\n"
@@ -49,7 +49,7 @@ msgstr "Без имени вкладка показывает заголовок
 #: crates/window/src/app/confirm.rs:183 crates/window/src/app/confirm.rs:228
 #: crates/window/src/app/confirm.rs:351 crates/window/src/app/confirm.rs:381
 #: crates/window/src/app/confirm.rs:469 crates/window/src/app/confirm.rs:485
-#: crates/window/src/app/presets.rs:335
+#: crates/window/src/app/presets.rs:358
 msgid "Cancel"
 msgstr "Отмена"
 
@@ -149,7 +149,7 @@ msgstr[2] "{count} сеансов завершатся вместе с этим 
 msgid "The session “{session}” will end with this window."
 msgstr "Сеанс «{session}» завершится вместе с этим окном."
 
-#: crates/window/src/app/confirm.rs:470 crates/window/src/app/menus.rs:628
+#: crates/window/src/app/confirm.rs:470 crates/window/src/app/menus.rs:630
 msgid "Detach"
 msgstr "Отсоединить"
 
@@ -200,7 +200,7 @@ msgstr ""
 "Стрелки фокус · Shift обмен · Ctrl размер · V S разделить · X закрыть · Z "
 "развернуть · T вкладка · D отсоединить"
 
-#: crates/window/src/app/control.rs:115
+#: crates/window/src/app/control.rs:112
 msgid "Moving panes needs a newer terminal server"
 msgstr "Для перемещения панелей нужен более новый терминальный сервер"
 
@@ -211,13 +211,13 @@ msgid "New Window"
 msgstr "Новое окно"
 
 #: crates/window/src/app/menus.rs:107 crates/window/src/app/menus.rs:196
-#: crates/window/src/app/sessions.rs:285
+#: crates/window/src/app/sessions.rs:292
 #: crates/window/src/app/shortcut_list.rs:25
 msgid "New Tab"
 msgstr "Новая вкладка"
 
 #: crates/window/src/app/menus.rs:108 crates/window/src/app/menus.rs:422
-#: crates/window/src/app/menus.rs:595 crates/window/src/app/shortcut_list.rs:26
+#: crates/window/src/app/menus.rs:597 crates/window/src/app/shortcut_list.rs:26
 msgid "New Session"
 msgstr "Новый сеанс"
 
@@ -226,7 +226,7 @@ msgstr "Новый сеанс"
 msgid "New “{profile}” Window"
 msgstr "Новое окно «{profile}»"
 
-#: crates/window/src/app/menus.rs:124 crates/window/src/app/sessions.rs:297
+#: crates/window/src/app/menus.rs:124 crates/window/src/app/sessions.rs:304
 msgid "Detach Session"
 msgstr "Отсоединить сеанс"
 
@@ -238,7 +238,7 @@ msgstr "Отсоединить окно"
 msgid "Sessions…"
 msgstr "Сеансы…"
 
-#: crates/window/src/app/menus.rs:134 crates/window/src/app/sessions.rs:292
+#: crates/window/src/app/menus.rs:134 crates/window/src/app/sessions.rs:299
 msgid "Rename Session…"
 msgstr "Переименовать сеанс…"
 
@@ -370,36 +370,36 @@ msgstr[2] "{count} панелей"
 msgid "{tabs}, {panes}"
 msgstr "{tabs}, {panes}"
 
-#: crates/window/src/app/menus.rs:558
+#: crates/window/src/app/menus.rs:560
 msgid "New sessions need a newer terminal server"
 msgstr "Для новых сеансов нужен более новый терминальный сервер"
 
-#: crates/window/src/app/menus.rs:583
+#: crates/window/src/app/menus.rs:585
 #, rust-format
 msgid "Show {session} · {title}"
 msgstr "Показать {session} · {title}"
 
-#: crates/window/src/app/menus.rs:607
+#: crates/window/src/app/menus.rs:609
 msgid "Replace This Window"
 msgstr "Заменить в этом окне"
 
-#: crates/window/src/app/menus.rs:612
+#: crates/window/src/app/menus.rs:614
 msgid "Add to This Window"
 msgstr "Добавить в это окно"
 
-#: crates/window/src/app/menus.rs:620
+#: crates/window/src/app/menus.rs:622
 msgid "Open in New Window"
 msgstr "Открыть в новом окне"
 
-#: crates/window/src/app/menus.rs:626
+#: crates/window/src/app/menus.rs:628
 msgid "Rename…"
 msgstr "Переименовать…"
 
-#: crates/window/src/app/menus.rs:629
+#: crates/window/src/app/menus.rs:631
 msgid "Close…"
 msgstr "Закрыть…"
 
-#: crates/window/src/app/menus.rs:675
+#: crates/window/src/app/menus.rs:676
 #, rust-format
 msgid "{count} detached session"
 msgid_plural "{count} detached sessions"
@@ -407,32 +407,32 @@ msgstr[0] "{count} отсоединённый сеанс"
 msgstr[1] "{count} отсоединённых сеанса"
 msgstr[2] "{count} отсоединённых сеансов"
 
-#: crates/window/src/app/menus.rs:680 crates/window/src/notifications.rs:96
+#: crates/window/src/app/menus.rs:681 crates/window/src/notifications.rs:96
 msgid "Show"
 msgstr "Показать"
 
-#: crates/window/src/app/menus.rs:690
+#: crates/window/src/app/menus.rs:691
 msgid "No windows were detached"
 msgstr "Нет отсоединённых окон"
 
-#: crates/window/src/app/pointer.rs:808
+#: crates/window/src/app/pointer.rs:829
 #, rust-format
 msgid "Could not open the link: {reason}"
 msgstr "Не удалось открыть ссылку: {reason}"
 
-#: crates/window/src/app/pointer.rs:817
+#: crates/window/src/app/pointer.rs:838
 msgid "no program opens links"
 msgstr "нет программы, открывающей ссылки"
 
-#: crates/window/src/app/pointer.rs:830
+#: crates/window/src/app/pointer.rs:851
 msgid "it does not exist"
 msgstr "её не существует"
 
-#: crates/window/src/app/pointer.rs:831
+#: crates/window/src/app/pointer.rs:852
 msgid "no program opens it"
 msgstr "нет программы, которая её открывает"
 
-#: crates/window/src/app/pointer.rs:832
+#: crates/window/src/app/pointer.rs:853
 msgid "the program that opens it failed"
 msgstr "программа, которая её открывает, завершилась с ошибкой"
 
@@ -445,51 +445,51 @@ msgstr "Пресеты"
 msgid "Save Layout as Preset…"
 msgstr "Сохранить раскладку как пресет…"
 
-#: crates/window/src/app/presets.rs:189 crates/window/src/app/presets.rs:230
+#: crates/window/src/app/presets.rs:212 crates/window/src/app/presets.rs:253
 msgid "Presets need a newer terminal server"
 msgstr "Для пресетов нужен более новый сервер терминала"
 
-#: crates/window/src/app/presets.rs:232
+#: crates/window/src/app/presets.rs:255
 #, rust-format
 msgid "There is no preset “{name}”"
 msgstr "Нет пресета «{name}»"
 
-#: crates/window/src/app/presets.rs:324
+#: crates/window/src/app/presets.rs:347
 #, rust-format
 msgid "Preset “{name}” cannot be used: {why}"
 msgstr "Пресет «{name}» нельзя использовать: {why}"
 
-#: crates/window/src/app/presets.rs:333
+#: crates/window/src/app/presets.rs:356
 msgid "Save Layout as Preset"
 msgstr "Сохранить раскладку как пресет"
 
-#: crates/window/src/app/presets.rs:334
+#: crates/window/src/app/presets.rs:357
 msgid "Each pane keeps its directory and the program running in it."
 msgstr "Каждая панель сохранит свой каталог и запущенную в ней программу."
 
-#: crates/window/src/app/presets.rs:335
+#: crates/window/src/app/presets.rs:358
 msgid "Save"
 msgstr "Сохранить"
 
-#: crates/window/src/app/presets.rs:348
+#: crates/window/src/app/presets.rs:371
 msgid "A preset’s name cannot start with a dot or hold a slash"
 msgstr "Имя пресета не может начинаться с точки или содержать косую черту"
 
-#: crates/window/src/app/presets.rs:360
+#: crates/window/src/app/presets.rs:383
 #, rust-format
 msgid "There is already a preset “{name}”"
 msgstr "Пресет «{name}» уже есть"
 
-#: crates/window/src/app/presets.rs:424
+#: crates/window/src/app/presets.rs:447
 #, rust-format
 msgid "Saved preset “{name}”"
 msgstr "Пресет «{name}» сохранён"
 
-#: crates/window/src/app/presets.rs:426
+#: crates/window/src/app/presets.rs:449
 msgid "Could not write the preset"
 msgstr "Не удалось записать пресет"
 
-#: crates/window/src/app/sessions.rs:302
+#: crates/window/src/app/sessions.rs:309
 msgid "Close Session…"
 msgstr "Закрыть сеанс…"
 
@@ -598,7 +598,7 @@ msgstr "Прокрутить к следующему приглашению"
 msgid "General"
 msgstr "Общие"
 
-#: crates/window/src/app/tabs.rs:237
+#: crates/window/src/app/tabs.rs:237 crates/window/src/text.rs:911
 #, rust-format
 msgid "Session {number}"
 msgstr "Сеанс {number}"
@@ -619,18 +619,69 @@ msgstr "Эту вкладку больше нельзя разделить"
 msgid "Find in the history"
 msgstr "Поиск в истории"
 
-#: crates/window/src/text.rs:962
-msgid ""
-"arrows focus · shift swap · ctrl resize · n p tab · v s split · x close · z "
-"zoom · t to tab · d detach · Esc"
-msgstr ""
-"стрелки фокус · shift обмен · ctrl размер · n p вкладка · v s разделить · x "
-"закрыть · z развернуть · t во вкладку · d отсоединить · Esc"
+#: crates/window/src/text.rs:949
+msgid "CONTROL"
+msgstr "УПРАВЛЕНИЕ"
 
-#: crates/window/src/text.rs:971
-#, rust-format
-msgid "{key} control"
-msgstr "{key} управление"
+#: crates/window/src/text.rs:951
+msgid "arrows"
+msgstr "стрелки"
+
+#: crates/window/src/text.rs:951
+msgid "focus"
+msgstr "фокус"
+
+#: crates/window/src/text.rs:952
+msgid "shift"
+msgstr "shift"
+
+#: crates/window/src/text.rs:952
+msgid "swap"
+msgstr "обмен"
+
+#: crates/window/src/text.rs:953
+msgid "ctrl"
+msgstr "ctrl"
+
+#: crates/window/src/text.rs:953
+msgid "resize"
+msgstr "размер"
+
+#: crates/window/src/text.rs:954
+msgid "tab"
+msgstr "вкладка"
+
+#: crates/window/src/text.rs:955
+msgid "split"
+msgstr "разделить"
+
+#: crates/window/src/text.rs:956
+msgid "close"
+msgstr "закрыть"
+
+#: crates/window/src/text.rs:957
+msgid "zoom"
+msgstr "развернуть"
+
+#: crates/window/src/text.rs:958
+msgid "to tab"
+msgstr "во вкладку"
+
+#: crates/window/src/text.rs:959
+msgid "detach"
+msgstr "отсоединить"
+
+#: crates/window/src/text.rs:960
+msgid "leave"
+msgstr "выход"
+
+#: crates/window/src/text.rs:1023
+msgid "zoomed"
+msgstr "развёрнуто"
+
+#: crates/window/src/text.rs:1025
+msgid "control"
+msgstr "управление"
 
 #: data/io.github.sachesi.caret.desktop:2
 #: data/io.github.sachesi.caret.metainfo.xml:6
@@ -925,6 +976,13 @@ msgstr ""
 #: data/io.github.sachesi.caret.metainfo.xml:54
 msgid "The first release."
 msgstr "Первый выпуск."
+
+#~ msgid ""
+#~ "arrows focus · shift swap · ctrl resize · n p tab · v s split · x close · "
+#~ "z zoom · t to tab · d detach · Esc"
+#~ msgstr ""
+#~ "стрелки фокус · shift обмен · ctrl размер · n p вкладка · v s разделить · "
+#~ "x закрыть · z развернуть · t во вкладку · d отсоединить · Esc"
 
 #, rust-format
 #~ msgid "here"

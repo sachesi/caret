@@ -7,6 +7,7 @@
 
 mod canvas;
 mod host;
+mod status;
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -27,6 +28,7 @@ use rustix::termios::{self, OptionalActions};
 
 use gettextrs::gettext;
 
+use crate::app::sessions::session_color;
 use crate::config::Config;
 use crate::i18n::gettext_f;
 use crate::panes::{self, Direction, Divider, Rect};
@@ -36,6 +38,26 @@ use host::{Host, Input, Mouse};
 /// The most events taken in before a frame is drawn, so that a busy server cannot keep
 /// the screen from being written.
 const EVENTS_PER_FRAME: usize = 256;
+/// The most of a tab's or session's name the bar shows, in characters.
+const TAB_TITLE: usize = 20;
+const BAR_PEN: Pen = Pen {
+    fg: None,
+    bg: None,
+    style: canvas::REVERSE,
+};
+const KEY_PEN: Pen = Pen {
+    fg: None,
+    bg: None,
+    style: canvas::REVERSE | caret_protocol::BOLD,
+};
+
+/// A key and what it does, as the bar shows them.
+fn bar_hint(keys: &str, action: &str) -> [status::Span; 2] {
+    [
+        (format!(" {keys} "), KEY_PEN),
+        (format!("{action} "), BAR_PEN),
+    ]
+}
 
 /// Shows `session` in this terminal until it is detached or ends.
 ///
@@ -197,6 +219,10 @@ struct TextTab {
 struct Client {
     writer: UnixStream,
     session: SessionId,
+    session_name: Option<String>,
+    /// The colour picked for the session.
+    session_color: Option<u8>,
+    config: Config,
     tabs: Vec<TextTab>,
     selected: usize,
     screens: HashMap<TerminalId, Screen>,
@@ -298,6 +324,9 @@ fn show(stream: &mut UnixStream, session: SessionId, host: &Host) -> Result<(), 
         size: window_size(),
         sizes: HashMap::new(),
         enhanced: host.enhanced,
+        session_name: None,
+        session_color: None,
+        config: Config::load(None),
         control: false,
         zoomed: false,
         asked: 0,
@@ -475,26 +504,7 @@ impl Client {
                 }
             }
             Message::Layout { session, tab, root } if session == self.session => {
-                if let Some(state) = self.tabs.iter_mut().find(|state| state.key == tab) {
-                    if let Some(opened) = self.opened.filter(|&pane| root.contains(pane)) {
-                        state.focused = opened;
-                        self.opened = None;
-                    } else if !root.contains(state.focused) {
-                        state.focused = root.first();
-                    }
-                    state.root = root;
-                }
-                self.zoomed = false;
-                let moved = self.moved.map(|terminal| Node::Pane { terminal });
-                if let Some(index) = self
-                    .tabs
-                    .iter()
-                    .position(|state| Some(&state.root) == moved.as_ref())
-                {
-                    self.moved = None;
-                    self.show_tab(index);
-                }
-                self.resize();
+                self.laid_out(tab, root);
             }
             Message::SessionClosed { session } if session == self.session => return false,
             Message::DetachSession { session } if session == self.session => {
@@ -526,6 +536,12 @@ impl Client {
             Message::Failed { terminal, reason } => {
                 self.failures.insert(terminal, reason);
             }
+            Message::SessionNamed { session, name } if session == self.session => {
+                self.session_name = name;
+            }
+            Message::SessionColored { session, color } if session == self.session => {
+                self.session_color = color;
+            }
             Message::Answer {
                 answer: Answer::Opened { terminal },
                 ..
@@ -537,6 +553,30 @@ impl Client {
             _ => {}
         }
         true
+    }
+
+    /// Takes in how the panes of tab `tab` are laid out now.
+    fn laid_out(&mut self, tab: TerminalId, root: Node) {
+        if let Some(state) = self.tabs.iter_mut().find(|state| state.key == tab) {
+            if let Some(opened) = self.opened.filter(|&pane| root.contains(pane)) {
+                state.focused = opened;
+                self.opened = None;
+            } else if !root.contains(state.focused) {
+                state.focused = root.first();
+            }
+            state.root = root;
+        }
+        self.zoomed = false;
+        let moved = self.moved.map(|terminal| Node::Pane { terminal });
+        if let Some(index) = self
+            .tabs
+            .iter()
+            .position(|state| Some(&state.root) == moved.as_ref())
+        {
+            self.moved = None;
+            self.show_tab(index);
+        }
+        self.resize();
     }
 
     fn opened(&mut self, index: usize, tab: Tab) {
@@ -852,26 +892,142 @@ impl Client {
         }
     }
 
-    /// Each tab's part of the line of tabs.
+    /// Each tab's part of the bar.
     fn tab_labels(&self) -> Vec<String> {
         self.tabs
             .iter()
             .enumerate()
             .map(|(index, tab)| {
                 let title = tab.name.as_deref().unwrap_or(&tab.title);
-                let mark = if index == self.selected { '*' } else { ' ' };
-                format!(" {}{mark}{title} ", index + 1)
+                let title = status::shortened(title, TAB_TITLE);
+                format!(" {} {title} ", index + 1)
             })
             .collect()
     }
 
-    /// The tab whose label is at `column` of the line of tabs.
+    /// The session's part of the bar.
+    fn session_label(&self) -> String {
+        let number = gettext_f(
+            "Session {number}",
+            &[("number", &self.session.0.to_string())],
+        );
+        match &self.session_name {
+            Some(name) => format!(" {number} · {} ", status::shortened(name, TAB_TITLE)),
+            None => format!(" {number} "),
+        }
+    }
+
+    /// The tab whose label is at `column` of the bar.
     fn tab_at(&self, column: u16) -> Option<usize> {
-        let mut end = 0;
+        let mut end = self.session_label().chars().count();
+        if usize::from(column) < end {
+            return None;
+        }
         self.tab_labels().iter().position(|label| {
             end += label.chars().count();
             usize::from(column) < end
         })
+    }
+
+    /// What marks the session and the focused pane.
+    fn session_rgb(&self) -> Rgb {
+        let color = if self.config.session_colors {
+            session_color(self.session, self.session_color)
+        } else {
+            crate::chrome::ACCENT
+        };
+        let [r, g, b, _] = color.to_be_bytes();
+        Rgb { r, g, b }
+    }
+
+    /// Control mode's bar: its keys go on to lines above the last rather than being cut,
+    /// over the panes and without resizing them.
+    fn control_bar(&self) -> Vec<Vec<status::Span>> {
+        let badge = self.badge_pen();
+        let hint = bar_hint;
+        status::wrapped(
+            vec![(format!(" {} ", gettext("CONTROL")), badge)],
+            vec![
+                hint(&gettext("arrows"), &gettext("focus")),
+                hint(&gettext("shift"), &gettext("swap")),
+                hint(&gettext("ctrl"), &gettext("resize")),
+                hint("n p", &gettext("tab")),
+                hint("v s", &gettext("split")),
+                hint("x", &gettext("close")),
+                hint("z", &gettext("zoom")),
+                hint("t", &gettext("to tab")),
+                hint("d", &gettext("detach")),
+                hint("Esc", &gettext("leave")),
+            ],
+            usize::from(self.size.0),
+        )
+    }
+
+    fn badge_pen(&self) -> Pen {
+        Pen {
+            fg: Some(Rgb {
+                r: 0xff,
+                g: 0xff,
+                b: 0xff,
+            }),
+            bg: Some(self.session_rgb()),
+            style: caret_protocol::BOLD,
+        }
+    }
+
+    /// The first screen line the bar takes.
+    fn bar_top(&self) -> i32 {
+        let lines = i32::from(self.size.1);
+        if self.control {
+            lines - i32::try_from(self.control_bar().len()).unwrap_or(lines)
+        } else {
+            lines - 1
+        }
+    }
+
+    fn compose_bar(&self, canvas: &mut Canvas) {
+        let columns = usize::from(self.size.0);
+        if self.control {
+            for (y, row) in (self.bar_top()..).zip(&self.control_bar()) {
+                status::fill(canvas, y, BAR_PEN);
+                status::put(canvas, 0, y, row);
+            }
+            return;
+        }
+        let (bar, key, badge, hint) = (BAR_PEN, KEY_PEN, self.badge_pen(), bar_hint);
+        let y = self.bar_top();
+        status::fill(canvas, y, bar);
+        let mut left = vec![(self.session_label(), badge)];
+        for (index, label) in self.tab_labels().into_iter().enumerate() {
+            let selected = Pen {
+                style: caret_protocol::BOLD,
+                ..Pen::default()
+            };
+            left.push((
+                label,
+                if index == self.selected {
+                    selected
+                } else {
+                    bar
+                },
+            ));
+        }
+        status::put(canvas, 0, y, &left);
+        let control = if self.enhanced {
+            "Ctrl+Shift+Space"
+        } else {
+            "Ctrl+]"
+        };
+        let mut right = Vec::new();
+        if self.zoomed {
+            right.push((format!(" {} ", gettext("zoomed")), key));
+        }
+        right.extend(hint(control, &gettext("control")));
+        let room = right
+            .iter()
+            .map(|(text, _): &status::Span| text.chars().count());
+        let x = columns.saturating_sub(room.sum());
+        status::put(canvas, i32::try_from(x).unwrap_or(0), y, &right);
     }
 
     /// Shows the tab `steps` after the one shown, round from the last to the first.
@@ -946,41 +1102,30 @@ impl Client {
             style: canvas::DIM,
             ..Pen::default()
         };
-        for divider in &placed.dividers {
-            let gap = divider.gap;
-            let c = if divider.vertical { '│' } else { '─' };
+        let mut stretch = |vertical: bool, gap: Rect, pen: Pen| {
+            let c = if vertical { '│' } else { '─' };
             for line in 0..gap.height {
                 for column in 0..gap.width {
                     let text = Some(GlyphText::Char(c));
-                    next.put(gap.x + column, gap.y + line, text, dim, false);
+                    next.put(gap.x + column, gap.y + line, text, pen, false);
                 }
             }
+        };
+        for divider in &placed.dividers {
+            stretch(divider.vertical, divider.gap, dim);
         }
-        let status = if self.control {
-            format!(
-                " {} ",
-                gettext(
-                    "arrows focus · shift swap · ctrl resize · n p tab · v s split · x close · z zoom · t to tab · d detach · Esc"
-                )
-            )
-        } else {
-            let key = if self.enhanced {
-                "Ctrl+Shift+Space"
-            } else {
-                "Ctrl+]"
+        if let Some(rect) = self.tab().and_then(|tab| placed.rect(tab.focused)) {
+            let strong = Pen {
+                fg: self.config.active_pane_color.then(|| self.session_rgb()),
+                style: caret_protocol::BOLD,
+                ..Pen::default()
             };
-            let control = gettext_f("{key} control", &[("key", key)]);
-            format!("{}  {control}", self.tab_labels().concat())
-        };
-        let reverse = Pen {
-            style: canvas::REVERSE,
-            ..Pen::default()
-        };
-        let mut letters = status.chars();
-        for column in 0..i32::from(columns) {
-            let text = letters.next().map(GlyphText::Char);
-            next.put(column, i32::from(lines) - 1, text, reverse, false);
+            // In its own gap, as a line drawn across another would cut it.
+            for edge in placed.edges(rect) {
+                stretch(edge.vertical, edge.reaching(1, edge.gap), strong);
+            }
         }
+        self.compose_bar(&mut next);
         self.next = next;
     }
 
@@ -990,6 +1135,10 @@ impl Client {
         let rect = placed.rect(tab.focused)?;
         let screen = self.screens.get(&tab.focused)?;
         let cursor = screen.cursor?;
+        // Control mode's bar can cover the line the cursor is on.
+        if rect.y + i32::from(cursor.line) >= self.bar_top() {
+            return None;
+        }
         Some(TextCursor {
             line: rect.y + i32::from(cursor.line) + 1,
             column: rect.x + i32::from(cursor.column) + 1,

@@ -28,6 +28,13 @@ pub const COLORS: [u32; 9] = [
     0x6f83_96ff,
 ];
 
+/// The colour of `session`, `picked` for it or else the one by its number.
+pub fn session_color(session: SessionId, picked: Option<u8>) -> u32 {
+    picked.map_or(COLORS[automatic_color(session)], |index| {
+        COLORS[usize::from(index) % COLORS.len()]
+    })
+}
+
 /// The colour `session` takes when none was picked for it.
 pub(super) fn automatic_color(session: SessionId) -> usize {
     session.0.saturating_sub(1) as usize % COLORS.len()

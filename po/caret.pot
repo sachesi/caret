@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret 0.2.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-11-01 08:51+0200\n"
+"POT-Creation-Date: 2026-11-01 11:38+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -51,7 +51,7 @@ msgstr ""
 #: crates/window/src/app/confirm.rs:183 crates/window/src/app/confirm.rs:228
 #: crates/window/src/app/confirm.rs:351 crates/window/src/app/confirm.rs:381
 #: crates/window/src/app/confirm.rs:469 crates/window/src/app/confirm.rs:485
-#: crates/window/src/app/presets.rs:335
+#: crates/window/src/app/presets.rs:358
 msgid "Cancel"
 msgstr ""
 
@@ -144,7 +144,7 @@ msgstr[1] ""
 msgid "The session “{session}” will end with this window."
 msgstr ""
 
-#: crates/window/src/app/confirm.rs:470 crates/window/src/app/menus.rs:628
+#: crates/window/src/app/confirm.rs:470 crates/window/src/app/menus.rs:630
 msgid "Detach"
 msgstr ""
 
@@ -191,7 +191,7 @@ msgid ""
 "tab · D detach"
 msgstr ""
 
-#: crates/window/src/app/control.rs:115
+#: crates/window/src/app/control.rs:112
 msgid "Moving panes needs a newer terminal server"
 msgstr ""
 
@@ -202,13 +202,13 @@ msgid "New Window"
 msgstr ""
 
 #: crates/window/src/app/menus.rs:107 crates/window/src/app/menus.rs:196
-#: crates/window/src/app/sessions.rs:285
+#: crates/window/src/app/sessions.rs:292
 #: crates/window/src/app/shortcut_list.rs:25
 msgid "New Tab"
 msgstr ""
 
 #: crates/window/src/app/menus.rs:108 crates/window/src/app/menus.rs:422
-#: crates/window/src/app/menus.rs:595 crates/window/src/app/shortcut_list.rs:26
+#: crates/window/src/app/menus.rs:597 crates/window/src/app/shortcut_list.rs:26
 msgid "New Session"
 msgstr ""
 
@@ -217,7 +217,7 @@ msgstr ""
 msgid "New “{profile}” Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:124 crates/window/src/app/sessions.rs:297
+#: crates/window/src/app/menus.rs:124 crates/window/src/app/sessions.rs:304
 msgid "Detach Session"
 msgstr ""
 
@@ -229,7 +229,7 @@ msgstr ""
 msgid "Sessions…"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:134 crates/window/src/app/sessions.rs:292
+#: crates/window/src/app/menus.rs:134 crates/window/src/app/sessions.rs:299
 msgid "Rename Session…"
 msgstr ""
 
@@ -359,68 +359,68 @@ msgstr[1] ""
 msgid "{tabs}, {panes}"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:558
+#: crates/window/src/app/menus.rs:560
 msgid "New sessions need a newer terminal server"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:583
+#: crates/window/src/app/menus.rs:585
 #, rust-format
 msgid "Show {session} · {title}"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:607
+#: crates/window/src/app/menus.rs:609
 msgid "Replace This Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:612
+#: crates/window/src/app/menus.rs:614
 msgid "Add to This Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:620
+#: crates/window/src/app/menus.rs:622
 msgid "Open in New Window"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:626
+#: crates/window/src/app/menus.rs:628
 msgid "Rename…"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:629
+#: crates/window/src/app/menus.rs:631
 msgid "Close…"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:675
+#: crates/window/src/app/menus.rs:676
 #, rust-format
 msgid "{count} detached session"
 msgid_plural "{count} detached sessions"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/window/src/app/menus.rs:680 crates/window/src/notifications.rs:96
+#: crates/window/src/app/menus.rs:681 crates/window/src/notifications.rs:96
 msgid "Show"
 msgstr ""
 
-#: crates/window/src/app/menus.rs:690
+#: crates/window/src/app/menus.rs:691
 msgid "No windows were detached"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:808
+#: crates/window/src/app/pointer.rs:829
 #, rust-format
 msgid "Could not open the link: {reason}"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:817
+#: crates/window/src/app/pointer.rs:838
 msgid "no program opens links"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:830
+#: crates/window/src/app/pointer.rs:851
 msgid "it does not exist"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:831
+#: crates/window/src/app/pointer.rs:852
 msgid "no program opens it"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:832
+#: crates/window/src/app/pointer.rs:853
 msgid "the program that opens it failed"
 msgstr ""
 
@@ -433,51 +433,51 @@ msgstr ""
 msgid "Save Layout as Preset…"
 msgstr ""
 
-#: crates/window/src/app/presets.rs:189 crates/window/src/app/presets.rs:230
+#: crates/window/src/app/presets.rs:212 crates/window/src/app/presets.rs:253
 msgid "Presets need a newer terminal server"
 msgstr ""
 
-#: crates/window/src/app/presets.rs:232
+#: crates/window/src/app/presets.rs:255
 #, rust-format
 msgid "There is no preset “{name}”"
 msgstr ""
 
-#: crates/window/src/app/presets.rs:324
+#: crates/window/src/app/presets.rs:347
 #, rust-format
 msgid "Preset “{name}” cannot be used: {why}"
 msgstr ""
 
-#: crates/window/src/app/presets.rs:333
+#: crates/window/src/app/presets.rs:356
 msgid "Save Layout as Preset"
 msgstr ""
 
-#: crates/window/src/app/presets.rs:334
+#: crates/window/src/app/presets.rs:357
 msgid "Each pane keeps its directory and the program running in it."
 msgstr ""
 
-#: crates/window/src/app/presets.rs:335
+#: crates/window/src/app/presets.rs:358
 msgid "Save"
 msgstr ""
 
-#: crates/window/src/app/presets.rs:348
+#: crates/window/src/app/presets.rs:371
 msgid "A preset’s name cannot start with a dot or hold a slash"
 msgstr ""
 
-#: crates/window/src/app/presets.rs:360
+#: crates/window/src/app/presets.rs:383
 #, rust-format
 msgid "There is already a preset “{name}”"
 msgstr ""
 
-#: crates/window/src/app/presets.rs:424
+#: crates/window/src/app/presets.rs:447
 #, rust-format
 msgid "Saved preset “{name}”"
 msgstr ""
 
-#: crates/window/src/app/presets.rs:426
+#: crates/window/src/app/presets.rs:449
 msgid "Could not write the preset"
 msgstr ""
 
-#: crates/window/src/app/sessions.rs:302
+#: crates/window/src/app/sessions.rs:309
 msgid "Close Session…"
 msgstr ""
 
@@ -586,7 +586,7 @@ msgstr ""
 msgid "General"
 msgstr ""
 
-#: crates/window/src/app/tabs.rs:237
+#: crates/window/src/app/tabs.rs:237 crates/window/src/text.rs:911
 #, rust-format
 msgid "Session {number}"
 msgstr ""
@@ -607,15 +607,68 @@ msgstr ""
 msgid "Find in the history"
 msgstr ""
 
-#: crates/window/src/text.rs:962
-msgid ""
-"arrows focus · shift swap · ctrl resize · n p tab · v s split · x close · z "
-"zoom · t to tab · d detach · Esc"
+#: crates/window/src/text.rs:949
+msgid "CONTROL"
 msgstr ""
 
-#: crates/window/src/text.rs:971
-#, rust-format
-msgid "{key} control"
+#: crates/window/src/text.rs:951
+msgid "arrows"
+msgstr ""
+
+#: crates/window/src/text.rs:951
+msgid "focus"
+msgstr ""
+
+#: crates/window/src/text.rs:952
+msgid "shift"
+msgstr ""
+
+#: crates/window/src/text.rs:952
+msgid "swap"
+msgstr ""
+
+#: crates/window/src/text.rs:953
+msgid "ctrl"
+msgstr ""
+
+#: crates/window/src/text.rs:953
+msgid "resize"
+msgstr ""
+
+#: crates/window/src/text.rs:954
+msgid "tab"
+msgstr ""
+
+#: crates/window/src/text.rs:955
+msgid "split"
+msgstr ""
+
+#: crates/window/src/text.rs:956
+msgid "close"
+msgstr ""
+
+#: crates/window/src/text.rs:957
+msgid "zoom"
+msgstr ""
+
+#: crates/window/src/text.rs:958
+msgid "to tab"
+msgstr ""
+
+#: crates/window/src/text.rs:959
+msgid "detach"
+msgstr ""
+
+#: crates/window/src/text.rs:960
+msgid "leave"
+msgstr ""
+
+#: crates/window/src/text.rs:1023
+msgid "zoomed"
+msgstr ""
+
+#: crates/window/src/text.rs:1025
+msgid "control"
 msgstr ""
 
 #: data/io.github.sachesi.caret.desktop:2

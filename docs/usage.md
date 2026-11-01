@@ -81,8 +81,8 @@ foreground asks first.
 Ctrl+Shift+E splits the pane with a new one to its right, Ctrl+Shift+O with one below,
 and the terminal's menu has both. Alt and the arrows go to the pane that way, a click
 goes to the one clicked, and dragging the gap between two panes moves it. Dragging from
-where two gaps meet moves both at once. Ctrl+Shift+W closes the pane, and the tab with its
-last one.
+where two gaps meet moves both at once. The lines along the pane the keys go to are drawn
+in the session's colour, or in strong contrast with `active-pane-color` off. Ctrl+Shift+W closes the pane, and the tab with its last one.
 
 Presets in the terminal's menu lays out a tab by a layout from the settings, with its
 programs and directories, as described under [split presets](settings.md#split-presets).
@@ -116,7 +116,9 @@ detached, with a button to list them, unless `detached-hint` is off. Right-click
 button offers a new session and the sessions this window does not show.
 `caret session` prints the same list, and `caret session attach` with a session's number
 or name shows it: in a Caret window when run in one, or else in the terminal it runs in,
-drawn with escape sequences, where control mode's D detaches back to the shell. On a
+drawn with escape sequences, where control mode's D detaches back to the shell. A bar under
+the panes there names the session and its tabs and the key for control mode, whose own keys
+it then lists, on more lines when they do not fit. On a
 Linux console it uses the console's sixteen colours, so a colour between them shows as
 the nearest one. With no name, it takes the only detached session, if there is just one.
 
