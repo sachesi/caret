@@ -440,7 +440,6 @@ dependencies = [
  "caret-protocol",
  "caret-term",
  "libc",
- "thiserror",
  "tracing",
  "tracing-subscriber",
 ]
