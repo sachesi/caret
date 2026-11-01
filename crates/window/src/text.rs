@@ -16,7 +16,6 @@ use std::os::unix::net::UnixStream;
 use std::panic;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
-use std::time::Duration;
 
 use caret_protocol::encode::{self, Key, Modifiers, MouseAction, MouseButton, Press};
 use caret_protocol::layout::Node;
@@ -147,10 +146,11 @@ impl Drop for Restore {
     }
 }
 
-/// Ends the client in order on SIGTERM and SIGHUP. Called before any thread that should
-/// leave them to the one this starts, which inherits the mask.
+/// Ends the client in order on SIGTERM and SIGHUP, and tells it of a new size on SIGWINCH.
+/// Called before any thread that should leave them to the one this starts, which inherits
+/// the mask.
 #[expect(unsafe_code, reason = "signal masks are only reached through libc")]
-fn close_on_signals(events: mpsc::Sender<Event>) {
+fn take_signals(events: mpsc::Sender<Event>) {
     // SAFETY: an all-zero sigset_t is a valid value for sigemptyset to fill in.
     let mut signals: libc::sigset_t = unsafe { std::mem::zeroed() };
     // SAFETY: each call takes the live set above, and the old mask may be null.
@@ -158,13 +158,21 @@ fn close_on_signals(events: mpsc::Sender<Event>) {
         libc::sigemptyset(&raw mut signals);
         libc::sigaddset(&raw mut signals, libc::SIGTERM);
         libc::sigaddset(&raw mut signals, libc::SIGHUP);
+        libc::sigaddset(&raw mut signals, libc::SIGWINCH);
         libc::pthread_sigmask(libc::SIG_BLOCK, &raw const signals, std::ptr::null_mut());
     }
     std::thread::spawn(move || {
         let mut signal = 0;
         // SAFETY: both pointers are to live values for the length of the call.
-        if unsafe { libc::sigwait(&raw const signals, &raw mut signal) } == 0 {
-            let _ = events.send(Event::Stopped);
+        while unsafe { libc::sigwait(&raw const signals, &raw mut signal) } == 0 {
+            let event = if signal == libc::SIGWINCH {
+                Event::Resized
+            } else {
+                Event::Stopped
+            };
+            if events.send(event).is_err() || signal != libc::SIGWINCH {
+                return;
+            }
         }
     });
 }
@@ -175,6 +183,8 @@ enum Event {
     Closed,
     /// A signal asked the client to end.
     Stopped,
+    /// The terminal it runs in may have another size.
+    Resized,
 }
 
 struct Screen {
@@ -301,7 +311,7 @@ enum Drag {
 fn show(stream: &mut UnixStream, session: SessionId, host: Host) -> Result<(), String> {
     let writer = stream.try_clone().map_err(|error| error.to_string())?;
     let (events, received) = mpsc::channel();
-    close_on_signals(events.clone());
+    take_signals(events.clone());
     let mut reader = stream.try_clone().map_err(|error| error.to_string())?;
     let from_server = events.clone();
     std::thread::spawn(move || {
@@ -358,17 +368,8 @@ fn show(stream: &mut UnixStream, session: SessionId, host: Host) -> Result<(), S
         client.typed(&typed);
     }
     loop {
-        let first = match received.recv_timeout(Duration::from_millis(250)) {
-            Ok(event) => event,
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                let size = window_size();
-                if size != client.size {
-                    client.size = size;
-                    client.resize();
-                }
-                continue;
-            }
-            Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
+        let Ok(first) = received.recv() else {
+            return Ok(());
         };
         // All that has come goes into one frame, however many events it took.
         let waiting = std::iter::from_fn(|| received.try_recv().ok()).take(EVENTS_PER_FRAME);
@@ -1220,6 +1221,14 @@ impl Client {
             }
             Event::Closed => Err("the server closed the connection".to_owned()),
             Event::Stopped => Ok(false),
+            Event::Resized => {
+                let size = window_size();
+                if size != self.size {
+                    self.size = size;
+                    self.resize();
+                }
+                Ok(true)
+            }
         }
     }
 }
