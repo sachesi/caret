@@ -10,6 +10,9 @@ use std::fmt;
 /// and every terminal in it.
 pub const DEEPEST: usize = 256;
 
+/// Items a list makes room for before any is read.
+const MOST_RESERVED: usize = 4096;
+
 thread_local! {
     static DEPTH: Cell<usize> = const { Cell::new(0) };
 }
@@ -79,6 +82,13 @@ fn put_varint(mut value: u64, out: &mut Vec<u8>) {
 }
 
 fn take_varint(input: &mut &[u8], bits: u32) -> Result<u64, DecodeError> {
+    // Nearly every number in a frame fits a byte, which fits every type.
+    if let Some((&first, rest)) = input.split_first()
+        && first < 0x80
+    {
+        *input = rest;
+        return Ok(u64::from(first));
+    }
     let mut value = 0u128;
     let mut shift = 0;
     loop {
@@ -229,7 +239,13 @@ impl<T: Wire> Wire for Vec<T> {
         if length > input.len() as u64 {
             return Err(DecodeError::Truncated);
         }
-        (0..length).map(|_| T::take(input)).collect()
+        // Rows and their cells come in thousands at most, but a length is only as true as
+        // the message: room is made for what could be real, and grows for the rest.
+        let mut items = Vec::with_capacity((length as usize).min(MOST_RESERVED));
+        for _ in 0..length {
+            items.push(T::take(input)?);
+        }
+        Ok(items)
     }
 }
 

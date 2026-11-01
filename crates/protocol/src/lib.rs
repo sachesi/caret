@@ -40,18 +40,26 @@ pub fn socket_path(app_id: &str) -> Option<PathBuf> {
     Some(PathBuf::from(runtime).join(app_id).join("server"))
 }
 
+/// `value` as the bytes of one message.
+///
+/// # Errors
+///
+/// When it is past 4 GiB.
+pub fn message<T: Wire>(value: &T) -> io::Result<Vec<u8>> {
+    let mut message = vec![0; 4];
+    value.put(&mut message);
+    let length = u32::try_from(message.len() - 4).map_err(|_| io::ErrorKind::InvalidInput)?;
+    message[..4].copy_from_slice(&length.to_le_bytes());
+    Ok(message)
+}
+
 /// Writes `value` as one message.
 ///
 /// # Errors
 ///
 /// When writing fails.
 pub fn send<T: Wire>(out: &mut impl Write, value: &T) -> io::Result<()> {
-    let payload = wire::encode(value);
-    let length = u32::try_from(payload.len()).map_err(|_| io::ErrorKind::InvalidInput)?;
-    let mut message = Vec::with_capacity(4 + payload.len());
-    message.extend_from_slice(&length.to_le_bytes());
-    message.extend_from_slice(&payload);
-    out.write_all(&message)
+    out.write_all(&message(value)?)
 }
 
 /// Reads one message; none at the end of the stream.

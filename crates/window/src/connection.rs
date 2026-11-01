@@ -77,9 +77,8 @@ impl Connection {
     }
 
     pub fn send(&self, request: &Request) {
-        let mut bytes = Vec::new();
-        // Writing into a vector cannot fail; a message past 4 GiB would.
-        let _ = caret_protocol::send(&mut bytes, request);
+        // Fails only for a message past 4 GiB, and pieces of input are far shorter.
+        let bytes = caret_protocol::message(request).unwrap_or_default();
         // Fails once the writer has ended, which the reader then reports.
         let _ = self.writer.send(bytes);
     }

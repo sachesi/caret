@@ -165,10 +165,8 @@ fn default_options() -> Options {
 }
 
 pub fn encoded(message: &Message) -> Vec<u8> {
-    let mut bytes = Vec::new();
-    // Writing into a vector fails only for a message past 4 GiB, which no frame is.
-    let _ = caret_protocol::send(&mut bytes, message);
-    bytes
+    // Fails only for a message past 4 GiB, which no frame is.
+    caret_protocol::message(message).unwrap_or_default()
 }
 
 impl Server {
