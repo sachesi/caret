@@ -45,6 +45,15 @@ pub enum ColorScheme {
     Dark,
 }
 
+/// When a pane shows its scroll bar, which only one with history to scroll has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrollBars {
+    Hidden,
+    Visible,
+    /// While the pointer is over the pane.
+    Hover,
+}
+
 /// What a click on a session's tab does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionClick {
@@ -93,6 +102,7 @@ pub struct Config {
     pub scroll_speed: f64,
     /// The history moves by less than a row at a time.
     pub smooth_scroll: bool,
+    pub scroll_bars: ScrollBars,
     /// Programs may set the clipboard, and show notifications while out of sight.
     pub program_clipboard: bool,
     pub program_notifications: bool,
@@ -154,6 +164,7 @@ impl Default for Config {
             scroll_under_pointer: true,
             scroll_speed: 1.0,
             smooth_scroll: false,
+            scroll_bars: ScrollBars::Hidden,
             program_clipboard: true,
             program_notifications: true,
             audible_bell: true,
@@ -401,6 +412,7 @@ impl Config {
             "scroll-on-keystroke" => self.scroll_on_keystroke = boolean()?,
             "scroll-under-pointer" => self.scroll_under_pointer = boolean()?,
             "smooth-scroll" => self.smooth_scroll = boolean()?,
+            "scroll-bars" => self.scroll_bars = scroll_bars(item)?,
             "scroll-speed" => self.scroll_speed = scroll_speed(item)?,
             "program-clipboard" => self.program_clipboard = boolean()?,
             "program-notifications" => self.program_notifications = boolean()?,
@@ -547,6 +559,9 @@ const STARTER: &str = r##"# Caret's settings. Take the # off a setting to change
 #scroll-speed = 1
 # Whether the history glides under the wheel, a touchpad and a finger, not by whole lines.
 #smooth-scroll = false
+# When each pane with history to scroll shows its scroll bar: "hidden", "visible", or
+# "hover" for while the pointer is over the pane.
+#scroll-bars = "hidden"
 # Whether programs may put text on the clipboard, and show notifications while
 # their tab is out of sight.
 #program-clipboard = true
@@ -887,6 +902,15 @@ fn features(text: &str) -> Option<Vec<Feature>> {
         .collect()
 }
 
+fn scroll_bars(item: &Item) -> Result<ScrollBars, &'static str> {
+    match item.as_str() {
+        Some("hidden") => Ok(ScrollBars::Hidden),
+        Some("visible") => Ok(ScrollBars::Visible),
+        Some("hover") => Ok(ScrollBars::Hover),
+        _ => Err("\"hidden\", \"visible\" or \"hover\""),
+    }
+}
+
 fn scroll_speed(item: &Item) -> Result<f64, &'static str> {
     item.as_float()
         .or_else(|| item.as_integer().map(|speed| speed as f64))
@@ -940,6 +964,23 @@ mod tests {
         assert!((parse("scroll-speed = 2").scroll_speed - 2.0).abs() < f64::EPSILON);
         assert!((parse("scroll-speed = 0").scroll_speed - 1.0).abs() < f64::EPSILON);
         assert!((parse("scroll-speed = 11").scroll_speed - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn scroll_bars_are_hidden_unless_asked_for() {
+        assert_eq!(Config::default().scroll_bars, ScrollBars::Hidden);
+        assert_eq!(
+            parse("scroll-bars = \"visible\"").scroll_bars,
+            ScrollBars::Visible
+        );
+        assert_eq!(
+            parse("scroll-bars = \"hover\"").scroll_bars,
+            ScrollBars::Hover
+        );
+        assert_eq!(
+            parse("scroll-bars = \"sometimes\"").scroll_bars,
+            ScrollBars::Hidden
+        );
     }
 
     #[test]

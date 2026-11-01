@@ -204,6 +204,11 @@ With `smooth-scroll` on, the history moves by the pixel: the wheel's notches eas
 out, a touchpad or a finger moves it directly, and it ends on a whole row. The keys still
 scroll by the page, and a program that has the whole screen still gets its arrow keys.
 
+`scroll-bars` puts a scroll bar along the right of each pane that has history to scroll:
+always with `"visible"`, or with `"hover"` while the pointer is over that pane. Drag the
+thumb to move through the history, or press beside it to jump there. A press on the bar
+leaves the keys in the pane that has them.
+
 Ctrl+Shift+Up and Ctrl+Shift+Down scroll to the previous and next prompt, in a shell that
 marks them.
 

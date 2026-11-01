@@ -22,6 +22,7 @@ use smithay_client_toolkit::reexports::calloop::channel::Sender;
 use gettextrs::gettext;
 
 use super::gliding::Motion;
+use super::scroll_bars::HeldBar;
 use super::{App, Asked};
 use crate::chrome::{Chrome, Part};
 use crate::i18n::gettext_f;
@@ -69,6 +70,10 @@ pub struct Pointer {
     pub(super) dragged_row: Option<(TerminalId, (f64, f64), bool)>,
     /// The dividers between panes held by the left button, which follow the pointer.
     dividing: Vec<Divider>,
+    /// The pane whose room the pointer is in, as `scroll-bars` at `"hover"` shows its bar.
+    pub(super) over_pane: Option<TerminalId>,
+    /// The scroll bar held by the left button, whose thumb follows the pointer.
+    pub(super) held_bar: Option<HeldBar>,
     /// The pane held by the left button, to move where it is let go of.
     pub(super) moving: Option<TerminalId>,
     /// The button a program was told is held, to tell it of motion and release.
@@ -222,9 +227,11 @@ impl App {
                 Shape::Grabbing
             }
             Some(part) => cursor(part),
+            None if self.pointer.held_bar.is_some() || self.over_thumb() => Shape::Default,
             None if upright && level => Shape::AllScroll,
             None if upright => Shape::ColResize,
             None if level => Shape::RowResize,
+            None if self.over_bar() => Shape::Default,
             None if self.modifiers.ctrl && self.chrome.link.is_some() => Shape::Pointer,
             None if self.grid.mode.intersects(Mode::MOUSE_MODE) => Shape::Default,
             None => Shape::Text,
@@ -459,6 +466,9 @@ impl App {
         {
             self.tab_to_window(terminal);
         }
+        if self.let_go_of_bar() {
+            return;
+        }
         if self.drop_listed() {
             self.chrome.pressed = None;
             self.set_cursor();
@@ -532,6 +542,26 @@ impl App {
         }
     }
 
+    /// Takes hold of the thumb, the divider or the bar under the pointer, in that order: the
+    /// bar reaches into the gap, where only the thumb goes before the divider.
+    fn took_hold_of_edge(&mut self) -> bool {
+        let moves_pane = self.control || self.modifiers.alt;
+        if !moves_pane && self.over_thumb() {
+            self.hold_bar();
+            return true;
+        }
+        let dividers = self.dividers_under_pointer();
+        if !dividers.is_empty() {
+            self.pointer.dividing = dividers;
+            return true;
+        }
+        if !moves_pane && self.over_bar() {
+            self.hold_bar();
+            return true;
+        }
+        false
+    }
+
     fn pressed(&mut self, button: u32, serial: u32) {
         self.serial = serial;
         // A click in the terminal gives it the keys back from the find bar.
@@ -540,12 +570,8 @@ impl App {
             self.dirty = true;
             self.draw();
         }
-        if button == BUTTON_LEFT {
-            let dividers = self.dividers_under_pointer();
-            if !dividers.is_empty() {
-                self.pointer.dividing = dividers;
-                return;
-            }
+        if button == BUTTON_LEFT && self.took_hold_of_edge() {
+            return;
         }
         let placed = self.placed();
         let at = self.device_point();
@@ -660,13 +686,16 @@ impl App {
         if let Some(terminal) = self.terminal() {
             self.unhover(terminal);
         }
+        self.pointer_over_pane(None);
         self.show_link();
         self.draw();
     }
 
     pub(super) fn pointer_moved(&mut self, position: (f64, f64)) {
         self.pointer.position = position;
-        if self.pointer.dragged_session.is_some() || self.pointer.dragged_row.is_some() {
+        if self.pointer.held_bar.is_some() {
+            self.drag_bar();
+        } else if self.pointer.dragged_session.is_some() || self.pointer.dragged_row.is_some() {
             self.drag_listed();
             self.hover();
         } else if self.pointer.moving.is_some() {
@@ -682,6 +711,7 @@ impl App {
             self.hover();
         } else {
             self.hover();
+            self.follow_pane_under_pointer();
             self.hover_cell();
             if self.chrome.hovered.is_none() {
                 self.moved(position);
@@ -704,6 +734,7 @@ impl App {
     fn dragging(&self) -> bool {
         self.pointer.selecting
             || self.pointer.reported.is_some()
+            || self.pointer.held_bar.is_some()
             || !self.pointer.dividing.is_empty()
     }
 
@@ -793,6 +824,7 @@ impl PointerHandler for App {
                     self.pointer.shown = None;
                     self.chrome.hovered = self.part();
                     self.follow_submenu();
+                    self.follow_pane_under_pointer();
                     self.hover_cell();
                 }
                 PointerEventKind::Leave { .. } => {

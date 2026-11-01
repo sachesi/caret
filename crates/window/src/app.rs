@@ -114,6 +114,7 @@ mod popup;
 mod presets;
 mod scale;
 mod screen_reader;
+mod scroll_bars;
 mod search;
 pub(crate) mod sessions;
 mod shortcut_list;
@@ -1293,7 +1294,9 @@ impl App {
         let count = dividers.len();
         quads.splice(under..under, dividers);
         under += count;
-        // Over the panes, and under the bars and dialogs.
+        // Over the panes, and under the window's bars and dialogs.
+        let thumbs = self.bar_quads(&placed);
+        quads.splice(under..under, thumbs);
         if let Some(ring) = self.control_ring(&placed) {
             quads.insert(under, ring);
         }
@@ -1447,6 +1450,11 @@ impl App {
         shown
     }
 
+    /// How thick the line between panes is, in device pixels.
+    fn pane_line_thickness(&self) -> i32 {
+        self.device(self.config.pane_line_width).max(1) as i32
+    }
+
     /// What marks the focused pane: the session's colour, or else strong contrast.
     fn active_pane_color(&self) -> u32 {
         if !self.config.active_pane_color {
@@ -1482,7 +1490,7 @@ impl App {
                 ..chrome::Quad::default()
             }
         };
-        let thickness = self.device(self.config.pane_line_width).max(1) as f32;
+        let thickness = self.pane_line_thickness() as f32;
         let color = if self.chrome.dark {
             0xffff_ff26
         } else {
