@@ -15,7 +15,7 @@ accesskit_unix = "0.24"
 ash = "0.38"
 # zbus runs its socket calls on this pool; from 1.7 its last thread never leaves, and
 # wakes twice a second for as long as the window is open.
-blocking = "~1.6.2"
+blocking = "~1.7.0"
 caret-protocol.workspace = true
 clap = { version = "4.6", features = ["derive"] }
 clap_complete = { version = "4.6.9", features = ["unstable-dynamic"] }
