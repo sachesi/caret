@@ -33,6 +33,21 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.0" date="2026-11-02">
+      <description>
+        <p>Caret is written anew: programs run in a background server and output goes through a terminal emulator of its own, drawn with Vulkan and without GTK. It needs a Wayland compositor and a Vulkan 1.3 driver. Settings move to config.toml and start from the defaults.</p>
+        <ul>
+          <li>Programs keep running after a window is detached, and can be attached to again from another window, over ssh or from a console</li>
+          <li>Sessions: several can be shown in one window, named, given a colour, listed, and managed with caret session</li>
+          <li>Tabs split into panes, which can be swapped, moved, resized and zoomed by key and mouse; split presets lay out a tab from a file</li>
+          <li>Settings, colour schemes and presets are files that apply as soon as they are saved, and any key can be rebound</li>
+          <li>Scrolling moves by the pixel, with a scroll bar along each pane and a setting for how fast the wheel and the touchpad go</li>
+          <li>Text stays sharp at fractional scales</li>
+          <li>Scrolling, clicking and menus work with a finger, screen readers are told what the window shows, and shell completions are included</li>
+          <li>Ctrl+Shift+W closes the pane rather than the tab, which close-tab in the settings can bind, and Ctrl+Shift+O splits the pane rather than showing all tabs</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-09-30">
       <description>
         <p>Tangent is now called Caret. Its settings start from the defaults.</p>
