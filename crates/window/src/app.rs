@@ -463,7 +463,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
             config.presets.iter().map(|preset| preset.shortcut),
         ),
         atlas: Atlas::default(),
-        grid: Grid::default(),
+        grid: Grid::empty(palette.background),
         palette,
         chrome: Chrome {
             buttons: window_buttons(&desktop),

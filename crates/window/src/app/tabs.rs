@@ -7,7 +7,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::time::Duration;
 
 use caret_protocol::layout::{MOST_PANES, Node};
-use caret_protocol::{Bytes, Command, Frame, Question, Request, SessionId, Size, TerminalId};
+use caret_protocol::{Bytes, Command, Frame, Question, Request, Rgb, SessionId, Size, TerminalId};
 
 use gettextrs::gettext;
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
@@ -46,10 +46,10 @@ pub struct Pane {
 }
 
 impl Pane {
-    fn new(title: String) -> Self {
+    fn new(title: String, background: Rgb) -> Self {
         Self {
             title,
-            grid: Grid::default(),
+            grid: Grid::empty(background),
             frame_asked: false,
             size: None,
             command: None,
@@ -346,7 +346,7 @@ impl App {
                 session,
                 root: Node::Pane { terminal: key },
                 focused: key,
-                panes: HashMap::from([(key, Pane::new(tab.title))]),
+                panes: HashMap::from([(key, Pane::new(tab.title, self.palette.background))]),
                 name: tab.name,
                 attention: false,
                 zoomed: false,
@@ -420,13 +420,14 @@ impl App {
         if shown && changes_focus {
             self.leave_focused();
         }
+        let background = self.palette.background;
         let tab = &mut self.tabs[index];
         tab.root = root;
         tab.panes.retain(|terminal, _| panes.contains(terminal));
         for terminal in &panes {
             tab.panes
                 .entry(*terminal)
-                .or_insert_with(|| Pane::new(String::new()));
+                .or_insert_with(|| Pane::new(String::new(), background));
         }
         tab.focused = focus;
         tab.zoomed = false;

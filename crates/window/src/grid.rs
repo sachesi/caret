@@ -85,6 +85,15 @@ pub struct Grid {
 }
 
 impl Grid {
+    /// A grid with nothing in it yet. It is drawn until the terminal's first frame comes,
+    /// so it has to be of the colour that frame will be.
+    pub fn empty(background: Rgb) -> Self {
+        Self {
+            background,
+            ..Self::default()
+        }
+    }
+
     pub fn has_selection(&self) -> bool {
         self.selection.is_some()
     }
