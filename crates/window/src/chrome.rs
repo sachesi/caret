@@ -49,6 +49,9 @@ const FLAT_RADIUS: f32 = 9.0;
 /// Between the strip's edges and its tabs, and around each tab in its share.
 const TAB_INSET: f32 = 3.0;
 const TAB_RADIUS: f32 = 9.0;
+/// The narrowest a tab's share of the strip goes, with room left for some of its title.
+/// More tabs than fit at this width are shown a strip at a time.
+const TAB_LEAST: f32 = 120.0;
 /// From a tab's right edge to its close button's centre.
 const TAB_CLOSE_END: f32 = 19.0;
 /// A session tab's dot of its colour, and how far its middle is from the tab's start;
@@ -775,11 +778,32 @@ impl Chrome {
         Some((left, (self.header() + TAB_BAR) as f32))
     }
 
-    /// Each tab's share of the strip of a window `width` wide: its left edge and width.
-    fn shares(&self, width: f32) -> impl Iterator<Item = (f32, f32)> {
+    /// Which tabs the strip of a window `width` wide shows: the first, and how many. Without
+    /// room for all of them, those on a strip's worth with the selected one, so that a click
+    /// does not move the tab next to it from under the pointer.
+    fn shown_tabs(&self, width: f32) -> (usize, usize) {
         let count = self.tabs.len().max(1);
-        let share = (width - 2.0 * TAB_INSET) / count as f32;
-        (0..self.tabs.len()).map(move |index| (TAB_INSET + index as f32 * share, share))
+        let fit = ((width - 2.0 * TAB_INSET) / TAB_LEAST) as usize;
+        let shown = fit.clamp(1, count);
+        let first = (self.selected / shown * shown).min(count - shown);
+        (first, shown)
+    }
+
+    /// Each tab's share of the strip of a window `width` wide: its left edge and width.
+    /// Tabs not shown lie past the window's edges, in order.
+    fn shares(&self, width: f32) -> impl Iterator<Item = (f32, f32)> {
+        let (first, shown) = self.shown_tabs(width);
+        let share = (width - 2.0 * TAB_INSET) / shown as f32;
+        (0..self.tabs.len()).map(move |index| {
+            let left = if index < first {
+                -((first - index) as f32) * share
+            } else if index < first + shown {
+                TAB_INSET + (index - first) as f32 * share
+            } else {
+                width + (index - first - shown) as f32 * share
+            };
+            (left, share)
+        })
     }
 
     /// The open menu or its submenu on a surface of its own at `scale`: its quads in the
@@ -1086,9 +1110,14 @@ impl Painter<'_> {
         let colors = chrome.colors();
         let top = margin + chrome.header() as f32 * scale;
         let middle = top + TAB_BAR as f32 * scale / 2.0;
+        let (first, shown) = chrome.shown_tabs(self.width / scale);
+        let inset = TAB_INSET * scale;
+        self.more_tabs(quads, first > 0, first + shown < chrome.tabs.len());
         for (index, (left, share)) in chrome.shares(self.width / scale).enumerate() {
+            if !(first..first + shown).contains(&index) {
+                continue;
+            }
             let (left, share) = (margin + left * scale, share * scale);
-            let inset = TAB_INSET * scale;
             let hovered = chrome.over(Part::Tab(index), false)
                 || chrome.over(Part::CloseTab(index), false)
                 || chrome.over(Part::TabMenu(index), false);
@@ -1163,6 +1192,26 @@ impl Painter<'_> {
                 if let Some(icon) = draw(&Drawing::Icon(icon)) {
                     quads.push(centred(centre, middle, icon, chrome.dim(colors.foreground)));
                 }
+            }
+        }
+    }
+
+    /// A bar at the end of the strip past which there are more tabs than it shows.
+    fn more_tabs(&self, quads: &mut Vec<Quad>, before: bool, after: bool) {
+        let (chrome, scale, margin) = (self.chrome, self.scale, self.margin);
+        let inset = TAB_INSET * scale;
+        let top = margin + chrome.header() as f32 * scale;
+        let color = (chrome.colors().foreground & !0xff) | 0x8c;
+        for (more, x) in [(before, 0.0), (after, self.width - inset)] {
+            if more {
+                quads.push(rounded(
+                    (margin + x).round(),
+                    (top + inset).round(),
+                    inset,
+                    (TAB_BAR as f32 * scale - 2.0 * inset).round(),
+                    inset / 2.0,
+                    chrome.dim(color),
+                ));
             }
         }
     }
@@ -1928,6 +1977,52 @@ mod tests {
         );
         assert_eq!(chrome.part_at((20.0, 23.0), size), Some(Part::NewTab));
         assert_eq!(chrome.part_at((100.0, middle + 30.0), size), None);
+    }
+
+    #[test]
+    fn tabs_past_what_fits_are_shown_a_strip_at_a_time() {
+        let mut chrome = Chrome {
+            floating: false,
+            tabs: (0..50).map(|_| label("tab")).collect(),
+            ..floating()
+        };
+        let size = (800, 500);
+        let middle = f64::from(HEADER + TAB_BAR / 2);
+        for selected in 0..chrome.tabs.len() {
+            chrome.selected = selected;
+            let (left, share) = chrome.shares(800.0).nth(selected).expect("the tab");
+            assert!(left >= 0.0 && left + share <= 800.0, "tab {selected}");
+            assert!(share >= TAB_LEAST);
+            assert_eq!(
+                chrome.part_at((f64::from(left + 1.0), middle), size),
+                Some(Part::Tab(selected))
+            );
+        }
+        chrome.selected = 14;
+        assert_eq!(chrome.shown_tabs(800.0), (12, 6));
+        assert_eq!(chrome.part_at((4.0, middle), size), Some(Part::Tab(12)));
+        // A click on a tab shown leaves the others where they are.
+        chrome.selected = 17;
+        assert_eq!(chrome.shown_tabs(800.0), (12, 6));
+        // Past either end, a dragged tab goes on to the tabs not shown.
+        assert_eq!(chrome.tab_at(799.0, 800), Some(18));
+        assert_eq!(chrome.tab_at(-1.0, 800), Some(11));
+        // Each strip is full, the last too.
+        chrome.selected = 49;
+        assert_eq!(chrome.shown_tabs(800.0), (44, 6));
+        // A window too narrow for even one still shows the selected tab.
+        assert_eq!(chrome.shown_tabs(60.0), (49, 1));
+    }
+
+    #[test]
+    fn tabs_that_fit_share_the_whole_strip() {
+        let chrome = Chrome {
+            tabs: vec![label("one"), label("two")],
+            ..floating()
+        };
+        assert_eq!(chrome.shown_tabs(800.0), (0, 2));
+        let shares: Vec<_> = chrome.shares(800.0).collect();
+        assert_eq!(shares, [(3.0, 397.0), (400.0, 397.0)]);
     }
 
     #[test]

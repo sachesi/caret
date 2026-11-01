@@ -51,7 +51,9 @@ program. Rename Tab in the tab's context menu gives it a name of your own, which
 until you clear it. The same menu moves the tab to another session, or to a new one in the
 window; in a session's list of tabs it opens on a right click on the tab's row. A tab whose program rings the bell while the tab is in the background is marked
 until you look at it, and the bell sounds unless `audible-bell` is off. Tabs can be
-dragged along the strip to reorder them.
+dragged along the strip to reorder them. When more tabs are open than fit with room for
+their titles, the strip shows them a stripful at a time, the one with the current tab, and a
+bar at either end says there are more that way.
 
 Where Caret draws the title bar itself, its window buttons are the ones the desktop's
 `button-layout` in `org.gnome.desktop.wm.preferences` names, on the sides it puts them; with
