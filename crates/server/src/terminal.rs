@@ -493,7 +493,10 @@ impl Terminal {
         let told = events.clone();
         std::thread::Builder::new()
             .name(format!("terminal {}", id.0))
-            .spawn(move || guarded(id, &told, || run(received, woken)))?;
+            .spawn(move || {
+                guarded(id, &told, || run(received, woken));
+                give_back_memory();
+            })?;
         Ok(Self {
             orders,
             wake,
@@ -623,6 +626,19 @@ impl Terminal {
         std::fs::read_link(format!("/proc/{}/cwd", started.child)).ok()
     }
 }
+
+/// Returns to the system what a terminal that ended held. The allocator keeps memory a thread
+/// has freed for the next thread to use, and the server can run for months after the tab
+/// with the long history has closed.
+#[cfg(target_env = "gnu")]
+#[expect(unsafe_code, reason = "malloc_trim is only reached through libc")]
+fn give_back_memory() {
+    // SAFETY: it takes a number and only changes the allocator's own state.
+    unsafe { libc::malloc_trim(0) };
+}
+
+#[cfg(not(target_env = "gnu"))]
+fn give_back_memory() {}
 
 /// Runs a terminal's thread. A panic in it would otherwise leave a tab that shows the same
 /// screen forever and takes no input, the program having been hung up on as it unwound.
