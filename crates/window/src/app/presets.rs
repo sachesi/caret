@@ -78,11 +78,20 @@ impl App {
         let save = self
             .tab_is_split()
             .then(|| self.item(&gettext("Save Layout as Preset…"), Choice::SavePreset, true));
-        let (sections, choices): (Vec<Vec<Item>>, Vec<Vec<Choice>>) =
-            [presets, save.into_iter().collect()]
-                .into_iter()
-                .map(|section| section.into_iter().unzip())
-                .unzip();
+        self.show_submenu(row, vec![presets, save.into_iter().collect()], keyed);
+    }
+
+    /// Shows `sections` beside the menu's item at `row`, the first focused if `keyed`.
+    pub(super) fn show_submenu(
+        &mut self,
+        row: usize,
+        sections: Vec<Vec<(Item, Choice)>>,
+        keyed: bool,
+    ) {
+        let (sections, choices): (Vec<Vec<Item>>, Vec<Vec<Choice>>) = sections
+            .into_iter()
+            .map(|section| section.into_iter().unzip())
+            .unzip();
         let Some(place) = self.chrome.menu.as_ref().and_then(|menu| menu.placed) else {
             return;
         };
@@ -91,7 +100,12 @@ impl App {
         if keyed {
             submenu.step(1);
         }
-        if let Some(open) = &self.chrome.submenu {
+        if let Some(open) = self
+            .chrome
+            .submenu
+            .as_ref()
+            .filter(|_| self.submenu_row == row)
+        {
             submenu.keep_place(open);
         }
         self.submenu_row = row;
@@ -119,7 +133,11 @@ impl App {
             {
                 self.open_submenu(row, false);
             }
-        } else if self.over_other_item() && self.chrome.submenu.is_some() {
+        } else if self.over_other_item()
+            && self.chrome.submenu.is_some()
+            // A row's context menu stays while the pointer crosses the list to reach it.
+            && self.listed_session(self.submenu_row).is_none()
+        {
             let timer =
                 self.events
                     .insert_source(Timer::from_duration(SUBMENU_LINGERS), |_, (), app| {
@@ -146,10 +164,15 @@ impl App {
 
     /// Takes a key while the keys are in the submenu: Left or Escape go back to the menu.
     pub(super) fn submenu_key(&mut self, event: &KeyEvent) -> bool {
+        let row_menu = self.listed_session(self.submenu_row).is_some();
         let Some(submenu) = &mut self.chrome.submenu else {
             return false;
         };
         if submenu.focused.is_none() {
+            if row_menu && event.keysym == Keysym::Escape {
+                self.close_submenu();
+                return true;
+            }
             // Open from a hover: Escape closes all, and the arrows stay in the menu.
             return false;
         }

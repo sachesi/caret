@@ -520,10 +520,12 @@ impl App {
         }
     }
 
-    /// The context menu of the Sessions list's row at `index`, at `at`, if it has one.
-    pub(super) fn listed_menu(&mut self, index: usize, at: (f32, f32)) {
+    /// The context menu of the Sessions list's row at `index`, if it has one, beside the
+    /// list, which stays open under it.
+    pub(super) fn listed_menu(&mut self, index: usize, keyed: bool) {
         if let Some(session) = self.listed_session(index) {
-            self.session_menu(session, at);
+            let sections = self.session_menu(session);
+            self.show_submenu(index, sections, keyed);
         }
     }
 
@@ -599,8 +601,8 @@ impl App {
         self.show_menu(sections, at, false);
     }
 
-    /// What can be done with `session`, at `at`.
-    fn session_menu(&mut self, session: SessionId, at: (f32, f32)) {
+    /// What can be done with `session`.
+    fn session_menu(&self, session: SessionId) -> Vec<Vec<(Item, Choice)>> {
         let here = self.sessions.contains(&session);
         let other_action = match self.config.session_list_click {
             SessionListClick::Add => self.item(
@@ -614,7 +616,7 @@ impl App {
                 !here,
             ),
         };
-        let sections = vec![
+        vec![
             vec![
                 self.item(
                     &gettext("Open in New Window"),
@@ -628,8 +630,7 @@ impl App {
                 self.item(&gettext("Detach"), Choice::DetachSession(session), here),
                 self.item(&gettext("Close…"), Choice::CloseSession(session), true),
             ],
-        ];
-        self.show_menu(sections, at, false);
+        ]
     }
 
     /// Scrolls a menu taller than the screen by what the wheel or touchpad turned.
@@ -728,8 +729,7 @@ impl App {
                     if self.choices.get(focused) == Some(&Choice::Presets) {
                         self.open_submenu(focused, true);
                     } else {
-                        let at = self.keyed_menu_at();
-                        self.listed_menu(focused, at);
+                        self.listed_menu(focused, true);
                     }
                 }
             }

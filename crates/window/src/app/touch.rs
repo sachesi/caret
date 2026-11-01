@@ -56,8 +56,7 @@ impl App {
                         finger.held = true;
                         if let Some(index) = app.pressed_listed_row() {
                             app.chrome.pressed = None;
-                            let at = app.pointer_at();
-                            app.listed_menu(index, at);
+                            app.listed_menu(index, false);
                         } else {
                             app.open_terminal_menu();
                         }

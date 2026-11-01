@@ -279,8 +279,7 @@ impl App {
     fn pressed_listed(&mut self, index: usize, button: u32) -> bool {
         match button {
             BUTTON_RIGHT => {
-                let at = self.pointer_at();
-                self.listed_menu(index, at);
+                self.listed_menu(index, false);
                 true
             }
             BUTTON_MIDDLE if self.config.middle_click_detach => {
