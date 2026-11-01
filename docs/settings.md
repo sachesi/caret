@@ -30,6 +30,7 @@ is deleted, and a new window has the defaults.
 | `scroll-under-pointer` | bool | true |
 | `scroll-speed` | 0.1 to 10 | 1 |
 | `smooth-scroll` | bool | false |
+| `scroll-bars` | `"hidden"`, `"visible"`, `"hover"` | `"hidden"` |
 | `program-notifications` | bool | true |
 | `program-clipboard` | bool | true |
 | `audible-bell` | bool | true |

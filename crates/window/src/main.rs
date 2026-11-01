@@ -24,6 +24,7 @@ mod panes;
 mod presets;
 mod render;
 mod renderer;
+mod scroll_bar;
 mod shortcuts;
 mod state;
 mod text;
