@@ -6,6 +6,11 @@ desktop has for it; where there is none yet, it writes one first with every sett
 its default and commented out. Open windows follow the file as it is saved; a value that
 cannot be read is skipped with a warning on stderr, and the rest still apply.
 
+A file that is not valid TOML cannot be used at all, a key written twice for one, and a
+toast says why and on which line. Open windows keep the settings they have until it is
+fixed, while a new window has the defaults. Windows also keep their settings when the file
+is deleted, and a new window has the defaults.
+
     font = "Source Code Pro 12"
     color-scheme = "dark"
 

@@ -115,6 +115,10 @@ pub struct Config {
     pub presets: Vec<Preset>,
     /// The name of each preset that is wrong, and why.
     pub wrong_presets: Vec<(String, String)>,
+    /// `config.toml` was there when these settings were read.
+    pub found: bool,
+    /// Why `config.toml` could not be read, leaving the settings as they were.
+    pub unreadable: Option<String>,
 }
 
 impl Default for Config {
@@ -150,6 +154,8 @@ impl Default for Config {
             profiles: Vec::new(),
             presets: Vec::new(),
             wrong_presets: Vec::new(),
+            found: false,
+            unreadable: None,
         }
     }
 }
@@ -161,13 +167,32 @@ impl Config {
         let Some(path) = path() else {
             return Self::default();
         };
-        match std::fs::read_to_string(&path) {
+        let mut config = match std::fs::read_to_string(&path) {
             Ok(text) => Self::parse(&path, &text, profile),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Self::default(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Self::default(),
             Err(error) => {
                 tracing::warn!("reading {}: {error}", path.display());
-                Self::default()
+                Self {
+                    unreadable: Some(error.to_string()),
+                    ..Self::default()
+                }
             }
+        };
+        config.found = true;
+        config
+    }
+
+    /// What a window using these settings goes on with once the files read as `loaded`. A
+    /// file that cannot be read changes nothing, nor does one that has gone: some editors
+    /// move it away for a moment as they save it.
+    pub fn reloaded(&self, loaded: Self) -> Self {
+        if loaded.unreadable.is_some() || (self.found && !loaded.found) {
+            Self {
+                unreadable: loaded.unreadable,
+                ..self.clone()
+            }
+        } else {
+            loaded
         }
     }
 
@@ -179,6 +204,7 @@ impl Config {
             Ok(document) => document,
             Err(error) => {
                 tracing::warn!("{}: {error}", path.display());
+                config.unreadable = Some(problem(text, &error));
                 return config;
             }
         };
@@ -392,6 +418,18 @@ impl Config {
             return Vec::new();
         }
         shlex::split(line).unwrap_or_else(|| vec![line.to_owned()])
+    }
+}
+
+/// What is wrong with the TOML `text`, and on which line, in one line.
+fn problem(text: &str, error: &toml_edit::TomlError) -> String {
+    let message = error.message().trim();
+    match error.span() {
+        Some(span) => {
+            let line = text[..span.start].matches('\n').count() + 1;
+            format!("line {line}: {message}")
+        }
+        None => message.to_owned(),
     }
 }
 
@@ -787,7 +825,51 @@ mod tests {
         let config =
             parse("title-bar = \"no\"\ncursor-shape = \"star\"\nopacity = 1.5\nunknown = 1\n");
         assert_eq!(config, Config::default());
-        assert_eq!(parse("font = "), Config::default());
+        let broken = parse("font = ");
+        assert!(broken.unreadable.is_some());
+        assert_eq!(
+            Config {
+                unreadable: None,
+                ..broken
+            },
+            Config::default()
+        );
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_read_says_where_and_changes_nothing_in_an_open_window() {
+        let open = Config {
+            found: true,
+            ..parse("font = \"Mono 11\"\n")
+        };
+        let broken = Config {
+            found: true,
+            ..parse("opacity = 0.5\nopacity = 0.6\n")
+        };
+        let why = broken.unreadable.clone().unwrap_or_default();
+        assert!(why.starts_with("line 2: "), "{why}");
+        let kept = open.reloaded(broken);
+        assert_eq!(kept.font.as_deref(), Some("Mono"));
+        assert_eq!(kept.unreadable.as_deref(), Some(why.as_str()));
+
+        let fixed = Config {
+            found: true,
+            ..parse("font = \"Sans 9\"\n")
+        };
+        assert_eq!(kept.reloaded(fixed.clone()), fixed);
+    }
+
+    #[test]
+    fn a_file_gone_for_a_moment_changes_nothing_in_an_open_window() {
+        let open = Config {
+            found: true,
+            ..parse("font = \"Mono 11\"\n")
+        };
+        assert_eq!(open.reloaded(Config::default()), open);
+        assert_eq!(
+            Config::default().reloaded(Config::default()),
+            Config::default()
+        );
     }
 
     #[test]

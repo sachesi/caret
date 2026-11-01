@@ -58,6 +58,7 @@ use crate::desktop::{self, Desktop};
 use crate::fonts::{self, FontError, Fonts};
 use crate::gpu::{Gpu, GpuError};
 use crate::grid::{Grid, packed};
+use crate::i18n::gettext_f;
 use crate::notifications::Notifier;
 use crate::palette::Palette;
 use crate::panes::{Direction, Placed};
@@ -520,6 +521,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         .map_err(|error| AppError::Loop(error.error))?;
     let signal = events.get_signal();
     app.tell_wrong_presets();
+    app.tell_unreadable_settings();
     events.run(None, &mut app, |app| {
         if app.exit {
             signal.stop();
@@ -705,7 +707,7 @@ fn listen(
             events
                 .insert_source(source, |_, watch, app| {
                     if config::changed(watch.as_ref()) {
-                        app.reconfigure(Config::load(app.profile.as_deref()));
+                        app.settings_changed();
                     }
                     Ok(PostAction::Continue)
                 })
@@ -932,6 +934,23 @@ impl App {
             tracing::warn!("the glyphs on screen do not fit the atlas");
             // Left set, every frame would start the atlas again to no avail.
             self.atlas.full = false;
+        }
+    }
+
+    /// Goes by the settings files as they are now, if they can be read.
+    fn settings_changed(&mut self) {
+        let loaded = Config::load(self.profile.as_deref());
+        self.reconfigure(self.config.reloaded(loaded));
+        self.tell_unreadable_settings();
+    }
+
+    /// Says why the settings file is not being used, if it is not.
+    fn tell_unreadable_settings(&mut self) {
+        if let Some(why) = self.config.unreadable.clone() {
+            self.toast(gettext_f(
+                "The settings file cannot be read and is not used: {why}",
+                &[("why", &why)],
+            ));
         }
     }
 

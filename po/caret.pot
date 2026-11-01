@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret 0.2.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-31 23:25+0200\n"
+"POT-Creation-Date: 2026-11-01 08:49+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,12 +18,17 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#: crates/window/src/app.rs:697
+#: crates/window/src/app.rs:699
 msgid "The text is too long to paste"
 msgstr ""
 
-#: crates/window/src/app.rs:741
+#: crates/window/src/app.rs:743
 msgid "This terminal could not run its program"
+msgstr ""
+
+#: crates/window/src/app.rs:951
+#, rust-format
+msgid "The settings file cannot be read and is not used: {why}"
 msgstr ""
 
 #: crates/window/src/app/attention.rs:74

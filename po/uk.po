@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-10-31 23:25+0200\n"
+"POT-Creation-Date: 2026-11-01 08:49+0200\n"
 "PO-Revision-Date: 2026-10-31 12:30+0200\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Ukrainian\n"
@@ -16,13 +16,18 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
-#: crates/window/src/app.rs:697
+#: crates/window/src/app.rs:699
 msgid "The text is too long to paste"
 msgstr "Текст задовгий для вставлення"
 
-#: crates/window/src/app.rs:741
+#: crates/window/src/app.rs:743
 msgid "This terminal could not run its program"
 msgstr "Цей термінал не зміг запустити програму"
+
+#: crates/window/src/app.rs:951
+#, rust-format
+msgid "The settings file cannot be read and is not used: {why}"
+msgstr "Файл налаштувань не вдається прочитати, і він не використовується: {why}"
 
 #: crates/window/src/app/attention.rs:74
 msgid "Command Finished"
