@@ -17,7 +17,7 @@ use crate::grid::GpuCell;
 
 /// What the shaders are given with each draw, laid out as `common.glsl` declares it.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Constants {
     pub viewport_width: f32,
     pub viewport_height: f32,
@@ -81,6 +81,103 @@ struct Mirror {
     lines: usize,
     cells: Vec<GpuCell>,
     stale: Vec<Vec<bool>>,
+    /// The rows changed since a frame last went to the surface.
+    changed: Vec<bool>,
+    /// What it was drawn with then; none for a size it has not been shown at.
+    presented: Option<Constants>,
+}
+
+/// What the last frame on the surface showed besides the panes' cells.
+struct Presented {
+    extent: vk::Extent2D,
+    generation: u64,
+    /// What the frame was cleared to, each part as its bits.
+    background: [u32; 4],
+    quads: Vec<Quad>,
+    under: usize,
+    panes: Vec<u32>,
+}
+
+impl Constants {
+    /// The same with what depends only on the cursor left out, and on where the pane's
+    /// cells are in the buffer, which does not show.
+    fn without_cursor(self) -> Self {
+        Self {
+            pass: 0,
+            first: 0,
+            cursor_column: 0,
+            cursor_line: 0,
+            cursor_shape: 0,
+            cursor_color: 0,
+            ..self
+        }
+    }
+
+    fn cursor(self) -> (i32, i32, u32, u32) {
+        (
+            self.cursor_column,
+            self.cursor_line,
+            self.cursor_shape,
+            self.cursor_color,
+        )
+    }
+}
+
+/// How far glyphs reach above and below the top of their cell, in device pixels. They are
+/// not cut off at their cell, so what changes in a row can show in the rows around it.
+#[derive(Debug, Clone, Copy, Default)]
+struct Reach {
+    above: i32,
+    below: i32,
+}
+
+impl Reach {
+    fn take_in(&mut self, glyph: &GpuGlyph) {
+        let top = i32::from((glyph.offset >> 16) as i16);
+        let height = (glyph.size >> 16) as i32;
+        self.above = self.above.max(-top);
+        self.below = self.below.max(top + height);
+    }
+}
+
+/// The parts of an `extent` image that show the `lines` marked in a pane drawn with
+/// `constants`, the whole width of the image for each: glyphs reach past their cells.
+fn changed_rects(
+    lines: impl Iterator<Item = bool>,
+    constants: &Constants,
+    reach: Reach,
+    extent: vk::Extent2D,
+) -> Vec<vk::RectLayerKHR> {
+    let mut rects: Vec<vk::RectLayerKHR> = Vec::new();
+    let mut add = |line: i32| {
+        let row = constants.origin_y + line * constants.cell_height;
+        let top = (row - reach.above).clamp(0, extent.height as i32);
+        let below = reach.below.max(constants.cell_height);
+        let bottom = (row + below).clamp(0, extent.height as i32);
+        if bottom <= top {
+            return;
+        }
+        if let Some(last) = rects.last_mut()
+            && last.offset.y + last.extent.height as i32 >= top
+        {
+            last.extent.height = (bottom - last.offset.y) as u32;
+            return;
+        }
+        rects.push(vk::RectLayerKHR {
+            offset: vk::Offset2D { x: 0, y: top },
+            extent: vk::Extent2D {
+                width: extent.width,
+                height: (bottom - top) as u32,
+            },
+            layer: 0,
+        });
+    };
+    for (line, changed) in lines.enumerate() {
+        if changed {
+            add(line as i32);
+        }
+    }
+    rects
 }
 
 struct Buffer {
@@ -118,6 +215,9 @@ pub struct Renderer {
     entries: Vec<GpuGlyph>,
     /// The cells of each pane drawn last, by terminal.
     mirrors: HashMap<u32, Mirror>,
+    /// None when the surface shows nothing to go on from: the next frame changes it all.
+    presented: Option<Presented>,
+    reach: Reach,
     /// Glyphs to copy into the atlas texture with the next frame.
     uploads: Vec<Upload>,
     cells: Vec<Option<Buffer>>,
@@ -215,6 +315,8 @@ impl Renderer {
             generation: 0,
             entries: Vec::new(),
             mirrors: HashMap::new(),
+            presented: None,
+            reach: Reach::default(),
             uploads: Vec::new(),
             cells: (0..frames).map(|_| None).collect(),
             placed: vec![Vec::new(); frames],
@@ -345,6 +447,9 @@ impl Renderer {
             self.entries.clear();
             self.uploads.clear();
         }
+        for entry in &job.entries {
+            self.reach.take_in(entry);
+        }
         self.entries.append(&mut job.entries);
         self.uploads.append(&mut job.uploads);
         self.take_in(&mut job.panes);
@@ -363,12 +468,16 @@ impl Renderer {
                 lines: 0,
                 cells: Vec::new(),
                 stale: vec![Vec::new(); copies],
+                changed: Vec::new(),
+                presented: None,
             });
             if (mirror.columns, mirror.lines) != (pane.columns, pane.lines) {
                 mirror.columns = pane.columns;
                 mirror.lines = pane.lines;
                 mirror.cells = vec![GpuCell::default(); pane.columns * pane.lines];
                 mirror.stale = vec![vec![true; pane.lines]; copies];
+                mirror.changed = vec![true; pane.lines];
+                mirror.presented = None;
             }
             for (line, row) in std::mem::take(&mut pane.rows) {
                 let start = line * mirror.columns;
@@ -382,8 +491,68 @@ impl Renderer {
                 for stale in &mut mirror.stale {
                     stale[line] = true;
                 }
+                mirror.changed[line] = true;
             }
         }
+    }
+
+    /// What `job`, drawn in `extent` of an image, changes from the last frame on the
+    /// surface, for the compositor to compose only that; none when it may be anything.
+    /// Empty when the frame would look the same.
+    pub fn changes(&self, job: &Job, extent: vk::Extent2D) -> Option<Vec<vk::RectLayerKHR>> {
+        let presented = self.presented.as_ref()?;
+        let same = presented.extent == extent
+            && presented.generation == job.generation
+            && presented.background == job.background.map(f32::to_bits)
+            && presented.under == job.under
+            && presented.quads == job.quads
+            && presented
+                .panes
+                .iter()
+                .copied()
+                .eq(job.panes.iter().map(|pane| pane.terminal));
+        if !same {
+            return None;
+        }
+        let mut rects = Vec::new();
+        for pane in &job.panes {
+            let mirror = self.mirrors.get(&pane.terminal)?;
+            let before = mirror.presented?;
+            if before.without_cursor() != pane.constants.without_cursor() {
+                return None;
+            }
+            let moved = before.cursor() != pane.constants.cursor();
+            let lines = mirror.changed.iter().enumerate().map(|(line, &changed)| {
+                let line = line as i32;
+                changed
+                    || (moved && (line == before.cursor_line || line == pane.constants.cursor_line))
+            });
+            rects.extend(changed_rects(lines, &pane.constants, self.reach, extent));
+        }
+        Some(rects)
+    }
+
+    /// `job` went to the surface in `extent` of an image.
+    pub fn presented(&mut self, job: &mut Job, extent: vk::Extent2D) {
+        for pane in &job.panes {
+            if let Some(mirror) = self.mirrors.get_mut(&pane.terminal) {
+                mirror.changed.fill(false);
+                mirror.presented = Some(pane.constants);
+            }
+        }
+        self.presented = Some(Presented {
+            extent,
+            generation: job.generation,
+            background: job.background.map(f32::to_bits),
+            quads: std::mem::take(&mut job.quads),
+            under: job.under,
+            panes: job.panes.iter().map(|pane| pane.terminal).collect(),
+        });
+    }
+
+    /// The surface takes images of another swapchain from now on.
+    pub fn forget_presented(&mut self) {
+        self.presented = None;
     }
 
     /// Copies the rows frame `frame`'s cells lack, one pane after another; all of them
@@ -1021,4 +1190,89 @@ fn stage(staging: &Buffer, uploads: &mut Vec<atlas::Upload>) -> Vec<vk::BufferIm
         offset += upload.pixels.len() as u64;
     }
     regions
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const EXTENT: vk::Extent2D = vk::Extent2D {
+        width: 100,
+        height: 200,
+    };
+
+    fn pane() -> Constants {
+        Constants {
+            cell_width: 8,
+            cell_height: 10,
+            origin_x: 20,
+            origin_y: 50,
+            ..Constants::default()
+        }
+    }
+
+    /// Each rectangle's top and bottom.
+    fn spans(lines: &[bool], reach: Reach) -> Vec<(i32, i32)> {
+        changed_rects(lines.iter().copied(), &pane(), reach, EXTENT)
+            .iter()
+            .inspect(|rect| {
+                assert_eq!((rect.offset.x, rect.extent.width), (0, 100));
+            })
+            .map(|rect| (rect.offset.y, rect.offset.y + rect.extent.height as i32))
+            .collect()
+    }
+
+    #[test]
+    fn each_changed_row_is_one_rectangle_and_neighbours_join() {
+        let reach = Reach::default();
+        assert_eq!(spans(&[false, false], reach), []);
+        assert_eq!(spans(&[false, true, false], reach), [(60, 70)]);
+        assert_eq!(
+            spans(&[true, true, false, true], reach),
+            [(50, 70), (80, 90)]
+        );
+    }
+
+    #[test]
+    fn a_row_takes_in_what_its_glyphs_can_reach() {
+        let mut reach = Reach::default();
+        // Three pixels above the cell, and six below one that is ten tall.
+        let halves = |low: i32, high: i32| (low as u32 & 0xffff) | ((high as u32) << 16);
+        reach.take_in(&GpuGlyph {
+            offset: halves(0, -3),
+            size: halves(8, 19),
+            ..GpuGlyph::default()
+        });
+        assert_eq!(spans(&[false, true], reach), [(57, 76)]);
+        // What the rows around it reach joins them.
+        assert_eq!(spans(&[true, false, true], reach), [(47, 66), (67, 86)]);
+    }
+
+    #[test]
+    fn rows_past_the_image_are_cut_off_at_its_edge() {
+        let reach = Reach {
+            above: 60,
+            below: 400,
+        };
+        assert_eq!(spans(&[true], reach), [(0, 200)]);
+    }
+
+    #[test]
+    fn only_the_cursor_can_change_without_all_of_a_pane_changing() {
+        let moved = Constants {
+            cursor_column: 4,
+            cursor_line: 2,
+            cursor_shape: 1,
+            cursor_color: 7,
+            first: 100,
+            pass: 1,
+            ..pane()
+        };
+        assert_eq!(pane().without_cursor(), moved.without_cursor());
+        let elsewhere = Constants {
+            origin_x: 21,
+            ..pane()
+        };
+        assert_ne!(pane().without_cursor(), elsewhere.without_cursor());
+    }
 }

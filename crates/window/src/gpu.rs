@@ -74,6 +74,8 @@ pub struct Gpu {
     /// The swapchain does not match the surface, and is made again before the next
     /// frame.
     stale: bool,
+    /// The device can tell the compositor which part of a frame changed.
+    incremental: bool,
 }
 
 // SAFETY: the device's handles may be used from any thread, one at a time, which owning
@@ -139,7 +141,17 @@ impl Gpu {
         let queues = [vk::DeviceQueueCreateInfo::default()
             .queue_family_index(family)
             .queue_priorities(&priorities)];
-        let extensions = [khr::swapchain::NAME.as_ptr()];
+        // SAFETY: the physical device came from this instance.
+        let incremental = unsafe { instance.enumerate_device_extension_properties(physical) }
+            .is_ok_and(|extensions| {
+                extensions.iter().any(|extension| {
+                    extension.extension_name_as_c_str() == Ok(khr::incremental_present::NAME)
+                })
+            });
+        let mut extensions = vec![khr::swapchain::NAME.as_ptr()];
+        if incremental {
+            extensions.push(khr::incremental_present::NAME.as_ptr());
+        }
         let mut vulkan13 = vk::PhysicalDeviceVulkan13Features::default()
             .dynamic_rendering(true)
             .synchronization2(true);
@@ -183,11 +195,12 @@ impl Gpu {
             frame: 0,
             swapchain: None,
             stale: true,
+            incremental,
         })
     }
 
-    /// Draws `job` in a frame `width` by `height` pixels; whether it went to the surface.
-    /// A `roomy` frame may go to the top left of larger images. `presenting` is told the
+    /// Draws `job` in a frame `width` by `height` pixels; whether it went to the surface,
+    /// which it does not when it would look as the last did. A `roomy` frame may go to the top left of larger images. `presenting` is told the
     /// size drawn just before the frame commits the surface.
     ///
     /// # Errors
@@ -219,6 +232,7 @@ impl Gpu {
                 wanted
             };
             self.make_swapchain(room)?;
+            self.renderer.forget_presented();
         }
         let Some(swapchain) = self.swapchain.as_ref() else {
             return Ok(false);
@@ -227,6 +241,10 @@ impl Gpu {
             width: width.min(swapchain.extent.width),
             height: height.min(swapchain.extent.height),
         };
+        let changes = self.renderer.changes(job, drawn_extent);
+        if changes.as_ref().is_some_and(Vec::is_empty) {
+            return Ok(false);
+        }
         let frame = &self.frames[self.frame];
         let device = &self.device;
         // SAFETY: the fence is this device's.
@@ -285,19 +303,44 @@ impl Gpu {
         unsafe { device.queue_submit2(self.queue, &submit, frame.done) }
             .during("vkQueueSubmit2")?;
 
+        presenting(drawn_extent.width, drawn_extent.height);
+        let presented = self.present(drawn, index, changes.as_deref());
+        self.frame = (self.frame + 1) % FRAMES_IN_FLIGHT;
+        if presented? {
+            self.renderer.presented(job, drawn_extent);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Puts image `index` on the surface once `drawn` is signalled, with `changes` the part
+    /// that differs from the last, or all of it; whether it went there.
+    fn present(
+        &mut self,
+        drawn: vk::Semaphore,
+        index: u32,
+        changes: Option<&[vk::RectLayerKHR]>,
+    ) -> Result<bool, GpuError> {
+        let Some(swapchain) = self.swapchain.as_ref() else {
+            return Ok(false);
+        };
         let wait = [drawn];
         let chains = [swapchain.handle];
         let indices = [index];
-        let present = vk::PresentInfoKHR::default()
+        // No rectangles say that the whole image changed.
+        let region = [vk::PresentRegionKHR::default().rectangles(changes.unwrap_or_default())];
+        let mut regions = vk::PresentRegionsKHR::default().regions(&region);
+        let mut present = vk::PresentInfoKHR::default()
             .wait_semaphores(&wait)
             .swapchains(&chains)
             .image_indices(&indices);
-        presenting(drawn_extent.width, drawn_extent.height);
+        if self.incremental {
+            present = present.push_next(&mut regions);
+        }
         // SAFETY: the image was acquired from this swapchain and is drawn when `drawn`
         // is signalled.
-        let presented = unsafe { self.swapchains.queue_present(self.queue, &present) };
-        self.frame = (self.frame + 1) % FRAMES_IN_FLIGHT;
-        match presented {
+        match unsafe { self.swapchains.queue_present(self.queue, &present) } {
             Ok(suboptimal) => {
                 self.stale |= suboptimal;
                 Ok(true)
