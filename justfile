@@ -57,7 +57,7 @@ po: pot
     for lang in $(cat po/LINGUAS); do msgmerge --update --backup=none --quiet po/$lang.po po/caret.pot; done
     for lang in $(cat po/LINGUAS); do msgfmt --statistics -o /dev/null po/$lang.po; done
 
-# Unit tests.
+# The tests: units, random output and clients, and the server and `caret session` as programs.
 test:
     cargo test --workspace --locked
 
