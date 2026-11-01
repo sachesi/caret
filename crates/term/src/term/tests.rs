@@ -512,3 +512,13 @@ fn a_mark_on_a_cell_after_the_screen_narrowed_is_kept_alone() {
     term.advance("\x1b[1;2He\u{302}".as_bytes());
     assert_eq!(term.screen().row(0).text(1), Text::Cluster("e\u{302}"));
 }
+
+#[test]
+fn erasing_below_text_that_reached_the_last_column_keeps_its_last_character() {
+    let mut term = term(4, 2);
+    term.advance(b"abcd\x1b[J");
+    assert_eq!(screen(&term)[0], "abcd");
+    // Nothing is held back once the cursor has moved.
+    term.advance(b"\x1b[1;4H\x1b[J");
+    assert_eq!(screen(&term)[0], "abc");
+}

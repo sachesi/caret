@@ -139,8 +139,12 @@ impl Term {
         );
         match mode {
             0 => {
-                self.row().clear(column, columns, blank);
-                self.row().wrapped = false;
+                // As for erasing the line: nothing follows text that reached the last
+                // column yet.
+                if !self.cursor.pending {
+                    self.row().clear(column, columns, blank);
+                    self.row().wrapped = false;
+                }
                 for below in line + 1..lines {
                     self.grid().row_mut(below).reset(blank);
                 }
