@@ -229,3 +229,39 @@ fn searches_go_round_every_line_in_steps() {
     assert_eq!(find(&mut view, "Needle", false).as_deref(), Some("Needle"));
     assert_eq!(find(&mut view, "thread", false), None);
 }
+
+#[test]
+fn an_address_is_found_and_a_word_selected_in_a_line_as_long_as_the_history() {
+    let columns = 80;
+    let mut term = Term::new(columns, 5, Options::default());
+    let filler = "x".repeat(40 * ADDRESS_REACH);
+    term.advance(format!("{filler} https://example.org/a {filler}").as_bytes());
+    let mut view = View::default();
+    let line = *term.serials().end();
+    assert!(
+        term.line_width(line)
+            .is_some_and(|width| width > 80 * ADDRESS_REACH)
+    );
+    let address = filler.len() + 1 + "https://".len();
+    let top = term
+        .history()
+        .at_row(address / columns)
+        .expect("kept in the history");
+    view.top = Some((term.history().serial(top.0), top.1));
+    let link = view
+        .link_at(&term, 0, address % columns)
+        .expect("an address");
+    assert_eq!(link.uri, "https://example.org/a");
+    view.select(&term, Unit::Word, 0, address % columns, false);
+    assert_eq!(
+        view.selected_text(&term).as_deref(),
+        Some("//example.org/a")
+    );
+    // A word longer than a stretch read at a time is taken whole.
+    let word = filler.len() + 30;
+    let long = Place {
+        line: term.history().serial(top.0),
+        cell: word + WORD_STRETCH,
+    };
+    assert_eq!(word_edge(&term, long, false), filler.len() + 1 + 22);
+}

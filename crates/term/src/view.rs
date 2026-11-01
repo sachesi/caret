@@ -3,9 +3,9 @@
 //! can read the history while another follows the output.
 
 use std::borrow::Cow;
+use std::collections::VecDeque;
 
 use crate::grid::Row;
-use crate::history::Line;
 use crate::links::{address_at, continues_address, openable};
 use crate::style::{LinkId, Style};
 use crate::term::Term;
@@ -69,6 +69,13 @@ impl Span {
 
 /// Lines an address is followed through, up and down from the cell.
 const LONGEST_ADDRESS: usize = 64;
+
+/// Cells an address is looked for in, each way from the cell. A line can be as long as the
+/// history, and what lies under a pointer is looked at for every frame.
+const ADDRESS_REACH: usize = 8192;
+
+/// Cells of a line read at a time in looking for the edge of a word.
+const WORD_STRETCH: usize = 1024;
 
 /// Characters that end a word, besides spaces.
 const WORD_ENDS: &str = ",│`|:\"'()[]{}<>";
@@ -342,7 +349,7 @@ impl View {
     pub fn select_all(&mut self, term: &Term) {
         let serials = term.serials();
         let mut last = *serials.end();
-        let width = |serial| term.line(serial).map_or(0, |line| line.width());
+        let width = |serial| term.line_width(serial).unwrap_or(0);
         while last > *serials.start() && width(last) == 0 {
             last -= 1;
         }
@@ -509,8 +516,10 @@ impl View {
             return None;
         }
         let place = self.place_at(term, line, column);
-        let text = term.line(place.line)?;
-        let &(_, style) = text.cells().get(place.cell)?;
+        let first = place.cell.saturating_sub(ADDRESS_REACH);
+        let end = place.cell.saturating_add(ADDRESS_REACH + 1);
+        let (width, here) = term.line_cells(place.line, first..end)?;
+        let &(_, style) = here.get(place.cell - first)?;
         if let Some(uri) = term.link(style.link)
             && openable(uri)
         {
@@ -523,61 +532,68 @@ impl View {
         // A program that breaks lines itself may fill a line with an address to the last
         // column and go on with it in the next.
         let columns = term.columns();
-        let goes_on = |line: &Line, next: &Line| {
-            let width = line.width();
-            let last = line
-                .cells()
-                .last()
-                .and_then(|(text, _)| text.chars().next());
-            let first = next
-                .cells()
-                .first()
-                .and_then(|(text, _)| text.chars().next());
-            width > 0
-                && width.is_multiple_of(columns)
-                && last.is_some_and(continues_address)
-                && first.is_some_and(continues_address)
+        let filled = |width: usize, last: char| {
+            width > 0 && width.is_multiple_of(columns) && continues_address(last)
         };
         let serials = term.serials();
-        let mut lines = vec![(place.line, text)];
-        while lines.len() < LONGEST_ADDRESS && lines[0].0 > *serials.start() {
-            let serial = lines[0].0 - 1;
-            match term.line(serial) {
-                Some(above) if goes_on(&above, &lines[0].1) => lines.insert(0, (serial, above)),
-                _ => break,
+        let mut chars: VecDeque<(char, Place)> = VecDeque::with_capacity(here.len());
+        let places = |serial: u64, first: usize| {
+            move |(cell, &(c, _)): (usize, &(char, Style))| {
+                let place = Place {
+                    line: serial,
+                    cell: first + cell,
+                };
+                (c, place)
             }
-        }
-        while lines.len() < 2 * LONGEST_ADDRESS {
-            let (serial, last) = &lines[lines.len() - 1];
-            let serial = serial + 1;
-            if serial > *serials.end() {
+        };
+        chars.extend(here.iter().enumerate().map(places(place.line, first)));
+
+        let mut followed = 1;
+        let (mut serial, mut start) = (place.line, first);
+        while followed < LONGEST_ADDRESS && start == 0 && serial > *serials.start() {
+            if !chars.front().is_some_and(|&(c, _)| continues_address(c)) {
                 break;
             }
-            match term.line(serial) {
-                Some(below) if goes_on(last, &below) => lines.push((serial, below)),
-                _ => break,
+            let Some(width) = term.line_width(serial - 1) else {
+                break;
+            };
+            start = width.saturating_sub(ADDRESS_REACH);
+            serial -= 1;
+            let Some((_, above)) = term.line_cells(serial, start..width) else {
+                break;
+            };
+            if !above.last().is_some_and(|&(last, _)| filled(width, last)) {
+                break;
             }
+            for item in above.iter().enumerate().rev().map(places(serial, start)) {
+                chars.push_front(item);
+            }
+            followed += 1;
+        }
+        let (mut serial, mut width, mut end) = (place.line, width, first + here.len());
+        while followed < 2 * LONGEST_ADDRESS && end == width && serial < *serials.end() {
+            if !chars.back().is_some_and(|&(last, _)| filled(width, last)) {
+                break;
+            }
+            serial += 1;
+            let Some((below_width, below)) = term.line_cells(serial, 0..ADDRESS_REACH) else {
+                break;
+            };
+            if !below.first().is_some_and(|&(c, _)| continues_address(c)) {
+                break;
+            }
+            chars.extend(below.iter().enumerate().map(places(serial, 0)));
+            followed += 1;
+            (width, end) = (below_width, below.len());
         }
 
-        let mut chars = Vec::new();
-        let mut places = Vec::new();
-        for (serial, line) in &lines {
-            for (cell, (text, _)) in line.cells().iter().enumerate() {
-                chars.push(text.chars().next().unwrap_or('\0'));
-                places.push(Place {
-                    line: *serial,
-                    cell,
-                });
-            }
-        }
-        let index = places.iter().position(|&at| at == place)?;
-        let range = address_at(&chars, index)?;
+        let chars = chars.make_contiguous();
+        let index = chars.iter().position(|&(_, at)| at == place)?;
+        let text: Vec<char> = chars.iter().map(|&(c, _)| c).collect();
+        let range = address_at(&text, index)?;
         Some(Link {
-            uri: chars[range.clone()]
-                .iter()
-                .filter(|&&c| c != '\0')
-                .collect(),
-            span: Span::Written(places[range.start], places[range.end - 1]),
+            uri: text[range.clone()].iter().filter(|&&c| c != '\0').collect(),
+            span: Span::Written(chars[range.start].1, chars[range.end - 1].1),
         })
     }
 }
@@ -585,31 +601,42 @@ impl View {
 /// The first cell of the word `place` is in, or the last with `forwards`. A cell that is
 /// not part of a word is a word of its own.
 fn word_edge(term: &Term, place: Place, forwards: bool) -> usize {
-    let Some(line) = term.line(place.line) else {
+    // The second half of a wide character goes with its first.
+    let in_word = |c: char| c == '\0' || !(c.is_whitespace() || WORD_ENDS.contains(c));
+    let cell_in_word = |cell: usize| {
+        term.line_cells(place.line, cell..cell.saturating_add(1))
+            .is_some_and(|(_, cells)| cells.first().is_some_and(|&(c, _)| in_word(c)))
+    };
+    if !cell_in_word(place.cell) {
         return place.cell;
-    };
-    let cells = line.cells();
-    let in_word = |cell: usize| {
-        cells.get(cell).is_some_and(|(text, _)| {
-            // The second half of a wide character goes with its first.
-            text.is_empty()
-                || !text
-                    .chars()
-                    .next()
-                    .is_some_and(|c| c.is_whitespace() || WORD_ENDS.contains(c))
-        })
-    };
-    let mut cell = place.cell;
-    if !in_word(cell) {
-        return cell;
     }
+    let mut cell = place.cell;
     if forwards {
-        while in_word(cell + 1) {
-            cell += 1;
+        loop {
+            let next = cell + 1;
+            let Some((_, stretch)) = term.line_cells(place.line, next..next + WORD_STRETCH) else {
+                return cell;
+            };
+            let taken = stretch.iter().take_while(|&&(c, _)| in_word(c)).count();
+            cell += taken;
+            if taken < WORD_STRETCH {
+                return cell;
+            }
         }
-    } else {
-        while cell > 0 && in_word(cell - 1) {
-            cell -= 1;
+    }
+    while cell > 0 {
+        let first = cell.saturating_sub(WORD_STRETCH);
+        let Some((_, stretch)) = term.line_cells(place.line, first..cell) else {
+            return cell;
+        };
+        let taken = stretch
+            .iter()
+            .rev()
+            .take_while(|&&(c, _)| in_word(c))
+            .count();
+        cell -= taken;
+        if taken < stretch.len() || stretch.is_empty() {
+            return cell;
         }
     }
     cell

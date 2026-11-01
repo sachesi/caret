@@ -293,17 +293,9 @@ impl Line {
         starts[wanted.start.min(starts.len())..wanted.end.min(starts.len())].to_vec()
     }
 
-    /// Calls `each` with every cell in order, and its text where that is more than its
-    /// character.
-    fn each_cell(&self, mut each: impl FnMut(Cell, Option<&str>)) {
-        self.each_cell_from(0, |cell, text| {
-            each(cell, text);
-            ControlFlow::Continue(())
-        });
-    }
-
-    /// The same from cell `from` on, until `each` breaks. Past the first cell only in a
-    /// line [`Line::is_plain`], where a cell's place in the text is known.
+    /// Calls `each` with every cell from cell `from` on, in order, and its text where that
+    /// is more than its character, until `each` breaks. Past the first cell only in a line
+    /// [`Line::is_plain`], where a cell's place in the text is known.
     fn each_cell_from(
         &self,
         from: usize,
@@ -362,16 +354,35 @@ impl Line {
     /// no text.
     #[must_use]
     pub fn cells(&self) -> Vec<(&str, Style)> {
-        let mut cells = Vec::with_capacity(self.width());
-        let mut bytes = 0;
-        self.each_cell(|cell, text| {
-            if cell.style.flags.contains(Flags::SPACER) {
-                cells.push(("", cell.style));
-                return;
+        self.cells_in(0..usize::MAX)
+    }
+
+    /// [`Line::cells`] of cells `wanted` alone. A line can be as long as the history, and
+    /// what lies under a pointer is looked at for every frame.
+    #[must_use]
+    pub fn cells_in(&self, wanted: Range<usize>) -> Vec<(&str, Style)> {
+        let mut at = if self.is_plain() {
+            wanted.start.min(self.width())
+        } else {
+            0
+        };
+        let mut bytes = at;
+        let mut cells = Vec::with_capacity(wanted.len().min(self.width()));
+        self.each_cell_from(at, |cell, text| {
+            if at >= wanted.end {
+                return ControlFlow::Break(());
             }
-            let length = text.map_or(cell.c.len_utf8(), str::len);
-            cells.push((&self.text[bytes..bytes + length], cell.style));
+            let length = if cell.style.flags.contains(Flags::SPACER) {
+                0
+            } else {
+                text.map_or(cell.c.len_utf8(), str::len)
+            };
+            if at >= wanted.start {
+                cells.push((&self.text[bytes..bytes + length], cell.style));
+            }
             bytes += length;
+            at += 1;
+            ControlFlow::Continue(())
         });
         cells
     }
@@ -715,6 +726,31 @@ mod tests {
                             "{name} at {columns}"
                         );
                     }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn some_cells_of_a_line_are_the_same_as_when_all_are_read() {
+        let mut marked = row("ae", 12, false);
+        marked.add_mark(1, '\u{301}');
+        for rows in [
+            vec![row("abcdefghij", 12, false)],
+            vec![row("a日b日日c", 40, false)],
+            vec![marked],
+            vec![row("éèêëā", 12, false)],
+            vec![row("", 12, false)],
+        ] {
+            let mut line = Line::default();
+            for row in &rows {
+                line.append(row);
+            }
+            let all = line.cells();
+            for start in 0..=all.len() + 1 {
+                for end in start..=all.len() + 2 {
+                    let expected = all.get(start..end.min(all.len())).unwrap_or_default();
+                    assert_eq!(line.cells_in(start..end), expected, "{start}..{end}");
                 }
             }
         }

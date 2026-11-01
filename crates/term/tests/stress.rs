@@ -207,6 +207,23 @@ fn check(term: &Term, seed: u64) {
     let serials = term.serials();
     assert!(serials.start() <= serials.end(), "seed {seed}");
     assert!(term.line(*serials.end()).is_some(), "seed {seed}");
+    // Parts of a line are read as all of it reads.
+    for serial in *serials.start()..=*serials.end() {
+        let Some(line) = term.line(serial) else {
+            assert_eq!(term.line_width(serial), None, "seed {seed}");
+            continue;
+        };
+        let whole: Vec<(char, Style)> = line
+            .cells()
+            .iter()
+            .map(|&(text, style)| (text.chars().next().unwrap_or('\0'), style))
+            .collect();
+        assert_eq!(term.line_width(serial), Some(whole.len()), "seed {seed}");
+        let (first, end) = (serial as usize % 7, serial as usize % 7 + 30);
+        let part = term.line_cells(serial, first..end).map(|(_, cells)| cells);
+        let expected = whole.get(first..end.min(whole.len())).unwrap_or_default();
+        assert_eq!(part.as_deref(), Some(expected), "seed {seed}");
+    }
 }
 
 /// What a client might do to its view, in or out of range.

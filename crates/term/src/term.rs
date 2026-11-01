@@ -8,7 +8,7 @@ mod tests;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::ops::RangeInclusive;
+use std::ops::{Range, RangeInclusive};
 use std::path::PathBuf;
 
 use unicode_segmentation::UnicodeSegmentation;
@@ -456,6 +456,60 @@ impl Term {
             line.append(row);
         }
         Some(Cow::Owned(line))
+    }
+
+    /// How many cells the line with serial number `serial` has.
+    #[must_use]
+    pub fn line_width(&self, serial: u64) -> Option<usize> {
+        self.line_cells(serial, 0..0).map(|(width, _)| width)
+    }
+
+    /// How many cells the line with serial number `serial` has, and the first character and
+    /// the style of its cells `wanted`, with `'\0'` for one with no text. What
+    /// [`Term::line`] gives without copying the line, which can be as long as the history.
+    #[must_use]
+    pub fn line_cells(
+        &self,
+        serial: u64,
+        wanted: Range<usize>,
+    ) -> Option<(usize, Vec<(char, Style)>)> {
+        let first_char =
+            |(text, style): (&str, Style)| (text.chars().next().unwrap_or('\0'), style);
+        let next = self.history.serial(self.history.len());
+        let open = self.history.is_open() && !self.alt_active;
+        let kept = self
+            .history
+            .index_of(serial)
+            .map(|index| self.history.line(index));
+        if serial < next - u64::from(open) {
+            let line = kept?;
+            let cells = line.cells_in(wanted).into_iter().map(first_char).collect();
+            return Some((line.width(), cells));
+        }
+        let places = self.screen_places();
+        let mut on_screen = Line::default();
+        let mut found = false;
+        for (_, row) in places
+            .iter()
+            .zip(self.screen().rows())
+            .filter(|((line, _), _)| *line == serial)
+        {
+            on_screen.append(row);
+            found = true;
+        }
+        if !found {
+            return None;
+        }
+        let before = kept.map_or(0, Line::width);
+        let mut cells: Vec<_> = kept
+            .map(|line| line.cells_in(wanted.clone()))
+            .unwrap_or_default()
+            .into_iter()
+            .map(first_char)
+            .collect();
+        let rest = wanted.start.saturating_sub(before)..wanted.end.saturating_sub(before);
+        cells.extend(on_screen.cells_in(rest).into_iter().map(first_char));
+        Some((before + on_screen.width(), cells))
     }
 
     /// The serial number of the highest line output wrote to since this was last called,
