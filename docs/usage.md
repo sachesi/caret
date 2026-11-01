@@ -152,8 +152,8 @@ as no session named outside Caret.
 
 A window that shows several sessions has one tab for each in the strip, with its name
 or number, the title of the tab it shows and how many tabs it has. A click on another
-session's tab shows the tab used last in it, and a click on the shown session's tab, or
-on the arrow of any, lists its tabs, with New Tab, Rename, Detach and Close Session;
+session's tab shows the tab used last in it. A right click on a session's tab, or a click
+on its arrow, lists its tabs, with New Tab, Rename, Detach and Close Session;
 `session-click = "popup"` makes every click list them. Ctrl+Shift+L lists the shown
 session's tabs from the keys, and typing narrows the list. Ctrl+Page Up and Page Down
 and Alt and a number act on the shown session's tabs, and Ctrl+Shift+Page Up and Page

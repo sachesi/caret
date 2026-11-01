@@ -164,16 +164,15 @@ impl App {
         true
     }
 
-    /// A click on the strip's tab of the session at `index`: shows its last tab, or
-    /// lists its tabs as the settings say.
+    /// A click on the strip's tab of the session at `index`: shows its last tab, or lists
+    /// its tabs if the settings say so. A right click lists them whatever these say.
     pub(super) fn session_clicked(&mut self, index: usize) {
         let Some(&session) = self.sessions.get(index) else {
             return;
         };
-        if self.config.session_click == SessionClick::Popup || self.shown_session() == Some(session)
-        {
+        if self.config.session_click == SessionClick::Popup {
             self.session_popup(session);
-        } else {
+        } else if self.shown_session() != Some(session) {
             self.show_session_tab(session);
         }
     }
