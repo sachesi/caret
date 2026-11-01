@@ -271,6 +271,7 @@ impl Row {
     pub fn resize(&mut self, columns: usize, style: Style) {
         if columns < self.cells.len() {
             if columns > 0 && self.cells[columns - 1].style.flags.contains(Flags::WIDE) {
+                self.forget_cluster(columns - 1);
                 self.cells[columns - 1] = Cell::blank(style);
             }
             self.cells.truncate(columns);
@@ -298,6 +299,25 @@ impl Row {
                 .flags
                 .contains(Flags::WIDE);
         self.cells.len() - usize::from(padded)
+    }
+
+    /// Whether what the row keeps about its cells is true: each cell marked as having marks
+    /// has its text kept once and no other has any, and the cells past those it counts as
+    /// used are blank. For tests, whatever a program did to the row.
+    #[must_use]
+    pub fn is_consistent(&self) -> bool {
+        let marked = self
+            .cells
+            .iter()
+            .enumerate()
+            .filter(|(_, cell)| cell.style.flags.contains(Flags::CLUSTER))
+            .map(|(column, _)| column as u16);
+        let mut kept: Vec<u16> = self.clusters.iter().map(|(at, _)| *at).collect();
+        kept.sort_unstable();
+        kept.into_iter().eq(marked)
+            && self.cells[self.used.min(self.cells.len())..]
+                .iter()
+                .all(|cell| *cell == Cell::blank(Style::default()))
     }
 
     /// The number of cells up to the last that shows anything.

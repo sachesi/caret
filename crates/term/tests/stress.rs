@@ -174,6 +174,7 @@ fn check(term: &Term, seed: u64) {
     for (at, row) in rows.iter().enumerate() {
         assert_eq!(row.len(), columns, "seed {seed}: row {at}");
         assert!(row.occupied() <= columns, "seed {seed}: row {at}");
+        assert!(row.is_consistent(), "seed {seed}: row {at}: {row:?}");
         for (index, cell) in row.cells.iter().enumerate() {
             // A wide character has its second half beside it, always.
             if cell.style.flags.contains(Flags::WIDE) {

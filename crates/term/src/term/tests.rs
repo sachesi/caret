@@ -1,4 +1,5 @@
 use super::*;
+use crate::grid::Text;
 use crate::style::{Color, Underline};
 
 fn term(columns: usize, lines: usize) -> Term {
@@ -488,4 +489,16 @@ fn a_program_that_asks_is_told_when_the_colours_go_dark_or_light() {
     term.advance(b"\x1b[?2031l");
     term.set_palette_base(with_background(0xffffff));
     assert!(term.take_replies().is_empty(), "no longer asked");
+}
+
+#[test]
+fn a_mark_on_a_cell_after_the_screen_narrowed_is_kept_alone() {
+    let mut term = Term::new(4, 2, Options::default());
+    // On the alternate screen rows are cut rather than wrapped again: the cut halves the
+    // wide character, whose cell has marks.
+    term.advance("\x1b[?1049h\x1b[1;2H日\u{301}".as_bytes());
+    term.resize(2, 2);
+    assert_eq!(term.screen().row(0).text(1), Text::Char(' '));
+    term.advance("\x1b[1;2He\u{302}".as_bytes());
+    assert_eq!(term.screen().row(0).text(1), Text::Cluster("e\u{302}"));
 }
