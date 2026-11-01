@@ -138,7 +138,7 @@ pub enum Underline {
 pub type LinkId = u16;
 
 /// How text is drawn: what SGR sets, and the link OSC 8 gives it.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, Eq)]
 pub struct Style {
     pub fg: Color,
     pub bg: Color,
@@ -148,7 +148,29 @@ pub struct Style {
     pub link: LinkId,
 }
 
+impl PartialEq for Style {
+    /// All at once, which is the same as field by field without a branch for each: every
+    /// cell's style is compared as history is kept.
+    fn eq(&self, other: &Self) -> bool {
+        self.packed() == other.packed()
+    }
+}
+
+impl std::hash::Hash for Style {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.packed().hash(state);
+    }
+}
+
 impl Style {
+    fn packed(&self) -> u128 {
+        u128::from(self.fg.0)
+            | u128::from(self.bg.0) << 32
+            | u128::from(self.underline.0) << 64
+            | u128::from(self.flags.0) << 96
+            | u128::from(self.link) << 112
+    }
+
     /// The attributes that carry over to blank cells an erase leaves: only the background,
     /// as terminals that erase in the current background do.
     #[must_use]
