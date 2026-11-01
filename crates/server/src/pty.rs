@@ -129,10 +129,12 @@ impl Pty {
             .stdout(Stdio::from(terminal.try_clone()?))
             .stderr(Stdio::from(terminal));
         let started_with = STARTED_WITH.get().copied();
-        // SAFETY: between fork and exec the closure calls only setsid, ioctl, signal and
-        // setrlimit, which are async-signal-safe, and allocates nothing.
+        // SAFETY: between fork and exec the closure calls only setsid, ioctl, signal,
+        // setrlimit and what ask_for_usual_turns does, which are async-signal-safe, and
+        // allocates nothing.
         unsafe {
             program.pre_exec(move || {
+                caret_protocol::ask_for_usual_turns();
                 check(libc::setsid())?;
                 check(libc::ioctl(0, libc::TIOCSCTTY, 0))?;
                 // A shell starting the server in the background leaves SIGINT and SIGQUIT

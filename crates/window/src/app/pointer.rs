@@ -856,11 +856,9 @@ impl PointerHandler for App {
 pub(super) fn open(uri: &str, toasts: &Sender<String>) {
     let failed =
         |reason: &str| gettext_f("Could not open the link: {reason}", &[("reason", reason)]);
-    let mut opener = match Command::new("xdg-open")
-        .arg(uri)
-        .stdin(Stdio::null())
-        .spawn()
-    {
+    let mut command = Command::new("xdg-open");
+    command.arg(uri).stdin(Stdio::null());
+    let mut opener = match caret_protocol::start_with_usual_turns(&mut command).spawn() {
         Ok(opener) => opener,
         Err(error) => {
             tracing::warn!("opening {uri}: {error}");

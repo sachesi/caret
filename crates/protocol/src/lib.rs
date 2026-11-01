@@ -13,6 +13,7 @@ pub mod client;
 pub mod encode;
 pub mod layout;
 mod messages;
+mod prompt;
 mod screen;
 pub mod wire;
 
@@ -20,6 +21,7 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
 pub use messages::*;
+pub use prompt::{ask_for_quick_turns, ask_for_usual_turns, start_with_usual_turns};
 pub use screen::*;
 pub use wire::{Bytes, DecodeError, Wire};
 

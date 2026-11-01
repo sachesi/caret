@@ -43,6 +43,7 @@ const APP_ID: &str = if cfg!(debug_assertions) {
 };
 
 fn main() -> ExitCode {
+    caret_protocol::ask_for_quick_turns();
     CompleteEnv::with_factory(cli::Cli::command)
         .completer("caret")
         .var(cli::COMPLETE)

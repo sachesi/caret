@@ -429,6 +429,7 @@ dependencies = [
 name = "caret-protocol"
 version = "0.2.0"
 dependencies = [
+ "libc",
  "thiserror",
 ]
 

@@ -92,6 +92,7 @@ fn main() -> ExitCode {
         }
     };
 
+    caret_protocol::ask_for_quick_turns();
     let (events, inputs) = mpsc::channel();
     let accepting = events.clone();
     let spawned = std::thread::Builder::new()

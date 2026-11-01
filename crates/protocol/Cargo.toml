@@ -9,6 +9,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+libc.workspace = true
 thiserror.workspace = true
 
 [lints]

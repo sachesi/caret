@@ -121,6 +121,13 @@ in `target/bench`. Any build writes the same timings to the file `CARET_TIMINGS`
 
 ## A few things to know before changing them
 
+Output passes through about seven threads on its way to the screen, and on a machine with
+every CPU taken each waits its turn. So the window and the server ask the scheduler for short
+turns when they start, which their threads inherit and which takes no privilege or more than a
+fair share of the CPU. Programs must not inherit them, or a build would take the advantage
+back: anything Caret starts other than itself goes through `start_with_usual_turns`, or
+`ask_for_usual_turns` where it already has code between fork and exec.
+
 User-visible strings go through `gettext`, called by that name so xgettext finds it, and
 not inside a macro, whose body xgettext skips. Values go in through named placeholders
 with `gettext_f` and `ngettext_f` from `crates/window/src/i18n.rs`, `{program}` rather

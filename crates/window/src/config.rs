@@ -640,9 +640,9 @@ pub fn import() {
         tracing::warn!("making {}: {error}", directory.display());
         return;
     }
-    let listed = Command::new("gsettings")
-        .args(["list-recursively", crate::APP_ID])
-        .output();
+    let mut gsettings = Command::new("gsettings");
+    gsettings.args(["list-recursively", crate::APP_ID]);
+    let listed = caret_protocol::start_with_usual_turns(&mut gsettings).output();
     let listing = match listed {
         Ok(output) if output.status.success() => output.stdout,
         // No gsettings or no schema: nothing to bring over.
