@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use caret_protocol::{BOLD, Glyph, GlyphText, ITALIC};
+use foldhash::fast::RandomState;
 use harfrust::{
     Direction, Feature, Script, ShapeOptions, ShapePlan, ShaperData, ShaperInstance, Tag,
     UnicodeBuffer, Variation,
@@ -185,7 +186,7 @@ pub struct Fonts {
     features: Vec<Feature>,
     ligatures: bool,
     /// How runs of symbols divide into ligatures, by style.
-    divided: HashMap<(Box<str>, u8), Rc<[u8]>>,
+    divided: [HashMap<Box<str>, Rc<[u8]>, RandomState>; 4],
     /// What shaping takes from each face, at each weight it is drawn at.
     shapings: RefCell<HashMap<(u64, Option<u32>), Shaping>>,
     /// How far texts move the pen in the window's own face, regular and bold, as the
@@ -314,7 +315,7 @@ impl Fonts {
             }),
             features: choice.features.clone(),
             ligatures: choice.ligatures,
-            divided: HashMap::new(),
+            divided: Default::default(),
             shapings: RefCell::default(),
             advances: RefCell::default(),
             labels,
@@ -561,7 +562,8 @@ impl Fonts {
             return None;
         }
         let style = style & (BOLD | ITALIC);
-        if let Some(parts) = self.divided.get(&(run.into(), style)) {
+        let divided = usize::from(style);
+        if let Some(parts) = self.divided[divided].get(run) {
             return Some(parts.clone());
         }
         let face = &self.styles[usize::from(style)];
@@ -575,10 +577,10 @@ impl Fonts {
             .map(|index| glyphs(&run[index..=index]))
             .collect();
         let parts: Rc<[u8]> = divide(&joined(&together, &alone)).into();
-        if self.divided.len() >= LIGATURE_RUNS {
-            self.divided.clear();
+        if self.divided[divided].len() >= LIGATURE_RUNS {
+            self.divided[divided].clear();
         }
-        self.divided.insert((run.into(), style), parts.clone());
+        self.divided[divided].insert(run.into(), parts.clone());
         Some(parts)
     }
 
