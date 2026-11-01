@@ -37,7 +37,7 @@ jobs:
 
           tag = os.environ["TAG"].removeprefix("v")
           with open("Cargo.toml", "rb") as f:
-              cargo = tomllib.load(f)["package"]["version"]
+              cargo = tomllib.load(f)["workspace"]["package"]["version"]
           with open("Cargo.lock", "rb") as f:
               lock = next(p["version"] for p in tomllib.load(f)["package"] if p["name"] == "caret")
           release = ET.parse("data/io.github.sachesi.caret.metainfo.xml").find("releases/release")
