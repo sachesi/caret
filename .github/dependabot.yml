@@ -24,6 +24,10 @@ updates:
       # From 1.7 its pool's last thread never leaves, and wakes the window twice a second.
       - dependency-name: blocking
         versions: [">=1.7"]
+      # 6 drops the blocking interface the window's threads use and pulls in tokio, and the
+      # accessibility crates still need 5.
+      - dependency-name: zbus
+        versions: [">=6"]
     groups:
       crates:
         update-types: [minor, patch]
