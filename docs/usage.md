@@ -192,7 +192,9 @@ window.
 
 The wheel and Shift+Page Up and Page Down scroll through the history, and Ctrl and the
 wheel zooms. In a program that has the whole screen, a pager or an editor, the wheel sends
-arrow keys instead, unless the program asks for the mouse itself.
+arrow keys instead, unless the program asks for the mouse itself. The wheel acts on the
+pane under the pointer and leaves the keys where they are; with `scroll-under-pointer` off
+it acts on the focused pane.
 
 Ctrl+Shift+Up and Ctrl+Shift+Down scroll to the previous and next prompt, in a shell that
 marks them.

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret 0.2.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-11-01 11:38+0200\n"
+"POT-Creation-Date: 2026-11-01 14:25+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -403,24 +403,24 @@ msgstr ""
 msgid "No windows were detached"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:829
+#: crates/window/src/app/pointer.rs:858
 #, rust-format
 msgid "Could not open the link: {reason}"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:838
+#: crates/window/src/app/pointer.rs:867
 msgid "no program opens links"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:851
+#: crates/window/src/app/pointer.rs:880
 msgid "it does not exist"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:852
+#: crates/window/src/app/pointer.rs:881
 msgid "no program opens it"
 msgstr ""
 
-#: crates/window/src/app/pointer.rs:853
+#: crates/window/src/app/pointer.rs:882
 msgid "the program that opens it failed"
 msgstr ""
 
@@ -586,20 +586,20 @@ msgstr ""
 msgid "General"
 msgstr ""
 
-#: crates/window/src/app/tabs.rs:237 crates/window/src/text.rs:911
+#: crates/window/src/app/tabs.rs:246 crates/window/src/text.rs:924
 #, rust-format
 msgid "Session {number}"
 msgstr ""
 
-#: crates/window/src/app/tabs.rs:244
+#: crates/window/src/app/tabs.rs:253
 msgid "Showing sessions together needs a newer terminal server"
 msgstr ""
 
-#: crates/window/src/app/tabs.rs:805
+#: crates/window/src/app/tabs.rs:814
 msgid "Splitting needs a newer terminal server"
 msgstr ""
 
-#: crates/window/src/app/tabs.rs:813
+#: crates/window/src/app/tabs.rs:822
 msgid "This tab cannot be split any further"
 msgstr ""
 
@@ -607,67 +607,67 @@ msgstr ""
 msgid "Find in the history"
 msgstr ""
 
-#: crates/window/src/text.rs:949
+#: crates/window/src/text.rs:962
 msgid "CONTROL"
 msgstr ""
 
-#: crates/window/src/text.rs:951
+#: crates/window/src/text.rs:964
 msgid "arrows"
 msgstr ""
 
-#: crates/window/src/text.rs:951
+#: crates/window/src/text.rs:964
 msgid "focus"
 msgstr ""
 
-#: crates/window/src/text.rs:952
+#: crates/window/src/text.rs:965
 msgid "shift"
 msgstr ""
 
-#: crates/window/src/text.rs:952
+#: crates/window/src/text.rs:965
 msgid "swap"
 msgstr ""
 
-#: crates/window/src/text.rs:953
+#: crates/window/src/text.rs:966
 msgid "ctrl"
 msgstr ""
 
-#: crates/window/src/text.rs:953
+#: crates/window/src/text.rs:966
 msgid "resize"
 msgstr ""
 
-#: crates/window/src/text.rs:954
+#: crates/window/src/text.rs:967
 msgid "tab"
 msgstr ""
 
-#: crates/window/src/text.rs:955
+#: crates/window/src/text.rs:968
 msgid "split"
 msgstr ""
 
-#: crates/window/src/text.rs:956
+#: crates/window/src/text.rs:969
 msgid "close"
 msgstr ""
 
-#: crates/window/src/text.rs:957
+#: crates/window/src/text.rs:970
 msgid "zoom"
 msgstr ""
 
-#: crates/window/src/text.rs:958
+#: crates/window/src/text.rs:971
 msgid "to tab"
 msgstr ""
 
-#: crates/window/src/text.rs:959
+#: crates/window/src/text.rs:972
 msgid "detach"
 msgstr ""
 
-#: crates/window/src/text.rs:960
+#: crates/window/src/text.rs:973
 msgid "leave"
 msgstr ""
 
-#: crates/window/src/text.rs:1023
+#: crates/window/src/text.rs:1036
 msgid "zoomed"
 msgstr ""
 
-#: crates/window/src/text.rs:1025
+#: crates/window/src/text.rs:1038
 msgid "control"
 msgstr ""
 
@@ -767,64 +767,74 @@ msgid ""
 msgstr ""
 
 #: data/io.github.sachesi.caret.gschema.xml:62
-msgid "Notifications from programs"
+msgid "Scroll under pointer"
 msgstr ""
 
 #: data/io.github.sachesi.caret.gschema.xml:63
+msgid ""
+"Whether the wheel scrolls the pane under the pointer, and not the focused "
+"one."
+msgstr ""
+
+#: data/io.github.sachesi.caret.gschema.xml:67
+msgid "Notifications from programs"
+msgstr ""
+
+#: data/io.github.sachesi.caret.gschema.xml:68
 msgid ""
 "Whether programs can show desktop notifications (OSC 9 and 777) while their "
 "tab is out of sight. Their text can say anything."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:67
+#: data/io.github.sachesi.caret.gschema.xml:72
 msgid "Copying by programs"
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:68
+#: data/io.github.sachesi.caret.gschema.xml:73
 msgid ""
 "Whether programs can put text on the clipboard (OSC 52), which then pastes "
 "into any program. They can never read it."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:72
+#: data/io.github.sachesi.caret.gschema.xml:77
 msgid "Terminal bell"
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:73
+#: data/io.github.sachesi.caret.gschema.xml:78
 msgid ""
 "Whether the bell a program rings makes a sound. A tab in the background is "
 "marked either way."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:77
+#: data/io.github.sachesi.caret.gschema.xml:82
 msgid "Keep closed windows"
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:78
+#: data/io.github.sachesi.caret.gschema.xml:83
 msgid ""
 "Whether closing a window detaches it instead of ending its programs, so that "
 "Reattach Windows brings it back."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:82
+#: data/io.github.sachesi.caret.gschema.xml:87
 msgid "Title bar"
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:83
+#: data/io.github.sachesi.caret.gschema.xml:88
 msgid ""
 "Whether windows show the title bar. Without it, the context menu has its "
 "commands."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:87
+#: data/io.github.sachesi.caret.gschema.xml:92
 msgid "Window size"
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:88
+#: data/io.github.sachesi.caret.gschema.xml:93
 msgid "The size of new windows; 0 fits 80 columns by 24 lines of the font."
 msgstr ""
 
-#: data/io.github.sachesi.caret.gschema.xml:92
+#: data/io.github.sachesi.caret.gschema.xml:97
 msgid "Window maximized"
 msgstr ""
 

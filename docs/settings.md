@@ -27,6 +27,7 @@ is deleted, and a new window has the defaults.
 | `custom-command` | command line, or empty | empty |
 | `scroll-on-output` | bool | false |
 | `scroll-on-keystroke` | bool | true |
+| `scroll-under-pointer` | bool | true |
 | `program-notifications` | bool | true |
 | `program-clipboard` | bool | true |
 | `audible-bell` | bool | true |

@@ -102,6 +102,15 @@ impl App {
         self.tabs.get(self.selected).map(|tab| tab.focused)
     }
 
+    /// The cells of a pane of the shown tab.
+    pub(super) fn grid_of(&self, terminal: TerminalId) -> Option<&Grid> {
+        if self.terminal() == Some(terminal) {
+            return Some(&self.grid);
+        }
+        let tab = self.tabs.get(self.selected)?;
+        tab.panes.get(&terminal).map(|pane| &pane.grid)
+    }
+
     /// The tab `terminal` is a pane of, or the key of.
     pub(super) fn tab_of(&self, terminal: TerminalId) -> Option<usize> {
         self.tabs.iter().position(|tab| tab.has(terminal))

@@ -88,14 +88,24 @@ pub struct Pointer {
 impl App {
     /// The cell under a point in logical pixels, and whether the point is in its right
     /// half.
-    fn cell_at(&self, (x, y): (f64, f64)) -> Option<(Point, bool)> {
-        let (columns, lines) = (self.grid.columns, self.grid.lines);
+    fn cell_at(&self, position: (f64, f64)) -> Option<(Point, bool)> {
+        self.cell_in(self.terminal()?, position)
+    }
+
+    /// The same in the pane of `terminal`, which need not be the focused one.
+    fn cell_in(&self, terminal: TerminalId, (x, y): (f64, f64)) -> Option<(Point, bool)> {
+        let grid = self.grid_of(terminal)?;
+        let (columns, lines) = (grid.columns, grid.lines);
         if columns == 0 || lines == 0 {
             return None;
         }
         let scale = self.factor();
         let cell = self.fonts.cell();
-        let (origin_x, origin_y) = self.origin();
+        let (origin_x, origin_y) = self
+            .placed()
+            .rect(terminal)
+            .or_else(|| self.area())
+            .map_or((0, 0), |rect| (rect.x, rect.y));
         let x = (x * scale - f64::from(origin_x)) / f64::from(cell.width);
         let y = (y * scale - f64::from(origin_y)) / f64::from(cell.height);
         let column = (x.floor().max(0.0) as usize).min(columns - 1);
@@ -485,9 +495,16 @@ impl App {
     }
 
     fn report(&mut self, button: MouseButton, action: MouseAction) {
-        let (Some(terminal), Some((point, _))) =
-            (self.terminal(), self.cell_at(self.pointer.position))
-        else {
+        if let Some(terminal) = self.terminal() {
+            self.report_to(terminal, button, action);
+        }
+    }
+
+    fn report_to(&mut self, terminal: TerminalId, button: MouseButton, action: MouseAction) {
+        let (Some(grid), Some((point, _))) = (
+            self.grid_of(terminal),
+            self.cell_in(terminal, self.pointer.position),
+        ) else {
             return;
         };
         let bytes = encode::mouse(
@@ -496,7 +513,7 @@ impl App {
             self.modifiers,
             usize::from(point.column),
             usize::from(point.line),
-            self.grid.mode,
+            grid.mode,
         );
         if let Some(bytes) = bytes {
             self.server.send(&Request::Input {
@@ -688,27 +705,39 @@ impl App {
             || !self.pointer.dividing.is_empty()
     }
 
+    /// The pane the wheel turns in. A drag keeps it in the pane the drag began in, and
+    /// between panes there is only the focused one to mean.
+    fn wheel_pane(&self) -> Option<TerminalId> {
+        let focused = self.terminal();
+        if !self.config.scroll_under_pointer || self.dragging() {
+            return focused;
+        }
+        self.placed().pane_at(self.device_point()).or(focused)
+    }
+
     /// Scrolls by `lines`, up for negative ones, as the program or the view takes it.
     pub(super) fn scrolled(&mut self, lines: f64) {
         let total = self.pointer.scrolled + lines;
         let whole = total.trunc();
         self.pointer.scrolled = total - whole;
         let whole = whole as i32;
-        let Some(terminal) = self.terminal() else {
+        let Some(terminal) = self.wheel_pane() else {
             return;
         };
         if whole == 0 {
             return;
         }
-        let mode = self.grid.mode;
-        if self.reporting() {
+        let Some(mode) = self.grid_of(terminal).map(|grid| grid.mode) else {
+            return;
+        };
+        if mode.intersects(Mode::MOUSE_MODE) && !self.modifiers.shift {
             let button = if whole < 0 {
                 MouseButton::WheelUp
             } else {
                 MouseButton::WheelDown
             };
             for _ in 0..whole.unsigned_abs() {
-                self.report(button, MouseAction::Press);
+                self.report_to(terminal, button, MouseAction::Press);
             }
         } else if mode.contains(Mode::ALT_SCREEN | Mode::ALTERNATE_SCROLL) && !self.modifiers.shift
         {

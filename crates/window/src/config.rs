@@ -88,6 +88,7 @@ pub struct Config {
     pub custom_command: String,
     pub scroll_on_output: bool,
     pub scroll_on_keystroke: bool,
+    pub scroll_under_pointer: bool,
     /// Programs may set the clipboard, and show notifications while out of sight.
     pub program_clipboard: bool,
     pub program_notifications: bool,
@@ -146,6 +147,7 @@ impl Default for Config {
             custom_command: String::new(),
             scroll_on_output: false,
             scroll_on_keystroke: true,
+            scroll_under_pointer: true,
             program_clipboard: true,
             program_notifications: true,
             audible_bell: true,
@@ -391,6 +393,7 @@ impl Config {
             }
             "scroll-on-output" => self.scroll_on_output = boolean()?,
             "scroll-on-keystroke" => self.scroll_on_keystroke = boolean()?,
+            "scroll-under-pointer" => self.scroll_under_pointer = boolean()?,
             "program-clipboard" => self.program_clipboard = boolean()?,
             "program-notifications" => self.program_notifications = boolean()?,
             "audible-bell" => self.audible_bell = boolean()?,
@@ -530,6 +533,8 @@ const STARTER: &str = r##"# Caret's settings. Take the # off a setting to change
 #custom-command = ""
 #scroll-on-output = false
 #scroll-on-keystroke = true
+# Whether the wheel scrolls the pane under the pointer, and not the focused one.
+#scroll-under-pointer = true
 # Whether programs may put text on the clipboard, and show notifications while
 # their tab is out of sight.
 #program-clipboard = true
@@ -901,6 +906,12 @@ mod tests {
         assert!(!config.active_pane_color);
         assert!(config.set("pane-line-width", &doc["too-thin"]).is_err());
         assert_eq!(config.pane_line_width, 3);
+    }
+
+    #[test]
+    fn the_wheel_follows_the_pointer_unless_told_not_to() {
+        assert!(Config::default().scroll_under_pointer);
+        assert!(!parse("scroll-under-pointer = false").scroll_under_pointer);
     }
 
     #[test]

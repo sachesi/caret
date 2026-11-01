@@ -57,6 +57,11 @@
       <summary>Scroll on keystroke</summary>
       <description>Whether typing or pasting brings a view scrolled back into the history to the bottom.</description>
     </key>
+    <key name="scroll-under-pointer" type="b">
+      <default>true</default>
+      <summary>Scroll under pointer</summary>
+      <description>Whether the wheel scrolls the pane under the pointer, and not the focused one.</description>
+    </key>
     <key name="program-notifications" type="b">
       <default>true</default>
       <summary>Notifications from programs</summary>
