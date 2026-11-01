@@ -20,6 +20,8 @@ caret-protocol.workspace = true
 clap = { version = "4.6", features = ["derive"] }
 clap_complete = { version = "4.6.9", features = ["unstable-dynamic"] }
 clap_complete_nushell = "4.6"
+# Already in the build through hashbrown. The glyph of each cell drawn is looked up by it.
+foldhash = "0.2"
 fontdb = { version = "0.24", default-features = false, features = ["std", "fs", "memmap"] }
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 harfrust = "0.13"

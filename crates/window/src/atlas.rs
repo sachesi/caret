@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use caret_protocol::Glyph;
+use foldhash::fast::RandomState;
 
 use crate::chrome::Drawing;
 use crate::fonts::{Fonts, Raster};
@@ -77,7 +78,7 @@ impl Shelves {
 pub struct Atlas {
     shelves: Shelves,
     /// Each glyph's index in `entries` plus one; zero for one that draws nothing.
-    indices: HashMap<Glyph, u32>,
+    indices: HashMap<Glyph, u32, RandomState>,
     /// The same for what the window draws around the terminal.
     drawings: HashMap<Drawing, u32>,
     pub entries: Vec<GpuGlyph>,
