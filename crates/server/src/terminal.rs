@@ -1327,7 +1327,7 @@ mod tests {
             unwritten.wrote(take);
         }
         assert_eq!(received, sent);
-        assert!(unwritten.bytes.is_empty());
+        assert_eq!(unwritten.bytes, [] as [u8; 0]);
     }
 
     #[test]

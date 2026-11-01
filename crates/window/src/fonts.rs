@@ -1077,7 +1077,9 @@ fn plain(glyph: (i32, i32, Image), size: f32, ascent: i32) -> (i32, i32, Image) 
     image.placement.height = raster.height;
     image.data = raster
         .pixels
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|pixel| pixel[3])
         .collect();
     (raster.left, raster.top, image)
@@ -1182,7 +1184,15 @@ mod tests {
         let Ok(mut fonts) = Fonts::new(installed(), &choice(None, true), 1.0) else {
             return;
         };
-        let lit = |raster: &Raster| raster.pixels.chunks_exact(4).filter(|p| p[3] > 0).count();
+        let lit = |raster: &Raster| {
+            raster
+                .pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .filter(|p| p[3] > 0)
+                .count()
+        };
         let one = fonts.label("\u{2801}", 400, true).expect("drawn");
         let all = fonts.label("\u{28ff}", 400, true).expect("drawn");
         assert_eq!(lit(&all), 8 * lit(&one));
@@ -1218,7 +1228,9 @@ mod tests {
         assert!(
             raster
                 .pixels
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .any(|p| p[0] > 200 && p[2] < 100 && p[3] > 200)
         );
     }

@@ -1919,7 +1919,7 @@ mod tests {
         chrome.fullscreen = true;
         assert_eq!((chrome.margin(), chrome.header()), (0, 0));
         assert_eq!(chrome.part_at((5.0, 5.0), (800, 500)), None);
-        assert!(chrome.quads((800, 500), 1.0, 0, 0, |_| None).0.is_empty());
+        assert_eq!(chrome.quads((800, 500), 1.0, 0, 0, |_| None).0.len(), 0);
     }
 
     #[test]

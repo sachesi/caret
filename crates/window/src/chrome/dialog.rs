@@ -532,7 +532,7 @@ mod tests {
             wrap("unbreakable word", 4.0, measure),
             ["unbreakable", "word"]
         );
-        assert!(wrap("  ", 4.0, measure).is_empty());
+        assert_eq!(wrap("  ", 4.0, measure).len(), 0);
         assert_eq!(
             wrap("one line\nanother", 100.0, measure),
             ["one line", "another"]

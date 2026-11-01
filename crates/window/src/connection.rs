@@ -130,6 +130,8 @@ mod tests {
             };
             received.extend_from_slice(&bytes.0);
         }
-        assert!(received == pasted);
+        assert_eq!(received.len(), pasted.len());
+        let first_difference = received.iter().zip(&pasted).position(|(a, b)| a != b);
+        assert_eq!(first_difference, None);
     }
 }

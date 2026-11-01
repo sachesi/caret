@@ -469,7 +469,7 @@ mod tests {
         assert!(frame(&term, &mut sent).is_none());
         term.advance(b"\x08");
         let (moved, _) = frame(&term, &mut sent).expect("the cursor moved");
-        assert!(moved.rows.is_empty());
+        assert_eq!(moved.rows, [] as [caret_protocol::Row; 0]);
     }
 
     #[test]

@@ -1073,7 +1073,7 @@ mod tests {
         );
         assert_eq!(config.keys[&Action::Copy].len(), 1);
         assert_eq!(config.keys[&Action::Paste].len(), 2);
-        assert!(config.keys[&Action::Fullscreen].is_empty());
+        assert_eq!(config.keys[&Action::Fullscreen].len(), 0);
         assert!(!config.keys.contains_key(&Action::ZoomIn));
     }
 
@@ -1167,7 +1167,7 @@ mod tests {
             ..Config::default()
         };
         assert_eq!(config.argv(), ["tmux", "new", "-s", "my work"]);
-        assert!(Config::default().argv().is_empty());
+        assert_eq!(Config::default().argv().len(), 0);
         let unsplit = Config {
             custom_command: "echo 'open".into(),
             ..Config::default()

@@ -189,7 +189,7 @@ mod tests {
             started(&["-w", "/tmp", "-e", "top", "-w"]).command,
             ["top", "-w"]
         );
-        assert!(started(&[]).command.is_empty());
+        assert_eq!(started(&[]).command.len(), 0);
     }
 
     #[test]

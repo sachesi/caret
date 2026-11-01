@@ -496,7 +496,7 @@ impl History {
         &self.lines[index]
     }
 
-    #[must_use]
+    #[must_use = "the lines are only read by going through them"]
     pub fn lines(&self) -> impl DoubleEndedIterator<Item = &Line> + ExactSizeIterator {
         self.lines.iter()
     }

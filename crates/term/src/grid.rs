@@ -576,7 +576,7 @@ mod tests {
         assert_eq!(line.text(1), Text::Char('a'));
         line.delete(0, 3, Style::default());
         assert_eq!(line.text(0), Text::Char(' '));
-        assert!(line.clusters.is_empty());
+        assert_eq!(line.clusters, [] as [(u16, Box<str>); 0]);
     }
 
     #[test]
