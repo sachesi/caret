@@ -21,6 +21,7 @@ use smithay_client_toolkit::reexports::calloop::channel::Sender;
 
 use gettextrs::gettext;
 
+use super::gliding::Motion;
 use super::{App, Asked};
 use crate::chrome::{Chrome, Part};
 use crate::i18n::gettext_f;
@@ -107,7 +108,8 @@ impl App {
             .or_else(|| self.area())
             .map_or((0, 0), |rect| (rect.x, rect.y));
         let x = (x * scale - f64::from(origin_x)) / f64::from(cell.width);
-        let y = (y * scale - f64::from(origin_y)) / f64::from(cell.height);
+        let y =
+            (y * scale - f64::from(origin_y - self.glide_shift(terminal))) / f64::from(cell.height);
         let column = (x.floor().max(0.0) as usize).min(columns - 1);
         let line = (y.floor().max(0.0) as usize).min(lines - 1);
         let point = Point {
@@ -716,7 +718,17 @@ impl App {
     }
 
     /// Scrolls by `lines`, up for negative ones, as the program or the view takes it.
-    pub(super) fn scrolled(&mut self, lines: f64) {
+    pub(super) fn scrolled(&mut self, lines: f64, motion: Motion) {
+        if self.glides()
+            && let Some(terminal) = self.wheel_pane()
+            && let Some(mode) = self.grid_of(terminal).map(|grid| grid.mode)
+            && (self.modifiers.shift
+                || !(mode.intersects(Mode::MOUSE_MODE)
+                    || mode.contains(Mode::ALT_SCREEN | Mode::ALTERNATE_SCROLL)))
+        {
+            self.glide(terminal, lines, motion);
+            return;
+        }
         let total = self.pointer.scrolled + lines;
         let whole = total.trunc();
         self.pointer.scrolled = total - whole;
@@ -796,6 +808,7 @@ impl PointerHandler for App {
                 }
                 PointerEventKind::Motion { .. } => self.pointer_moved(position),
                 PointerEventKind::Press { button, serial, .. } => {
+                    self.settle_glides();
                     self.pointer_pressed(position, button, serial);
                 }
                 PointerEventKind::Release { button, .. } => self.let_go(button),
@@ -837,15 +850,15 @@ impl PointerHandler for App {
                     }
                 }
                 PointerEventKind::Axis { vertical, .. } => {
-                    let lines = if vertical.value120 != 0 {
-                        f64::from(vertical.value120) / 120.0 * NOTCH
+                    let (lines, motion) = if vertical.value120 != 0 {
+                        (f64::from(vertical.value120) / 120.0 * NOTCH, Motion::Wheel)
                     } else if vertical.discrete != 0 {
-                        f64::from(vertical.discrete) * NOTCH
+                        (f64::from(vertical.discrete) * NOTCH, Motion::Wheel)
                     } else {
                         let height = f64::from(self.fonts.cell().height) / self.factor();
-                        vertical.absolute / height
+                        (vertical.absolute / height, Motion::Touch)
                     };
-                    self.scrolled(lines * self.config.scroll_speed);
+                    self.scrolled(lines * self.config.scroll_speed, motion);
                 }
             }
         }
