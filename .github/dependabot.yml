@@ -20,6 +20,10 @@ updates:
       default-days: 7
     commit-message:
       prefix: build
+    ignore:
+      # From 1.7 its pool's last thread never leaves, and wakes the window twice a second.
+      - dependency-name: blocking
+        versions: [">=1.7"]
     groups:
       crates:
         update-types: [minor, patch]
