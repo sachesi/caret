@@ -172,15 +172,21 @@ impl App {
             return;
         };
         let (_, y) = self.device_point();
-        let grab = if bar.thumb_contains(y) {
-            y - f64::from(bar.top)
+        // A thumb's place is a pixel, which may stand for many lines: taken where it is, the
+        // view stays on the line it has until the pointer moves.
+        let (grab, line) = if bar.thumb_contains(y) {
+            let history = self.grid_of(terminal).map_or(0, |grid| grid.history);
+            (
+                y - f64::from(bar.top),
+                Some(bar.line_at(f64::from(bar.top), history)),
+            )
         } else {
-            f64::from(bar.height) / 2.0
+            (f64::from(bar.height) / 2.0, None)
         };
         self.pointer.held_bar = Some(HeldBar {
             terminal,
             grab,
-            line: None,
+            line,
         });
         self.set_cursor();
         self.drag_bar();
