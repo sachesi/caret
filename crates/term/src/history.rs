@@ -137,12 +137,7 @@ impl Line {
             let flags = cell.style.flags;
             // Most cells are one narrow character each, in runs of one style.
             if !flags.intersects(Flags::WIDE | Flags::SPACER | Flags::CLUSTER) {
-                let cells = &row.cells[column..end];
-                let run = cells
-                    .iter()
-                    .position(|other| other.style != cell.style)
-                    .unwrap_or(cells.len());
-                push_text(&mut self.text, &cells[..run]);
+                let run = push_run(&mut self.text, &row.cells[column..end], cell.style);
                 self.push_styles(cell.style, run as u32);
                 self.cells += run as u32;
                 column += run;
@@ -388,22 +383,33 @@ impl Line {
     }
 }
 
-/// Adds the characters of `cells`. Every row that scrolls comes through here and nearly all
-/// its text is ASCII, which goes in as a whole rather than a character and a capacity check
-/// at a time.
-fn push_text(text: &mut String, cells: &[Cell]) {
+/// Adds the characters of the cells of `style` that `cells` starts with, and gives how many
+/// there are. Every row that scrolls comes through here and nearly all its text is ASCII,
+/// which goes in as a whole rather than a character and a capacity check at a time.
+fn push_run(text: &mut String, cells: &[Cell], style: Style) -> usize {
     let mut bytes = [0; 256];
+    let mut run = 0;
     for chunk in cells.chunks(bytes.len()) {
-        let mut ascii = true;
+        let mut codes = 0;
+        let mut count = 0;
         for (byte, cell) in bytes.iter_mut().zip(chunk) {
+            if cell.style != style {
+                break;
+            }
             *byte = cell.c as u8;
-            ascii &= cell.c.is_ascii();
+            codes |= cell.c as u32;
+            count += 1;
         }
-        match std::str::from_utf8(&bytes[..chunk.len()]) {
-            Ok(ascii_text) if ascii => text.push_str(ascii_text),
-            _ => text.extend(chunk.iter().map(|cell| cell.c)),
+        match std::str::from_utf8(&bytes[..count]) {
+            Ok(ascii) if codes < 0x80 => text.push_str(ascii),
+            _ => text.extend(chunk[..count].iter().map(|cell| cell.c)),
+        }
+        run += count;
+        if count < chunk.len() {
+            break;
         }
     }
+    run
 }
 
 /// The lines above the screen, oldest first.
