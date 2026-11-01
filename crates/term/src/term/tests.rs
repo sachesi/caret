@@ -568,3 +568,111 @@ fn editing_at_the_end_of_a_full_line_leaves_the_next_letter_on_it() {
         assert_eq!(screen(&term), ["abcdefghiZ", ""], "after {edit:?}");
     }
 }
+
+/// A link to a new address on the first cell of the second line, over the last one's.
+fn over_the_last_link(term: &mut Term, number: usize) {
+    term.advance(format!("\x1b[2H\x1b]8;;file:///{number}\x07x\x1b]8;;\x07").as_bytes());
+}
+
+#[test]
+fn links_no_text_has_any_more_give_their_numbers_back() {
+    let mut term = term(10, 2);
+    term.advance(b"\x1b]8;;file:///kept\x07a\x1b]8;;\x07");
+    let kept = term.screen().row(0).cells[0].style.link;
+    for number in 0..200_000 {
+        over_the_last_link(&mut term, number);
+    }
+    assert_eq!(term.link(kept), Some("file:///kept"));
+    assert_eq!(
+        term.link(term.screen().row(1).cells[0].style.link),
+        Some("file:///199999")
+    );
+}
+
+#[test]
+fn a_link_in_the_history_or_kept_for_the_next_text_keeps_its_address() {
+    let mut term = term(10, 2);
+    term.advance(b"\x1b]8;;file:///above\x07a\x1b]8;;\x07\r\n\n\n");
+    term.advance(b"\x1b]8;;file:///open\x07");
+    for number in 0..70_000 {
+        term.advance(format!("\x1b7\x1b[2H\x1b]8;;file:///{number}\x07x\x1b8").as_bytes());
+    }
+    let above = term.history().line(0).cells()[0].1.link;
+    assert_eq!(term.link(above), Some("file:///above"));
+    assert_eq!(term.link(term.cursor.style.link), Some("file:///open"));
+}
+
+#[test]
+fn links_in_use_are_kept_when_there_is_no_room_for_more() {
+    let mut term = Term::new(
+        10,
+        2,
+        Options {
+            scrollback: 100_000,
+            ..Options::default()
+        },
+    );
+    for number in 0..usize::from(LinkId::MAX) {
+        term.advance(format!("\x1b]8;;file:///{number}\x07x\x1b]8;;\x07\r\n").as_bytes());
+    }
+    term.advance(b"\x1b]8;;file:///more\x07y\x1b]8;;\x07");
+    let cursor_row = term.screen().row(term.cursor_at().0);
+    assert_eq!(cursor_row.cells[0].style.link, 0);
+    assert_eq!(cursor_row.cells[0].c, 'y');
+    let first = term.history().line(0).cells()[0].1.link;
+    assert_eq!(term.link(first), Some("file:///0"));
+}
+
+#[test]
+fn long_addresses_take_a_bounded_room() {
+    let mut term = term(10, 2);
+    let long = "a".repeat(3000);
+    for number in 0..30_000 {
+        term.advance(format!("\x1b[2H\x1b]8;;http://{long}/{number}\x07x\x1b]8;;\x07").as_bytes());
+    }
+    assert!(term.links.bytes <= MAX_LINK_TABLE_BYTES + 2 * MAX_LINK_BYTES);
+    assert_eq!(
+        term.link(term.screen().row(1).cells[0].style.link),
+        Some(format!("http://{long}/29999").as_str())
+    );
+}
+
+#[test]
+fn text_keeps_its_own_address_while_numbers_are_taken_back() {
+    let mut term = term(12, 4);
+    let mut random = 1_u32;
+    for number in 0..200_000_u32 {
+        random = random.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        let letter = char::from(b'a' + (number % 26) as u8);
+        term.advance(format!("\x1b]8;;file:///{number}\x07{letter}\x1b]8;;\x07").as_bytes());
+        match random >> 24 {
+            0..=19 => term.advance(b"\r\n"),
+            20 => term.advance(b"\x1b[2J"),
+            21 => term.advance(b"\x1b[?1049h"),
+            22 => term.advance(b"\x1b[?1049l"),
+            23 => term.resize(8 + (random >> 12) as usize % 8, 4),
+            24 => term.advance(b"\x1b7"),
+            25 => term.advance(b"\x1b8"),
+            _ => {}
+        }
+    }
+    let check = |letter: char, link: LinkId| {
+        if link == 0 {
+            return;
+        }
+        let uri = term.link(link).expect("a cell's link is kept");
+        let number: u32 = uri
+            .trim_start_matches("file:///")
+            .parse()
+            .expect("an address");
+        assert_eq!(letter, char::from(b'a' + (number % 26) as u8), "{uri}");
+    };
+    for cell in term.screen().rows().iter().flat_map(|row| &row.cells) {
+        check(cell.c, cell.style.link);
+    }
+    for line in term.history().lines() {
+        for (text, style) in line.cells() {
+            check(text.chars().next().unwrap_or(' '), style.link);
+        }
+    }
+}

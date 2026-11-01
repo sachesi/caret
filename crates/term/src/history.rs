@@ -501,6 +501,13 @@ impl History {
         self.lines.iter()
     }
 
+    /// Every style a line has.
+    pub fn styles(&self) -> impl Iterator<Item = Style> {
+        self.lines
+            .iter()
+            .flat_map(|line| line.runs().map(|(_, style)| style))
+    }
+
     /// Takes in a row moved off the top of the screen.
     pub fn push(&mut self, row: &Row) {
         if self.limit == 0 {

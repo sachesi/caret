@@ -251,21 +251,72 @@ struct Links {
     /// Links by what a program named them, if it did, and address: its separate pieces of
     /// text share one, and a program listing the same addresses again takes no more numbers.
     named: HashMap<(Box<str>, Box<str>), LinkId>,
+    /// Numbers given back by links no text has any more.
+    free: Vec<LinkId>,
+    /// What the addresses and names kept take.
+    bytes: usize,
+    /// New links to go through before looking through every cell again. With every link
+    /// still in use, looking at each would stall the terminal on the whole history.
+    patience: usize,
 }
 
 impl Links {
+    fn number(&self, id: &str, uri: &str) -> Option<LinkId> {
+        self.named.get(&(id.into(), uri.into())).copied()
+    }
+
+    fn is_full(&self) -> bool {
+        self.bytes > MAX_LINK_TABLE_BYTES
+            || (self.free.is_empty() && self.uris.len() > usize::from(LinkId::MAX))
+    }
+
+    /// Whether a new link should look for numbers to take back first.
+    fn wants_collecting(&mut self) -> bool {
+        let due = self.patience == 0;
+        self.patience = self.patience.saturating_sub(1);
+        due && self.is_full()
+    }
+
+    /// Takes back every link but those marked in `used`, by number.
+    fn keep_only(&mut self, used: &[bool]) {
+        let Self {
+            uris,
+            named,
+            free,
+            bytes,
+            patience,
+        } = self;
+        named.retain(|(id, uri), link| {
+            let kept = used[usize::from(*link)];
+            if !kept {
+                *bytes -= id.len() + 2 * uri.len();
+                uris[usize::from(*link)] = "".into();
+                free.push(*link);
+            }
+            kept
+        });
+        *patience = named.len() / 2;
+    }
+
     fn add(&mut self, id: &str, uri: &str) -> LinkId {
-        if let Some(&link) = self.named.get(&(id.into(), uri.into())) {
-            return link;
+        // Out of room: the text shows without its link.
+        if self.is_full() {
+            return 0;
         }
         if self.uris.is_empty() {
             self.uris.push("".into());
         }
-        // Out of numbers: the text shows without its link.
-        let Ok(link) = LinkId::try_from(self.uris.len()) else {
-            return 0;
+        let link = if let Some(link) = self.free.pop() {
+            self.uris[usize::from(link)] = uri.into();
+            link
+        } else {
+            let Ok(link) = LinkId::try_from(self.uris.len()) else {
+                return 0;
+            };
+            self.uris.push(uri.into());
+            link
         };
-        self.uris.push(uri.into());
+        self.bytes += id.len() + 2 * uri.len();
         self.named.insert((id.into(), uri.into()), link);
         link
     }
@@ -281,6 +332,9 @@ const MAX_TEXT_BYTES: usize = 4096;
 /// Bytes of a link's address: every one is kept for as long as the terminal lives, so a
 /// longer one is shown as text without a link.
 const MAX_LINK_BYTES: usize = 4096;
+/// Bytes of a terminal's links, so that long addresses take back those no text has any more
+/// well before the numbers run out, which would be half a gigabyte.
+const MAX_LINK_TABLE_BYTES: usize = 64 << 20;
 
 pub struct Term {
     parser: Parser,
@@ -584,6 +638,31 @@ impl Term {
                 self.report_color_scheme();
             }
         }
+    }
+
+    /// The number of a link, taking back those no text has any more when out of room.
+    fn link_number(&mut self, id: &str, uri: &str) -> LinkId {
+        if let Some(link) = self.links.number(id, uri) {
+            return link;
+        }
+        if self.links.wants_collecting() {
+            let used = self.links_in_use();
+            self.links.keep_only(&used);
+        }
+        self.links.add(id, uri)
+    }
+
+    /// Which link numbers text has, or the next text will.
+    fn links_in_use(&self) -> Vec<bool> {
+        let mut used = vec![false; self.links.uris.len()];
+        let on_screens = (self.main.rows().iter().chain(self.alt.rows()))
+            .flat_map(|row| row.cells.iter().map(|cell| cell.style));
+        let cursors =
+            [self.cursor, self.saved[0].cursor, self.saved[1].cursor].map(|cursor| cursor.style);
+        for style in on_screens.chain(self.history.styles()).chain(cursors) {
+            used[usize::from(style.link)] = true;
+        }
+        used
     }
 
     /// The address of link `link`, or None for none.

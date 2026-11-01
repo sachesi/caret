@@ -193,7 +193,7 @@ impl Term {
             .split(':')
             .find_map(|param| param.strip_prefix("id="))
             .unwrap_or_default();
-        self.cursor.style.link = self.links.add(id, &uri);
+        self.cursor.style.link = self.link_number(id, &uri);
     }
 
     fn clipboard(&mut self, fields: &[&[u8]]) {
