@@ -77,6 +77,10 @@ install -Dpm 0644 data/icons/hicolor/scalable/apps/%{app_id}.svg \
 install -Dpm 0644 data/icons/hicolor/symbolic/apps/%{app_id}-symbolic.svg \
   %{buildroot}%{_datadir}/icons/hicolor/symbolic/apps/%{app_id}-symbolic.svg
 
+"$target/caret" completions bash | install -Dm 0644 /dev/stdin %{buildroot}%{_datadir}/bash-completion/completions/caret
+"$target/caret" completions zsh | install -Dm 0644 /dev/stdin %{buildroot}%{_datadir}/zsh/site-functions/_caret
+"$target/caret" completions fish | install -Dm 0644 /dev/stdin %{buildroot}%{_datadir}/fish/vendor_completions.d/caret.fish
+
 for lang in $(cat po/LINGUAS); do
   install -d %{buildroot}%{_datadir}/locale/$lang/LC_MESSAGES
   msgfmt -o %{buildroot}%{_datadir}/locale/$lang/LC_MESSAGES/%{name}.mo po/$lang.po
@@ -100,5 +104,8 @@ test -x %{buildroot}%{_bindir}/caret-server
 %{_metainfodir}/%{app_id}.metainfo.xml
 %{_datadir}/icons/hicolor/scalable/apps/%{app_id}.svg
 %{_datadir}/icons/hicolor/symbolic/apps/%{app_id}-symbolic.svg
+%{_datadir}/bash-completion/completions/caret
+%{_datadir}/zsh/site-functions/_caret
+%{_datadir}/fish/vendor_completions.d/caret.fish
 
 %changelog
