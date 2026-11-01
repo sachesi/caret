@@ -403,6 +403,7 @@ dependencies = [
  "ash",
  "blocking",
  "caret-protocol",
+ "caret-term",
  "clap",
  "clap_complete",
  "clap_complete_nushell",
