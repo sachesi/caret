@@ -372,6 +372,7 @@ impl App {
         if self.tabs.is_empty() {
             return;
         }
+        let mut shows_another = false;
         if index < self.selected {
             self.selected -= 1;
         } else if index == self.selected {
@@ -379,9 +380,12 @@ impl App {
             // place.
             self.selected = index.min(self.tabs.len() - 1);
             self.swap_focused();
-            self.reveal();
+            shows_another = true;
         }
         self.retitle();
+        if shows_another {
+            self.reveal();
+        }
     }
 
     /// The panes the server says the tab `key` has now.
@@ -444,10 +448,10 @@ impl App {
                 return;
             }
         }
+        self.retitle();
         if shown {
             self.reveal();
         }
-        self.retitle();
     }
 
     /// Moves `terminal`'s tab to `index` of its session's tabs, keeping the one shown.
@@ -730,8 +734,8 @@ impl App {
         }
         self.tabs[index].attention = false;
         self.remember_tab();
-        self.reveal();
         self.retitle();
+        self.reveal();
     }
 
     /// Gives the keys to `terminal`'s pane of the tab shown.
@@ -746,8 +750,8 @@ impl App {
         self.tabs[self.selected].focused = terminal;
         self.unzoom();
         self.swap_focused();
-        self.reveal();
         self.retitle();
+        self.reveal();
     }
 
     /// Gives the keys to the pane next to the focused one towards `direction`; false
