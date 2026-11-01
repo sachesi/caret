@@ -667,10 +667,10 @@ impl Server {
             Question::SessionOf { terminal } => self.session_of(terminal),
             Question::ProgramNames { session } => self.program_names(session),
             Question::Directory { terminal } => match self.terminals.get(&terminal) {
-                Some(entry) => Answer::Directory {
-                    path: Self::directory(entry)
-                        .map(|path| Bytes(path.as_os_str().as_bytes().to_vec())),
-                },
+                Some(entry) => {
+                    self.answer_directory(client, id, entry, |path| Answer::Directory { path });
+                    return;
+                }
                 None => Answer::Gone,
             },
             Question::NextCommand { terminal } => match self.terminals.get(&terminal) {
@@ -683,14 +683,14 @@ impl Server {
                         }
                         _ => Vec::new(),
                     };
-                    Answer::Command {
+                    self.answer_directory(client, id, entry, |directory| Answer::Command {
                         command: Command {
                             argv,
-                            directory: Self::directory(entry)
-                                .map(|path| Bytes(path.as_os_str().as_bytes().to_vec())),
+                            directory,
                             ..Command::default()
                         },
-                    }
+                    });
+                    return;
                 }
                 None => Answer::Gone,
             },
@@ -745,12 +745,41 @@ impl Server {
         }
     }
 
-    fn directory(entry: &Entry) -> Option<PathBuf> {
-        entry
-            .shell_directory
-            .clone()
-            .filter(|directory| directory.is_dir())
-            .or_else(|| entry.terminal.as_ref()?.directory())
+    /// Answers `client` with what `answer` makes of where `entry`'s shell is. Whether a
+    /// directory the shell told of is there is for its file system to say, which may have
+    /// stopped answering, so it is asked on a thread of its own: the input and frames of
+    /// every terminal go through this loop.
+    fn answer_directory(
+        &self,
+        client: ClientId,
+        id: u32,
+        entry: &Entry,
+        answer: impl FnOnce(Option<Bytes>) -> Answer + Send + 'static,
+    ) {
+        let Some(writer) = self.clients.get(&client).map(|state| state.writer.clone()) else {
+            return;
+        };
+        // The kernel says where a process is without asking any file system.
+        let from_process = entry.terminal.as_ref().and_then(Terminal::directory);
+        let bytes = |path: PathBuf| Bytes(path.as_os_str().as_bytes().to_vec());
+        let Some(told) = entry.shell_directory.clone() else {
+            let answer = answer(from_process.map(bytes));
+            writer.send(encoded(&Message::Answer { id, answer }));
+            return;
+        };
+        let answered = writer.clone();
+        let spawned = std::thread::Builder::new()
+            .name("directory".to_owned())
+            .spawn(move || {
+                let path = Some(told).filter(|told| told.is_dir()).or(from_process);
+                let answer = answer(path.map(bytes));
+                answered.send(encoded(&Message::Answer { id, answer }));
+            });
+        if let Err(error) = spawned {
+            tracing::warn!("starting a thread for a directory: {error}");
+            let answer = Answer::Gone;
+            writer.send(encoded(&Message::Answer { id, answer }));
+        }
     }
 
     fn attach(&mut self, client: ClientId, session_id: SessionId) {
@@ -1716,7 +1745,9 @@ impl Server {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsStr;
     use std::os::unix::net::UnixStream;
+    use std::path::Path;
     use std::time::Duration;
 
     use caret_protocol::layout::Side;
@@ -1861,6 +1892,14 @@ mod tests {
             terminal
         }
 
+        /// Lets what the terminals reported by now reach the loop.
+        fn reports(&mut self) {
+            std::thread::sleep(Duration::from_millis(10));
+            while let Ok(input) = self.inputs.try_recv() {
+                self.server.handle(input);
+            }
+        }
+
         /// Frames until one shows `text` somewhere.
         fn frame_with(&mut self, terminal: TerminalId, text: &str) -> Frame {
             let mut screen: Vec<String> = Vec::new();
@@ -1887,6 +1926,65 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_directory_the_shell_told_of_is_answered_while_it_is_there() {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        let there = std::env::temp_dir();
+        let script = format!(
+            "printf '\\033]7;file://localhost{}\\007'; \
+             read line; printf '\\033]7;file://localhost/no/such/directory\\007'; \
+             read line",
+            there.display()
+        );
+        let terminal = harness.open(session, &["sh", "-c", &script]);
+        let mut asked = 100;
+        let mut directory = |harness: &mut Harness| {
+            asked += 1;
+            let id = asked;
+            harness.request(Request::Ask {
+                id,
+                question: Question::Directory { terminal },
+            });
+            match harness
+                .next(|message| matches!(message, Message::Answer { id: got, .. } if *got == id))
+            {
+                Message::Answer {
+                    answer: Answer::Directory { path },
+                    ..
+                } => path.map_or_else(PathBuf::new, |path| {
+                    PathBuf::from(OsStr::from_bytes(&path.0))
+                }),
+                other => panic!("{other:?}"),
+            }
+        };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while directory(&mut harness) != there {
+            assert!(
+                Instant::now() < deadline,
+                "the shell's directory never came"
+            );
+            harness.reports();
+        }
+        harness.request(Request::Input {
+            terminal,
+            bytes: Bytes(b"\n".to_vec()),
+            bottom: false,
+        });
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while directory(&mut harness) == there {
+            assert!(
+                Instant::now() < deadline,
+                "the shell's new directory never came"
+            );
+            harness.reports();
+        }
+        // Gone, so where the program is takes its place.
+        assert_ne!(directory(&mut harness), Path::new("/no/such/directory"));
+        assert!(directory(&mut harness).is_dir());
     }
 
     #[test]
