@@ -211,6 +211,29 @@ struct Fallbacks {
     preferred: Option<Vec<fontdb::ID>>,
     found: Vec<fontdb::ID>,
     mapped: HashMap<fontdb::ID, Face>,
+    /// The characters some regular face has, made when the first character turns out to have
+    /// none. Looking for such a character opens every font file, which output of arbitrary
+    /// bytes would otherwise do for each one, with the window's keys waiting.
+    drawable: Option<CharSet>,
+}
+
+/// A set of characters, a bit for each.
+struct CharSet(Vec<u64>);
+
+impl CharSet {
+    fn new() -> Self {
+        Self(vec![0; (char::MAX as usize + 1).div_ceil(64)])
+    }
+
+    fn insert(&mut self, code: u32) {
+        if let Some(word) = self.0.get_mut(code as usize / 64) {
+            *word |= 1 << (code % 64);
+        }
+    }
+
+    fn contains(&self, c: char) -> bool {
+        self.0[c as usize / 64] & (1 << (c as u32 % 64)) != 0
+    }
 }
 
 impl Fallbacks {
@@ -231,11 +254,19 @@ impl Fallbacks {
         self.preferred = Some(preferred);
         self.found = found;
         let found = known.or_else(|| {
+            if self.drawable.as_ref().is_some_and(|set| !set.contains(c)) {
+                return None;
+            }
             let id = self
                 .database
                 .faces()
-                .find(|info| regular(info) && face_has(&self.database, info.id, c, plain))?
-                .id;
+                .find(|info| regular(info) && face_has(&self.database, info.id, c, plain))
+                .map(|info| info.id);
+            let Some(id) = id else {
+                self.drawable
+                    .get_or_insert_with(|| drawable(&self.database));
+                return None;
+            };
             self.found.push(id);
             self.mapped(id)
         });
@@ -312,6 +343,7 @@ impl Fonts {
                 preferred: None,
                 found: Vec::new(),
                 mapped: HashMap::new(),
+                drawable: None,
             }),
             features: choice.features.clone(),
             ligatures: choice.ligatures,
@@ -643,6 +675,23 @@ impl Fonts {
 
 fn regular(info: &fontdb::FaceInfo) -> bool {
     info.style == fontdb::Style::Normal && info.weight == fontdb::Weight::NORMAL
+}
+
+/// Every character the regular faces of `database` have between them.
+fn drawable(database: &fontdb::Database) -> CharSet {
+    let mut set = CharSet::new();
+    for info in database.faces().filter(|info| regular(info)) {
+        database.with_face_data(info.id, |data, index| {
+            if let Some(font) = FontRef::from_index(data, index as usize) {
+                font.charmap().enumerate(|code, glyph| {
+                    if glyph != 0 {
+                        set.insert(code);
+                    }
+                });
+            }
+        });
+    }
+    set
 }
 
 /// The regular faces of the families tried first for a missing character, in order.
@@ -1172,6 +1221,49 @@ mod tests {
                 .chunks_exact(4)
                 .any(|p| p[0] > 200 && p[2] < 100 && p[3] > 200)
         );
+    }
+
+    #[test]
+    fn a_character_no_font_has_is_not_looked_for_again() {
+        let Ok(fonts) = Fonts::new(installed(), &choice(None, true), 1.0) else {
+            return;
+        };
+        let mut fallbacks = fonts.fallbacks.borrow_mut();
+        // Private use, past anything a font is likely to give a glyph to.
+        let (first, next) = ('\u{10fffd}', '\u{10fffc}');
+        if fallbacks.face(first, false).is_some() {
+            return;
+        }
+        let drawable = fallbacks.drawable.as_ref().expect("made by the search");
+        assert!(!drawable.contains(first));
+        assert!(!drawable.contains(next));
+        assert!(fallbacks.face(next, false).is_none());
+        // What a face has is still found, in those not yet looked in.
+        let letter = fallbacks
+            .database
+            .faces()
+            .find(|info| regular(info))
+            .map(|info| info.id);
+        if let Some(id) = letter {
+            let has_a = face_has(&fallbacks.database, id, 'a', false);
+            assert!(
+                !has_a
+                    || fallbacks
+                        .drawable
+                        .as_ref()
+                        .is_some_and(|set| set.contains('a'))
+            );
+        }
+    }
+
+    #[test]
+    fn a_set_of_characters_holds_what_was_put_in_it() {
+        let mut set = CharSet::new();
+        set.insert(u32::from(char::MAX));
+        set.insert(0x41);
+        set.insert(0x11_0000);
+        assert!(set.contains(char::MAX) && set.contains('A'));
+        assert!(!set.contains('B') && !set.contains('\0'));
     }
 
     #[test]
