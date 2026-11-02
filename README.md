@@ -3,6 +3,10 @@
 Terminal for Wayland. Programs run in a background server, so they keep running after you
 detach a window, and you can attach again from another window, over ssh or from a console.
 
+> [!WARNING]
+> Caret runs only on Wayland, with no X11 support, and needs a Vulkan 1.3 driver. Mesa's
+> software driver works on a machine without a suitable GPU.
+
 ## Install
 
 On Fedora, from [Copr](https://copr.fedorainfracloud.org/coprs/sachesi/software/):
