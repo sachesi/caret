@@ -55,10 +55,14 @@ impl WindowState {
         let Some(path) = path() else {
             return;
         };
+        // Written beside it and renamed over it, so that no reader sees half a file. Every
+        // window closing at once saves, so each writes a file of its own first.
+        let written = path.with_extension(format!("toml.{}.new", std::process::id()));
         let saved = path
             .parent()
             .map_or(Ok(()), std::fs::create_dir_all)
-            .and_then(|()| std::fs::write(&path, self.document().to_string()));
+            .and_then(|()| std::fs::write(&written, self.document().to_string()))
+            .and_then(|()| std::fs::rename(&written, &path));
         if let Err(error) = saved {
             tracing::warn!("writing {}: {error}", path.display());
         }
