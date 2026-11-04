@@ -231,8 +231,8 @@ struct App {
     moved_pane: Option<TerminalId>,
     /// Keys move, resize and close panes until the mode is left.
     control: bool,
-    /// The tab about to close once its panes say whether programs run in them.
-    closing_tab: Option<confirm::TabClosing>,
+    /// The tabs about to close once their panes say whether programs run in them.
+    closing_tabs: Vec<confirm::TabClosing>,
     /// What the window's first tab runs, from the command line, until that is asked for.
     first: Option<Command>,
     /// The preset the window's first tab takes, from the command line.
@@ -456,7 +456,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         opened_pane: None,
         moved_pane: None,
         control: false,
-        closing_tab: None,
+        closing_tabs: Vec::new(),
         first: Some(first),
         first_preset,
         submenu_row: 0,
