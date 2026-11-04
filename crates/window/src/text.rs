@@ -16,6 +16,7 @@ use std::os::unix::net::UnixStream;
 use std::panic;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
+use std::time::Duration;
 
 use caret_protocol::encode::{self, Key, Modifiers, MouseAction, MouseButton, Press};
 use caret_protocol::layout::Node;
@@ -37,6 +38,9 @@ use host::{Host, Input, Mouse};
 /// The most events taken in before a frame is drawn, so that a busy server cannot keep
 /// the screen from being written.
 const EVENTS_PER_FRAME: usize = 256;
+/// How long the start of an escape sequence waits for the rest, which the terminal may
+/// write in two reads, before it is taken as typed: Alt+[ alone looks like one.
+const SEQUENCE_WAIT: Duration = Duration::from_millis(100);
 /// The most of a tab's or session's name the bar shows, in characters.
 const TAB_TITLE: usize = 20;
 const BAR_PEN: Pen = Pen {
@@ -180,6 +184,8 @@ fn take_signals(events: mpsc::Sender<Event>) {
 enum Event {
     Message(Message),
     Typed(Vec<u8>),
+    /// The rest of an escape sequence typed in part did not come in time.
+    TypedInPart,
     Closed,
     /// A signal asked the client to end.
     Stopped,
@@ -249,6 +255,8 @@ struct Client {
     sizes: HashMap<TerminalId, Size>,
     /// The terminal it runs in writes keys apart: Ctrl+Shift+Space starts control mode.
     enhanced: bool,
+    /// The start of an escape sequence typed, waiting for the rest.
+    typed_in_part: Vec<u8>,
     control: bool,
     zoomed: bool,
     asked: u32,
@@ -341,6 +349,7 @@ fn show(stream: &mut UnixStream, session: SessionId, host: Host) -> Result<(), S
         size: window_size(),
         sizes: HashMap::new(),
         enhanced: host.enhanced,
+        typed_in_part: Vec::new(),
         session_name: None,
         session_color: None,
         config: Config::load(None),
@@ -368,7 +377,16 @@ fn show(stream: &mut UnixStream, session: SessionId, host: Host) -> Result<(), S
         client.typed(&typed);
     }
     loop {
-        let Ok(first) = received.recv() else {
+        let first = if client.typed_in_part.is_empty() {
+            received.recv().ok()
+        } else {
+            match received.recv_timeout(SEQUENCE_WAIT) {
+                Ok(event) => Some(event),
+                Err(mpsc::RecvTimeoutError::Timeout) => Some(Event::TypedInPart),
+                Err(mpsc::RecvTimeoutError::Disconnected) => None,
+            }
+        };
+        let Some(first) = first else {
             return Ok(());
         };
         // All that has come goes into one frame, however many events it took.
@@ -623,10 +641,27 @@ impl Client {
         }
     }
 
-    /// Passes typed bytes on, or acts on them in control mode; false to detach.
+    /// Passes typed bytes on, or acts on them in control mode; false to detach. An escape
+    /// sequence they end partway through waits for the rest to come with the next.
     fn typed(&mut self, bytes: &[u8]) -> bool {
+        let mut joined = std::mem::take(&mut self.typed_in_part);
+        joined.extend_from_slice(bytes);
+        self.take_typed(&joined, true)
+    }
+
+    /// Takes the start of an escape sequence whose rest did not come as it is.
+    fn typed_in_part(&mut self) -> bool {
+        let held = std::mem::take(&mut self.typed_in_part);
+        self.take_typed(&held, false)
+    }
+
+    fn take_typed(&mut self, bytes: &[u8], wait: bool) -> bool {
         let mut rest = bytes;
         while !rest.is_empty() {
+            if wait && host::unfinished(rest) {
+                self.typed_in_part = rest.to_vec();
+                break;
+            }
             let (input, used) = host::next(rest, self.enhanced);
             rest = &rest[used.max(1).min(rest.len())..];
             match input {
@@ -1210,8 +1245,11 @@ impl Client {
     fn event(&mut self, event: Event) -> Result<bool, String> {
         match event {
             Event::Message(message) => Ok(self.message(message)),
-            Event::Typed(bytes) => {
-                let going_on = self.typed(&bytes);
+            Event::Typed(_) | Event::TypedInPart => {
+                let going_on = match event {
+                    Event::Typed(bytes) => self.typed(&bytes),
+                    _ => self.typed_in_part(),
+                };
                 if !going_on {
                     self.send(&Request::Detach {
                         session: self.session,
