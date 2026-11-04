@@ -97,16 +97,21 @@ impl RenderThread {
             let _ = (&self.wake).write(&[1]);
         }
     }
-}
 
-impl Drop for RenderThread {
-    /// Waits for the thread to let go of the device, which has to go before the surface.
-    fn drop(&mut self) {
+    /// Ends the thread, waiting for it to let go of the device, which has to go before the
+    /// surface or another device drawing to it.
+    pub fn stop(&mut self) {
         self.jobs = None;
         let _ = (&self.wake).write(&[1]);
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
+    }
+}
+
+impl Drop for RenderThread {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 
