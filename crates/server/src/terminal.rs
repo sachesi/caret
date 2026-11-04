@@ -172,6 +172,19 @@ fn job_of(leader: u32) -> Option<u32> {
         })
 }
 
+/// The command line `process` was started with. Reading it waits on the process's
+/// memory, which one stuck on a file system that stopped answering can hold.
+pub fn command_line(process: u32) -> Vec<String> {
+    std::fs::read(format!("/proc/{process}/cmdline"))
+        .map(|line| {
+            line.split(|&byte| byte == 0)
+                .filter(|word| !word.is_empty())
+                .map(|word| String::from_utf8_lossy(word).into_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// What the server's loop asks about a program that runs.
 struct Started {
     child: u32,
@@ -633,26 +646,11 @@ impl Terminal {
         (group != started.child || self.named_program).then(|| program_name_of(group))
     }
 
-    /// The command line of the program in the foreground; empty when that is the shell
-    /// the terminal started.
-    pub fn foreground_command(&self) -> Vec<String> {
-        let Some(started) = self.started.get() else {
-            return Vec::new();
-        };
-        let Some(group) = pty::foreground(started.controller.as_fd()) else {
-            return Vec::new();
-        };
-        if group == started.child && !self.named_program {
-            return Vec::new();
-        }
-        std::fs::read(format!("/proc/{group}/cmdline"))
-            .map(|line| {
-                line.split(|&byte| byte == 0)
-                    .filter(|word| !word.is_empty())
-                    .map(|word| String::from_utf8_lossy(word).into_owned())
-                    .collect()
-            })
-            .unwrap_or_default()
+    /// The process in the foreground, unless it is the shell the terminal started.
+    pub fn foreground_process(&self) -> Option<u32> {
+        let started = self.started.get()?;
+        let group = pty::foreground(started.controller.as_fd())?;
+        (group != started.child || self.named_program).then_some(group)
     }
 
     /// Where the started program is now, for a new tab to start in the same place.
