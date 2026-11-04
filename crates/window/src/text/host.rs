@@ -231,6 +231,23 @@ pub fn next(bytes: &[u8], enhanced: bool) -> (Input<'_>, usize) {
     (input, length)
 }
 
+/// Whether `bytes` stop partway through the escape sequence they start with, as when the
+/// terminal's writing comes in two reads. A lone escape is the Escape key.
+pub fn unfinished(bytes: &[u8]) -> bool {
+    match bytes {
+        [0x1b, b'[', b'['] | [0x1b, b'O'] => true,
+        [0x1b, b'[', b'[', ..] => false,
+        [0x1b, b'[', rest @ ..] => !rest.iter().any(|byte| (0x40..=0x7e).contains(byte)),
+        // Ended by BEL, or by an escape that starts ST or another sequence.
+        [0x1b, b']', rest @ ..] => match rest.iter().position(|&byte| byte == 0x07 || byte == 0x1b)
+        {
+            Some(end) => rest[end] == 0x1b && end + 1 == rest.len(),
+            None => true,
+        },
+        _ => false,
+    }
+}
+
 /// The length of the escape sequence `bytes` starts with.
 fn sequence_length(bytes: &[u8]) -> usize {
     match bytes.get(1) {
@@ -464,6 +481,21 @@ mod tests {
                 b: 255
             })
         );
+    }
+
+    #[test]
+    fn a_sequence_cut_short_waits_for_its_end() {
+        assert!(unfinished(b"\x1b[<35;12;"));
+        assert!(unfinished(b"\x1b["));
+        assert!(unfinished(b"\x1bO"));
+        assert!(unfinished(b"\x1b]11;rgb:0000/0000/0000\x1b"));
+        assert!(!unfinished(b"\x1b[<35;12;5M"));
+        assert!(!unfinished(b"\x1b]11;rgb:0000/0000/0000\x07"));
+        assert!(!unfinished(b"\x1b]11;rgb:0000/0000/0000\x1b\\"));
+        assert!(!unfinished(b"\x1b]11;rgb:0000/0000/0000\x1b[A"));
+        assert!(!unfinished(b"\x1b[[A"));
+        assert!(!unfinished(b"\x1b"));
+        assert!(!unfinished(b"text"));
     }
 
     #[test]
