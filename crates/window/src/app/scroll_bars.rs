@@ -35,7 +35,7 @@ impl App {
             ScrollBars::Hidden => false,
             ScrollBars::Visible => true,
             ScrollBars::Hover => {
-                self.pointer.over_pane == Some(terminal)
+                self.pointer.bar_hovered == Some(terminal)
                     || self
                         .pointer
                         .held_bar
@@ -100,57 +100,46 @@ impl App {
             .collect()
     }
 
-    /// The pane whose room the pointer is in, its padding to the right included.
-    fn pane_by_pointer(&self) -> Option<TerminalId> {
-        let padding = self.device(super::PADDING) as i32;
-        let at = self.device_point();
-        self.placed()
-            .panes
-            .into_iter()
-            .find(|(_, rect)| {
-                Rect {
-                    width: rect.width + padding,
-                    ..*rect
-                }
-                .contains(at)
-            })
-            .map(|(terminal, _)| terminal)
+    /// The pane whose bar runs where the pointer is: along the pane's own edge, and the
+    /// padding beyond.
+    fn strip_by_pointer(&self) -> Option<(TerminalId, Rect)> {
+        let (x, y) = self.device_point();
+        let reach = f64::from(self.device(REACH));
+        let padding = f64::from(self.device(super::PADDING));
+        self.placed().panes.into_iter().find(|&(_, rect)| {
+            let edge = f64::from(rect.x + rect.width);
+            (edge - reach..edge + padding).contains(&x)
+                && (f64::from(rect.y)..f64::from(rect.y + rect.height)).contains(&y)
+        })
     }
 
-    /// Shows the bar of the pane the pointer has come to, with `scroll-bars` at `"hover"`.
-    pub(super) fn follow_pane_under_pointer(&mut self) {
+    /// Shows the bar the pointer has come to, with `scroll-bars` at `"hover"`.
+    pub(super) fn follow_bar_under_pointer(&mut self) {
         if self.config.scroll_bars != ScrollBars::Hover {
             return;
         }
         let over = if self.chrome.hovered.is_none() {
-            self.pane_by_pointer()
+            self.strip_by_pointer().map(|(terminal, _)| terminal)
         } else {
             None
         };
-        self.pointer_over_pane(over);
+        self.hover_bar(over);
     }
 
-    /// The pointer is over the room of `pane`.
-    pub(super) fn pointer_over_pane(&mut self, pane: Option<TerminalId>) {
-        if self.pointer.over_pane != pane {
-            self.pointer.over_pane = pane;
+    /// The pointer is over the bar of `pane`.
+    pub(super) fn hover_bar(&mut self, pane: Option<TerminalId>) {
+        if self.pointer.bar_hovered != pane {
+            self.pointer.bar_hovered = pane;
             self.dirty = true;
             self.draw();
         }
     }
 
-    /// The bar shown where a press at the pointer takes hold of it: a pane's own edge, and
-    /// the padding beyond.
+    /// The bar shown where a press at the pointer takes hold of it.
     fn bar_by_pointer(&self) -> Option<(TerminalId, ScrollBar)> {
-        let (x, y) = self.device_point();
-        let reach = f64::from(self.device(REACH));
-        let padding = f64::from(self.device(super::PADDING));
-        let (terminal, rect) = self.placed().panes.into_iter().find(|&(terminal, rect)| {
-            let edge = f64::from(rect.x + rect.width);
-            self.shows_bar(terminal)
-                && (edge - reach..edge + padding).contains(&x)
-                && (f64::from(rect.y)..f64::from(rect.y + rect.height)).contains(&y)
-        })?;
+        let (terminal, rect) = self
+            .strip_by_pointer()
+            .filter(|&(terminal, _)| self.shows_bar(terminal))?;
         Some((terminal, self.bar_of(terminal, rect)?))
     }
 
@@ -229,7 +218,7 @@ impl App {
         if self.pointer.held_bar.take().is_none() {
             return false;
         }
-        self.follow_pane_under_pointer();
+        self.follow_bar_under_pointer();
         self.set_cursor();
         self.dirty = true;
         self.draw();

@@ -209,9 +209,9 @@ out, a touchpad or a finger moves it directly, and it ends on a whole row. The k
 scroll by the page, and a program that has the whole screen still gets its arrow keys.
 
 `scroll-bars` puts a scroll bar along the right of each pane that has history to scroll:
-always with `"visible"`, or with `"hover"` while the pointer is over that pane. Drag the
-thumb to move through the history, or press beside it to jump there. A press on the bar
-leaves the keys in the pane that has them.
+always with `"visible"`, or with `"hover"` while the pointer is on the bar, at the pane's
+right edge. Drag the thumb to move through the history, or press beside it to jump there.
+A press on the bar leaves the keys in the pane that has them.
 
 Ctrl+Shift+Up and Ctrl+Shift+Down scroll to the previous and next prompt, in a shell that
 marks them.
