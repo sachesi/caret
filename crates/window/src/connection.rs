@@ -10,7 +10,7 @@ use smithay_client_toolkit::reexports::calloop::channel::{self, Channel};
 
 /// Bytes of input in one message. The server hangs up on a message past
 /// [`caret_protocol::LONGEST`], which a large paste could otherwise be.
-const INPUT_PIECE: usize = 1 << 20;
+pub const INPUT_PIECE: usize = 1 << 20;
 
 /// What the reader thread passes on.
 pub enum Received {
