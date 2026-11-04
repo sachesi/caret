@@ -5,8 +5,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: caret\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-11-01 23:35+0200\n"
-"PO-Revision-Date: 2026-10-31 12:30+0200\n"
+"POT-Creation-Date: 2026-11-04 22:13+0200\n"
+"PO-Revision-Date: 2026-11-04 22:10+0200\n"
 "Last-Translator: sachesi\n"
 "Language-Team: Russian\n"
 "Language: ru\n"
@@ -16,15 +16,15 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
-#: crates/window/src/app.rs:729
+#: crates/window/src/app.rs:762
 msgid "The text is too long to paste"
 msgstr "Текст слишком длинный для вставки"
 
-#: crates/window/src/app.rs:773
+#: crates/window/src/app.rs:806
 msgid "This terminal could not run its program"
 msgstr "Этот терминал не смог запустить программу"
 
-#: crates/window/src/app.rs:1002
+#: crates/window/src/app.rs:1036
 #, rust-format
 msgid "The settings file cannot be read and is not used: {why}"
 msgstr "Файл настроек не удаётся прочитать, и он не используется: {why}"
@@ -37,54 +37,54 @@ msgstr "Команда завершена"
 msgid "Command Failed"
 msgstr "Команда завершилась с ошибкой"
 
-#: crates/window/src/app/confirm.rs:134
+#: crates/window/src/app/confirm.rs:139
 msgid "Rename Tab"
 msgstr "Переименовать вкладку"
 
-#: crates/window/src/app/confirm.rs:135
+#: crates/window/src/app/confirm.rs:140
 msgid "Without a name, the tab shows the program’s title."
 msgstr "Без имени вкладка показывает заголовок программы."
 
-#: crates/window/src/app/confirm.rs:136 crates/window/src/app/confirm.rs:155
-#: crates/window/src/app/confirm.rs:183 crates/window/src/app/confirm.rs:228
-#: crates/window/src/app/confirm.rs:351 crates/window/src/app/confirm.rs:381
-#: crates/window/src/app/confirm.rs:469 crates/window/src/app/confirm.rs:485
+#: crates/window/src/app/confirm.rs:141 crates/window/src/app/confirm.rs:160
+#: crates/window/src/app/confirm.rs:188 crates/window/src/app/confirm.rs:233
+#: crates/window/src/app/confirm.rs:359 crates/window/src/app/confirm.rs:389
+#: crates/window/src/app/confirm.rs:517 crates/window/src/app/confirm.rs:533
 #: crates/window/src/app/presets.rs:358
 msgid "Cancel"
 msgstr "Отмена"
 
-#: crates/window/src/app/confirm.rs:136 crates/window/src/app/confirm.rs:155
+#: crates/window/src/app/confirm.rs:141 crates/window/src/app/confirm.rs:160
 msgid "Rename"
 msgstr "Переименовать"
 
-#: crates/window/src/app/confirm.rs:144
+#: crates/window/src/app/confirm.rs:149
 msgid "Naming sessions needs a newer terminal server"
 msgstr "Для имён сеансов нужен более новый терминальный сервер"
 
-#: crates/window/src/app/confirm.rs:153
+#: crates/window/src/app/confirm.rs:158
 msgid "Rename Session"
 msgstr "Переименовать сеанс"
 
-#: crates/window/src/app/confirm.rs:154
+#: crates/window/src/app/confirm.rs:159
 msgid "Without a name, the session is known by its number."
 msgstr "Без имени сеанс называется по номеру."
 
-#: crates/window/src/app/confirm.rs:177
+#: crates/window/src/app/confirm.rs:182
 #, rust-format
 msgid "The programs in the tabs of “{session}” will be stopped."
 msgstr "Работа программ во вкладках «{session}» будет прервана."
 
-#: crates/window/src/app/confirm.rs:181
+#: crates/window/src/app/confirm.rs:186
 msgid "Close Session?"
 msgstr "Закрыть сеанс?"
 
-#: crates/window/src/app/confirm.rs:183 crates/window/src/app/confirm.rs:241
-#: crates/window/src/app/confirm.rs:351 crates/window/src/app/confirm.rs:381
-#: crates/window/src/app/confirm.rs:467
+#: crates/window/src/app/confirm.rs:188 crates/window/src/app/confirm.rs:246
+#: crates/window/src/app/confirm.rs:359 crates/window/src/app/confirm.rs:389
+#: crates/window/src/app/confirm.rs:515
 msgid "Close"
 msgstr "Закрыть"
 
-#: crates/window/src/app/confirm.rs:208
+#: crates/window/src/app/confirm.rs:213
 #, rust-format
 msgid "{count} detached session will end."
 msgid_plural "{count} detached sessions will end."
@@ -92,7 +92,7 @@ msgstr[0] "{count} отсоединённый сеанс будет заверш
 msgstr[1] "{count} отсоединённых сеанса будут завершены."
 msgstr[2] "{count} отсоединённых сеансов будут завершены."
 
-#: crates/window/src/app/confirm.rs:216
+#: crates/window/src/app/confirm.rs:221
 #, rust-format
 msgid "{count} program in them will be stopped."
 msgid_plural "{count} programs in them will be stopped."
@@ -100,31 +100,31 @@ msgstr[0] "Работа {count} программы в них будет прер
 msgstr[1] "Работа {count} программ в них будет прервана."
 msgstr[2] "Работа {count} программ в них будет прервана."
 
-#: crates/window/src/app/confirm.rs:226
+#: crates/window/src/app/confirm.rs:231
 msgid "Close All Detached?"
 msgstr "Закрыть все отсоединённые?"
 
-#: crates/window/src/app/confirm.rs:228 crates/window/src/app/confirm.rs:465
+#: crates/window/src/app/confirm.rs:233 crates/window/src/app/confirm.rs:513
 msgid "Close All"
 msgstr "Закрыть все"
 
-#: crates/window/src/app/confirm.rs:235
+#: crates/window/src/app/confirm.rs:240
 msgid "Terminal for Wayland"
 msgstr "Терминал для Wayland"
 
-#: crates/window/src/app/confirm.rs:241
+#: crates/window/src/app/confirm.rs:246
 msgid "Website"
 msgstr "Сайт"
 
-#: crates/window/src/app/confirm.rs:349 crates/window/src/app/confirm.rs:374
+#: crates/window/src/app/confirm.rs:357 crates/window/src/app/confirm.rs:382
 msgid "Close Tab?"
 msgstr "Закрыть вкладку?"
 
-#: crates/window/src/app/confirm.rs:376
+#: crates/window/src/app/confirm.rs:384
 msgid "Close Pane?"
 msgstr "Закрыть панель?"
 
-#: crates/window/src/app/confirm.rs:442
+#: crates/window/src/app/confirm.rs:490
 #, rust-format
 msgid "A program is still running in this window and will be stopped."
 msgid_plural ""
@@ -136,7 +136,7 @@ msgstr[1] ""
 msgstr[2] ""
 "В этом окне ещё работают {count} программ, их работа будет прервана."
 
-#: crates/window/src/app/confirm.rs:450
+#: crates/window/src/app/confirm.rs:498
 #, rust-format
 msgid "{count} session will end with this window."
 msgid_plural "{count} sessions will end with this window."
@@ -144,24 +144,24 @@ msgstr[0] "{count} сеанс завершится вместе с этим ок
 msgstr[1] "{count} сеанса завершатся вместе с этим окном."
 msgstr[2] "{count} сеансов завершатся вместе с этим окном."
 
-#: crates/window/src/app/confirm.rs:457
+#: crates/window/src/app/confirm.rs:505
 #, rust-format
 msgid "The session “{session}” will end with this window."
 msgstr "Сеанс «{session}» завершится вместе с этим окном."
 
-#: crates/window/src/app/confirm.rs:470 crates/window/src/app/menus.rs:717
+#: crates/window/src/app/confirm.rs:518 crates/window/src/app/menus.rs:717
 msgid "Detach"
 msgstr "Отсоединить"
 
-#: crates/window/src/app/confirm.rs:471
+#: crates/window/src/app/confirm.rs:519
 msgid "Close Window?"
 msgstr "Закрыть окно?"
 
-#: crates/window/src/app/confirm.rs:481
+#: crates/window/src/app/confirm.rs:529
 msgid "Paste Several Lines?"
 msgstr "Вставить несколько строк?"
 
-#: crates/window/src/app/confirm.rs:483
+#: crates/window/src/app/confirm.rs:531
 msgid ""
 "The program here does not mark pasted text, so each line runs as if typed "
 "and entered."
@@ -169,25 +169,25 @@ msgstr ""
 "Эта программа не отмечает вставленный текст, поэтому каждая строка "
 "выполнится, как если бы её набрали и нажали Enter."
 
-#: crates/window/src/app/confirm.rs:485 crates/window/src/app/menus.rs:180
+#: crates/window/src/app/confirm.rs:533 crates/window/src/app/menus.rs:180
 #: crates/window/src/app/shortcut_list.rs:71
 msgid "Paste"
 msgstr "Вставить"
 
-#: crates/window/src/app/confirm.rs:501
+#: crates/window/src/app/confirm.rs:549
 msgid "A program is still running in this tab and will be stopped."
 msgstr "В этой вкладке ещё работает программа, её работа будет прервана."
 
-#: crates/window/src/app/confirm.rs:502
+#: crates/window/src/app/confirm.rs:550
 msgid "A program is still running in this pane and will be stopped."
 msgstr "В этой панели ещё работает программа, её работа будет прервана."
 
-#: crates/window/src/app/confirm.rs:504
+#: crates/window/src/app/confirm.rs:552
 #, rust-format
 msgid "“{program}” is still running in this tab and will be stopped."
 msgstr "В этой вкладке ещё работает «{program}», и её работа будет прервана."
 
-#: crates/window/src/app/confirm.rs:508
+#: crates/window/src/app/confirm.rs:556
 #, rust-format
 msgid "“{program}” is still running in this pane and will be stopped."
 msgstr "В этой панели ещё работает «{program}», и её работа будет прервана."
@@ -420,24 +420,24 @@ msgstr "Показать"
 msgid "No windows were detached"
 msgstr "Нет отсоединённых окон"
 
-#: crates/window/src/app/pointer.rs:903
+#: crates/window/src/app/pointer.rs:904
 #, rust-format
 msgid "Could not open the link: {reason}"
 msgstr "Не удалось открыть ссылку: {reason}"
 
-#: crates/window/src/app/pointer.rs:910
+#: crates/window/src/app/pointer.rs:911
 msgid "no program opens links"
 msgstr "нет программы, открывающей ссылки"
 
-#: crates/window/src/app/pointer.rs:923
+#: crates/window/src/app/pointer.rs:924
 msgid "it does not exist"
 msgstr "её не существует"
 
-#: crates/window/src/app/pointer.rs:924
+#: crates/window/src/app/pointer.rs:925
 msgid "no program opens it"
 msgstr "нет программы, которая её открывает"
 
-#: crates/window/src/app/pointer.rs:925
+#: crates/window/src/app/pointer.rs:926
 msgid "the program that opens it failed"
 msgstr "программа, которая её открывает, завершилась с ошибкой"
 
@@ -603,7 +603,7 @@ msgstr "Прокрутить к следующему приглашению"
 msgid "General"
 msgstr "Общие"
 
-#: crates/window/src/app/tabs.rs:250 crates/window/src/text.rs:928
+#: crates/window/src/app/tabs.rs:250 crates/window/src/text.rs:1006
 #, rust-format
 msgid "Session {number}"
 msgstr "Сеанс {number}"
@@ -624,67 +624,67 @@ msgstr "Эту вкладку больше нельзя разделить"
 msgid "Find in the history"
 msgstr "Поиск в истории"
 
-#: crates/window/src/text.rs:966
+#: crates/window/src/text.rs:1044
 msgid "CONTROL"
 msgstr "УПРАВЛЕНИЕ"
 
-#: crates/window/src/text.rs:968
+#: crates/window/src/text.rs:1046
 msgid "arrows"
 msgstr "стрелки"
 
-#: crates/window/src/text.rs:968
+#: crates/window/src/text.rs:1046
 msgid "focus"
 msgstr "фокус"
 
-#: crates/window/src/text.rs:969
+#: crates/window/src/text.rs:1047
 msgid "shift"
 msgstr "shift"
 
-#: crates/window/src/text.rs:969
+#: crates/window/src/text.rs:1047
 msgid "swap"
 msgstr "обмен"
 
-#: crates/window/src/text.rs:970
+#: crates/window/src/text.rs:1048
 msgid "ctrl"
 msgstr "ctrl"
 
-#: crates/window/src/text.rs:970
+#: crates/window/src/text.rs:1048
 msgid "resize"
 msgstr "размер"
 
-#: crates/window/src/text.rs:971
+#: crates/window/src/text.rs:1049
 msgid "tab"
 msgstr "вкладка"
 
-#: crates/window/src/text.rs:972
+#: crates/window/src/text.rs:1050
 msgid "split"
 msgstr "разделить"
 
-#: crates/window/src/text.rs:973
+#: crates/window/src/text.rs:1051
 msgid "close"
 msgstr "закрыть"
 
-#: crates/window/src/text.rs:974
+#: crates/window/src/text.rs:1052
 msgid "zoom"
 msgstr "развернуть"
 
-#: crates/window/src/text.rs:975
+#: crates/window/src/text.rs:1053
 msgid "to tab"
 msgstr "во вкладку"
 
-#: crates/window/src/text.rs:976
+#: crates/window/src/text.rs:1054
 msgid "detach"
 msgstr "отсоединить"
 
-#: crates/window/src/text.rs:977
+#: crates/window/src/text.rs:1055
 msgid "leave"
 msgstr "выход"
 
-#: crates/window/src/text.rs:1040
+#: crates/window/src/text.rs:1118
 msgid "zoomed"
 msgstr "развёрнуто"
 
-#: crates/window/src/text.rs:1042
+#: crates/window/src/text.rs:1120
 msgid "control"
 msgstr "управление"
 
@@ -752,6 +752,76 @@ msgid "sachesi"
 msgstr "sachesi"
 
 #: data/io.github.sachesi.caret.metainfo.xml:38
+msgid "Fixes for closing, copying and drawing."
+msgstr "Исправления закрытия, копирования и отрисовки."
+
+#: data/io.github.sachesi.caret.metainfo.xml:40
+msgid ""
+"Closing a tab, a pane or a window asks first when it would end a program the "
+"tab was started with, or a job stopped or running in the background"
+msgstr ""
+"Закрытие вкладки, панели или окна сначала спрашивает, если оно завершит "
+"программу, с которой была открыта вкладка, или остановленное либо фоновое "
+"задание"
+
+#: data/io.github.sachesi.caret.metainfo.xml:41
+msgid ""
+"Closing a window leaves running the sessions another window or caret session "
+"attach shows"
+msgstr ""
+"Закрытие окна оставляет работать сеансы, которые показывает другое окно или "
+"caret session attach"
+
+#: data/io.github.sachesi.caret.metainfo.xml:42
+msgid "Closing several tabs in quick succession closes all of them"
+msgstr "Несколько вкладок, закрытых одна за другой, закрываются все"
+
+#: data/io.github.sachesi.caret.metainfo.xml:43
+msgid "A scroll bar set to show on hover shows only with the pointer on it"
+msgstr ""
+"Полоса прокрутки, показываемая при наведении, появляется только когда "
+"указатель на ней"
+
+#: data/io.github.sachesi.caret.metainfo.xml:44
+msgid ""
+"Programs can copy to the clipboard in a window before any key or click in it"
+msgstr ""
+"Программы могут копировать в буфер обмена ещё до первого нажатия клавиши или "
+"щелчка в окне"
+
+#: data/io.github.sachesi.caret.metainfo.xml:45
+msgid "New windows open after an update replaced Caret"
+msgstr "Новые окна открываются после того, как обновление заменило Caret"
+
+#: data/io.github.sachesi.caret.metainfo.xml:46
+msgid ""
+"A window keeps drawing after the GPU is reset or lost, as after a suspend"
+msgstr ""
+"Окно продолжает отрисовку после сброса или потери GPU, например после сна"
+
+#: data/io.github.sachesi.caret.metainfo.xml:47
+msgid ""
+"caret session attach takes a paste as one paste, and no longer types out "
+"mouse reports cut in two"
+msgstr ""
+"caret session attach принимает вставку как одну вставку и больше не вводит "
+"как текст разрезанные надвое сообщения мыши"
+
+#: data/io.github.sachesi.caret.metainfo.xml:48
+msgid "The window size is kept when windows close together, as at logout"
+msgstr ""
+"Размер окна сохраняется, когда окна закрываются одновременно, например при "
+"выходе из системы"
+
+#: data/io.github.sachesi.caret.metainfo.xml:49
+msgid ""
+"Saving a layout no longer freezes every terminal while a program is stuck on "
+"an unresponsive file system"
+msgstr ""
+"Сохранение раскладки больше не замораживает все терминалы, пока программа "
+"зависла на неотвечающей файловой системе"
+
+#: data/io.github.sachesi.caret.metainfo.xml:55
 msgid ""
 "Caret is written anew: programs run in a background server and output goes "
 "through a terminal emulator of its own, drawn with Vulkan and without GTK. "
@@ -763,7 +833,7 @@ msgstr ""
 "GTK. Нужны композитор Wayland и драйвер Vulkan 1.3. Параметры теперь "
 "хранятся в config.toml и начинаются со значений по умолчанию."
 
-#: data/io.github.sachesi.caret.metainfo.xml:40
+#: data/io.github.sachesi.caret.metainfo.xml:57
 msgid ""
 "Programs keep running after a window is detached, and can be attached to "
 "again from another window, over ssh or from a console"
@@ -771,7 +841,7 @@ msgstr ""
 "Программы продолжают работать после отсоединения окна, а подключиться к ним "
 "можно из другого окна, по ssh или из консоли"
 
-#: data/io.github.sachesi.caret.metainfo.xml:41
+#: data/io.github.sachesi.caret.metainfo.xml:58
 msgid ""
 "Sessions: several can be shown in one window, named, given a colour, listed, "
 "and managed with caret session"
@@ -779,7 +849,7 @@ msgstr ""
 "Сеансы: несколько можно показывать в одном окне, называть, отмечать цветом, "
 "просматривать списком и управлять ими через caret session"
 
-#: data/io.github.sachesi.caret.metainfo.xml:42
+#: data/io.github.sachesi.caret.metainfo.xml:59
 msgid ""
 "Tabs split into panes, which can be swapped, moved, resized and zoomed by "
 "key and mouse; split presets lay out a tab from a file"
@@ -788,7 +858,7 @@ msgstr ""
 "их размер и разворачивать клавишами и мышью; шаблоны разделения раскладывают "
 "вкладку по файлу"
 
-#: data/io.github.sachesi.caret.metainfo.xml:43
+#: data/io.github.sachesi.caret.metainfo.xml:60
 msgid ""
 "Settings, colour schemes and presets are files that apply as soon as they "
 "are saved, and any key can be rebound"
@@ -796,7 +866,7 @@ msgstr ""
 "Параметры, цветовые схемы и шаблоны — это файлы, которые применяются сразу "
 "после сохранения, а любую клавишу можно переназначить"
 
-#: data/io.github.sachesi.caret.metainfo.xml:44
+#: data/io.github.sachesi.caret.metainfo.xml:61
 msgid ""
 "Scrolling moves by the pixel, with a scroll bar along each pane and a "
 "setting for how fast the wheel and the touchpad go"
@@ -804,11 +874,11 @@ msgstr ""
 "Прокрутка движется попиксельно, вдоль каждой панели есть полоса прокрутки, а "
 "скорость колёсика и сенсорной панели можно настроить"
 
-#: data/io.github.sachesi.caret.metainfo.xml:45
+#: data/io.github.sachesi.caret.metainfo.xml:62
 msgid "Text stays sharp at fractional scales"
 msgstr "Текст остаётся чётким при дробном масштабе"
 
-#: data/io.github.sachesi.caret.metainfo.xml:46
+#: data/io.github.sachesi.caret.metainfo.xml:63
 msgid ""
 "Scrolling, clicking and menus work with a finger, screen readers are told "
 "what the window shows, and shell completions are included"
@@ -816,7 +886,7 @@ msgstr ""
 "Прокрутка, нажатия и меню работают пальцем, экранные дикторы узнают, что "
 "показывает окно, а в комплект входят дополнения для оболочек"
 
-#: data/io.github.sachesi.caret.metainfo.xml:47
+#: data/io.github.sachesi.caret.metainfo.xml:64
 msgid ""
 "Ctrl+Shift+W closes the pane rather than the tab, which close-tab in the "
 "settings can bind, and Ctrl+Shift+O splits the pane rather than showing all "
@@ -825,13 +895,13 @@ msgstr ""
 "Ctrl+Shift+W закрывает панель, а не вкладку (для неё в параметрах есть close-"
 "tab), а Ctrl+Shift+O делит панель, а не показывает все вкладки"
 
-#: data/io.github.sachesi.caret.metainfo.xml:53
+#: data/io.github.sachesi.caret.metainfo.xml:70
 msgid "Tangent is now called Caret. Its settings start from the defaults."
 msgstr ""
 "Tangent теперь называется Caret. Параметры начинаются со значений по "
 "умолчанию."
 
-#: data/io.github.sachesi.caret.metainfo.xml:55
+#: data/io.github.sachesi.caret.metainfo.xml:72
 msgid ""
 "New tabs open in the folder of the current one, and in its Toolbox or "
 "Distrobox container, where the shell reports them"
@@ -839,7 +909,7 @@ msgstr ""
 "Новые вкладки открываются в папке текущей и в её контейнере Toolbox или "
 "Distrobox, если оболочка о них сообщает"
 
-#: data/io.github.sachesi.caret.metainfo.xml:56
+#: data/io.github.sachesi.caret.metainfo.xml:73
 msgid ""
 "Tabs show a running command, and a finished one or a notification in a tab "
 "that is not in view; Ctrl+Shift+Up and Down scroll between prompts"
@@ -848,21 +918,21 @@ msgstr ""
 "уведомление во вкладке, которая не на виду; Ctrl+Shift+Вверх и Вниз "
 "прокручивают между приглашениями"
 
-#: data/io.github.sachesi.caret.metainfo.xml:57
+#: data/io.github.sachesi.caret.metainfo.xml:74
 msgid "Tabs can be renamed from their context menu"
 msgstr "Вкладку можно переименовать из её контекстного меню"
 
-#: data/io.github.sachesi.caret.metainfo.xml:58
+#: data/io.github.sachesi.caret.metainfo.xml:75
 msgid "The title bar can be hidden, and is in full screen"
 msgstr "Заголовок окна можно скрыть, а в полноэкранном режиме он скрыт"
 
-#: data/io.github.sachesi.caret.metainfo.xml:59
+#: data/io.github.sachesi.caret.metainfo.xml:76
 msgid "Selecting with the mouse scrolls past the edge; Select All and Deselect"
 msgstr ""
 "Выделение мышью прокручивает текст за краем; «Выделить всё» и «Снять "
 "выделение»"
 
-#: data/io.github.sachesi.caret.metainfo.xml:60
+#: data/io.github.sachesi.caret.metainfo.xml:77
 msgid ""
 "The link under the pointer is underlined, and one a program broke into lines "
 "is followed"
@@ -870,7 +940,7 @@ msgstr ""
 "Ссылка под указателем подчёркивается, а ссылка, которую программа разбила на "
 "строки, прослеживается целиком"
 
-#: data/io.github.sachesi.caret.metainfo.xml:61
+#: data/io.github.sachesi.caret.metainfo.xml:78
 msgid ""
 "Symbols the font joins, such as -> and !=, are drawn joined, and a setting "
 "turns features of the font on and off"
@@ -878,7 +948,7 @@ msgstr ""
 "Символы, которые шрифт соединяет, например -> и !=, рисуются слитно, а "
 "параметр включает и выключает возможности шрифта"
 
-#: data/io.github.sachesi.caret.metainfo.xml:62
+#: data/io.github.sachesi.caret.metainfo.xml:79
 msgid ""
 "Settings for a command to run instead of the shell and for scrolling on "
 "output and on keystroke"
@@ -886,7 +956,7 @@ msgstr ""
 "Параметры для команды, запускаемой вместо оболочки, и для прокрутки при "
 "выводе и при нажатии клавиш"
 
-#: data/io.github.sachesi.caret.metainfo.xml:63
+#: data/io.github.sachesi.caret.metainfo.xml:80
 msgid ""
 "Pasting several lines asks first where they would run, and programs can be "
 "kept from notifying and from copying"
@@ -894,7 +964,7 @@ msgstr ""
 "Перед вставкой нескольких строк, которые были бы выполнены, задаётся вопрос, "
 "а программам можно запретить уведомления и копирование"
 
-#: data/io.github.sachesi.caret.metainfo.xml:69
+#: data/io.github.sachesi.caret.metainfo.xml:86
 msgid "The first release."
 msgstr "Первый выпуск."
 
@@ -1174,9 +1244,6 @@ msgstr "Первый выпуск."
 
 #~ msgid "Copying"
 #~ msgstr "Копирование"
-
-#~ msgid "Programs can put text on the clipboard, but never read it"
-#~ msgstr "Программы могут помещать текст в буфер обмена, но не читать его"
 
 #, rust-format
 #~ msgid "The terminal cannot be drawn: {reason}"
