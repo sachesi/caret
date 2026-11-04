@@ -396,7 +396,7 @@ dependencies = [
 
 [[package]]
 name = "caret"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -428,7 +428,7 @@ dependencies = [
 
 [[package]]
 name = "caret-protocol"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "libc",
  "thiserror",
@@ -436,7 +436,7 @@ dependencies = [
 
 [[package]]
 name = "caret-server"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "caret-protocol",
  "caret-term",
@@ -447,7 +447,7 @@ dependencies = [
 
 [[package]]
 name = "caret-term"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "unicode-segmentation",
  "unicode-width",
