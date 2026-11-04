@@ -99,6 +99,10 @@ const ZOOM_STEPS: i32 = 12;
 /// How long the window waits, before its first frame, for the desktop's preferences.
 const DESKTOP_WAIT: Duration = Duration::from_millis(250);
 
+/// How long after drawing on a new device the window ends rather than tries another, if
+/// drawing fails again.
+const RENEWED_RENDER_HOLDS: Duration = Duration::from_mins(1);
+
 /// Logical pixels between the window's edge and the cells.
 const PADDING: u32 = 6;
 
@@ -194,7 +198,7 @@ struct App {
     /// Ends first, letting go of the device before the surface goes.
     render: RenderThread,
     window: Window,
-    #[expect(dead_code, reason = "held so that the display outlives the device")]
+    /// Held so that the display outlives the device.
     connection: Connection,
     registry: RegistryState,
     compositor: CompositorState,
@@ -315,6 +319,10 @@ struct App {
     waiting: bool,
     /// The atlas whose entries the render thread has, and how many of them.
     sent_glyphs: (u64, usize),
+    /// Where a render thread tells the window of its frames.
+    render_told: calloop::channel::Sender<Rendered>,
+    /// When drawing last started again on a new device.
+    render_renewed: Option<Instant>,
     exit: bool,
     /// Tells screen readers what the window shows.
     reader: accesskit_unix::Adapter,
@@ -405,7 +413,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         gpu,
         connection.clone(),
         window.wl_surface().clone(),
-        rendered_sender,
+        rendered_sender.clone(),
     )
     .map_err(AppError::Render)?;
 
@@ -518,6 +526,8 @@ pub fn run(start: Start) -> Result<(), AppError> {
         rows_due: None,
         waiting: false,
         sent_glyphs: (0, 0),
+        render_told: rendered_sender,
+        render_renewed: None,
         exit: false,
         reader,
         listened: false,
@@ -1278,10 +1288,62 @@ impl App {
                 self.draw();
             }
             Rendered::Failed(error) => {
-                tracing::error!("drawing the window: {error}");
-                self.exit = true;
+                if !self.renew_render(&error) {
+                    tracing::error!("drawing the window: {error}");
+                    self.exit = true;
+                }
             }
         }
+    }
+
+    /// Draws on a new device after drawing failed, as it does once a suspend or a reset of
+    /// the GPU loses the device; whether it could. Once in [`RENEWED_RENDER_HOLDS`], so
+    /// that a device failing over and over ends the window.
+    #[expect(
+        unsafe_code,
+        reason = "Vulkan draws to the surface through its raw pointers"
+    )]
+    fn renew_render(&mut self, error: &str) -> bool {
+        if self
+            .render_renewed
+            .is_some_and(|renewed| renewed.elapsed() < RENEWED_RENDER_HOLDS)
+        {
+            return false;
+        }
+        tracing::warn!("drawing the window: {error}; starting again on a new device");
+        self.render.stop();
+        let display = self.connection.backend().display_ptr().cast();
+        let surface = self.window.wl_surface().id().as_ptr().cast();
+        // SAFETY: as for the first device, `App` holds the device, the window and the
+        // connection, and drops them in that order; the last device is gone.
+        let gpu = match unsafe { Gpu::new(display, surface) } {
+            Ok(gpu) => gpu,
+            Err(error) => {
+                tracing::error!("starting a new device: {error}");
+                return false;
+            }
+        };
+        let spawned = RenderThread::spawn(
+            gpu,
+            self.connection.clone(),
+            self.window.wl_surface().clone(),
+            self.render_told.clone(),
+        );
+        self.render = match spawned {
+            Ok(render) => render,
+            Err(error) => {
+                tracing::error!("starting to draw again: {error}");
+                return false;
+            }
+        };
+        self.render_renewed = Some(Instant::now());
+        // The new device has none of the glyphs or rows the last one was sent.
+        self.atlas = self.atlas.next();
+        self.refill_shown();
+        self.waiting = false;
+        self.dirty = true;
+        self.draw();
+        true
     }
 
     /// Hands the render thread a frame if one is due.
