@@ -80,8 +80,10 @@ send notifications themselves (OSC 9 and OSC 777), which show when their tab is 
 sight, and put text on the clipboard (OSC 52), though never read it;
 `program-notifications` and `program-clipboard` turn them off.
 
-Closing a tab, or a window, where something other than the shell is running in the
-foreground asks first.
+Closing a tab, or a window, where a program is running asks first: something other than
+the shell in the foreground, a program the tab was started with in place of the shell, or a
+job the shell stopped or runs in the background. A tab opened into a toolbox or distrobox
+container counts as its shell there.
 
 ## Panes
 

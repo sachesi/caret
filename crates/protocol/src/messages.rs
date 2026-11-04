@@ -175,7 +175,8 @@ pub enum Question {
         terminal: TerminalId,
         point: Point,
     },
-    /// The program in the foreground if it is not the one started.
+    /// A program that closing the terminal would stop: one in the foreground other than
+    /// the shell, the program the terminal was started with, or a job behind the prompt.
     Busy {
         terminal: TerminalId,
     },

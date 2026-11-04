@@ -143,6 +143,35 @@ fn program_name_of(group: u32) -> String {
     name.trim_end().to_owned()
 }
 
+/// Whether `name` is a shell's, as `/etc/shells` lists them.
+fn is_shell(name: &str) -> bool {
+    std::fs::read_to_string("/etc/shells").is_ok_and(|shells| {
+        shells
+            .lines()
+            .filter_map(|line| line.trim().rsplit('/').next())
+            .any(|shell| shell == name)
+    })
+}
+
+/// A live process of the session `leader` leads in a process group of its own: a job its
+/// shell stopped or left running behind the prompt, which hanging up ends.
+fn job_of(leader: u32) -> Option<u32> {
+    std::fs::read_dir("/proc")
+        .ok()?
+        .flatten()
+        .find_map(|entry| {
+            let process: u32 = entry.file_name().to_str()?.parse().ok()?;
+            let stat = std::fs::read_to_string(entry.path().join("stat")).ok()?;
+            // After the name, which may hold spaces and parentheses itself: the state, the
+            // parent, the process group and the session.
+            let mut fields = stat.get(stat.rfind(')')? + 2..)?.split(' ');
+            let state = fields.next()?;
+            let group: u32 = fields.nth(1)?.parse().ok()?;
+            let session: u32 = fields.next()?.parse().ok()?;
+            (session == leader && group != leader && state != "Z").then_some(process)
+        })
+}
+
 /// What the server's loop asks about a program that runs.
 struct Started {
     child: u32,
@@ -582,15 +611,18 @@ impl Terminal {
         });
     }
 
-    /// The name of the program in the foreground when it is not the one the terminal
-    /// started, the shell usually: something that closing would interrupt.
-    pub fn busy(&self) -> Option<String> {
+    /// The name of a program that closing would stop: one in the foreground other than
+    /// the shell the terminal started, the program it was started with unless that is a
+    /// shell, or a job the shell stopped or runs in the background. A program that took
+    /// the terminal into a container, `in_container`, counts as the shell it shows there.
+    pub fn busy(&self, in_container: bool) -> Option<String> {
         let started = self.started.get()?;
         let group = pty::foreground(started.controller.as_fd())?;
-        if group == started.child {
-            return None;
+        let name = program_name_of(group);
+        if group != started.child || (self.named_program && !in_container && !is_shell(&name)) {
+            return Some(name);
         }
-        Some(program_name_of(group))
+        job_of(started.child).map(program_name_of)
     }
 
     /// The name of the program in the foreground, unless it is an idle shell the terminal

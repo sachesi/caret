@@ -148,6 +148,13 @@ struct Entry {
     command_started: Option<Instant>,
 }
 
+impl Entry {
+    /// The program that closing the terminal would stop, as [`Terminal::busy`] tells it.
+    fn busy(&self) -> Option<String> {
+        self.terminal.as_ref()?.busy(!self.containers.is_empty())
+    }
+}
+
 pub struct Server {
     events: mpsc::Sender<Input>,
     sessions: BTreeMap<SessionId, Session>,
@@ -577,8 +584,8 @@ impl Server {
             .filter_map(|session| self.sessions.get(session))
             .flat_map(|session| &session.tabs)
             .flat_map(|tab| tab.root.panes())
-            .filter_map(|terminal| self.running(terminal))
-            .filter(|running| running.busy().is_some())
+            .filter_map(|terminal| self.terminals.get(&terminal))
+            .filter(|entry| entry.busy().is_some())
             .count();
         Answer::Programs {
             count: u32::try_from(count).unwrap_or(u32::MAX),
@@ -665,11 +672,11 @@ impl Server {
                 }
                 None => Answer::Gone,
             },
-            Question::Busy { terminal } => match self.running(terminal) {
-                Some(running) => Answer::Busy {
-                    program: running.busy(),
+            Question::Busy { terminal } => match self.terminals.get(&terminal) {
+                Some(entry) if entry.terminal.is_some() => Answer::Busy {
+                    program: entry.busy(),
                 },
-                None => Answer::Gone,
+                _ => Answer::Gone,
             },
             Question::Foreground { terminal } => self.foreground(terminal),
             Question::SessionOf { terminal } => self.session_of(terminal),
@@ -2041,6 +2048,68 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         assert_eq!(argv, ["sleep", "30"]);
+    }
+
+    /// What `Busy` answers for a terminal running `argv` once the answer is `wanted`, or
+    /// the last answer after a second of asking.
+    fn busy_once(argv: &[&str], wanted: Option<&str>) -> Option<String> {
+        let mut harness = harness();
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        let terminal = harness.open(session, argv);
+        let mut program = None;
+        for _ in 0..50 {
+            harness.request(Request::Ask {
+                id: 7,
+                question: Question::Busy { terminal },
+            });
+            let answer = harness.next(|message| matches!(message, Message::Answer { id: 7, .. }));
+            let Message::Answer {
+                answer: Answer::Busy { program: answered },
+                ..
+            } = answer
+            else {
+                panic!("{answer:?}");
+            };
+            program = answered;
+            if program.as_deref() == wanted {
+                break;
+            }
+            harness.reports();
+        }
+        program
+    }
+
+    #[test]
+    fn a_program_a_terminal_was_started_with_is_busy() {
+        assert_eq!(
+            busy_once(&["sleep", "30"], Some("sleep")).as_deref(),
+            Some("sleep")
+        );
+    }
+
+    #[test]
+    fn a_job_behind_the_prompt_is_busy() {
+        let job = "set -m; sleep 30 & while :; do read -r line; done";
+        assert_eq!(
+            busy_once(&["sh", "-c", job], Some("sleep")).as_deref(),
+            Some("sleep")
+        );
+    }
+
+    #[test]
+    fn a_tab_started_in_a_container_is_not_busy() {
+        // The shell inside reports the container it entered, as toolbox's profile does.
+        let entered = "printf '\\033]777;container;push;box;toolbox\\033\\\\'; exec sleep 30";
+        let idle = busy_once(&["sh", "-c", entered], Some("never"));
+        assert_eq!(idle, None);
+    }
+
+    #[test]
+    fn an_idle_shell_is_not_busy() {
+        // Long enough for a wrong answer to have shown itself.
+        let idle = busy_once(&["sh", "-c", "read -r line"], Some("never"));
+        assert_eq!(idle, None);
     }
 
     #[test]
