@@ -301,8 +301,12 @@ struct App {
     dirty: bool,
     /// The timer that ends a scroll left between two rows.
     glide_rest: Option<RegistrationToken>,
-    /// The timer that lets a frame go if the rows it waits for do not come.
-    rows_due: Option<RegistrationToken>,
+    /// The frame held back for rows asked for, by its number, until they come or a timer
+    /// lets it go.
+    rows_due: Option<u32>,
+    /// How many frames have been held back, to tell the current hold from an earlier one
+    /// whose timer still runs.
+    rows_holds: u32,
     /// A frame is with the render thread, which says when the compositor wants the next.
     waiting: bool,
     /// The atlas whose entries the render thread has, and how many of them.
@@ -507,6 +511,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         dirty: true,
         glide_rest: None,
         rows_due: None,
+        rows_holds: 0,
         waiting: false,
         sent_glyphs: (0, 0),
         exit: false,

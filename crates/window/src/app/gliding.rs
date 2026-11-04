@@ -158,15 +158,21 @@ impl App {
         if self.rows_due.is_some() {
             return;
         }
+        self.rows_holds = self.rows_holds.wrapping_add(1);
+        let hold = self.rows_holds;
+        // The timer is let run once the rows come: one taken out could have fired already,
+        // which the event loop warns of.
         let timer = self
             .events
-            .insert_source(Timer::from_duration(ROWS_DUE), |_, (), app| {
-                app.rows_due = None;
-                app.draw();
+            .insert_source(Timer::from_duration(ROWS_DUE), move |_, (), app| {
+                if app.rows_due == Some(hold) {
+                    app.rows_due = None;
+                    app.draw();
+                }
                 TimeoutAction::Drop
             });
         match timer {
-            Ok(timer) => self.rows_due = Some(timer),
+            Ok(_) => self.rows_due = Some(hold),
             Err(error) => tracing::warn!("timing the rows of a scroll: {error}"),
         }
     }
@@ -189,8 +195,8 @@ impl App {
             .values()
             .filter_map(|pane| pane.glide.as_ref())
             .any(Glide::is_waiting);
-        if !waiting && let Some(timer) = self.rows_due.take() {
-            self.events.remove(timer);
+        if !waiting {
+            self.rows_due = None;
         }
     }
 
