@@ -194,7 +194,12 @@ pub enum Input<'a> {
     Color(&'a [u8]),
     /// The terminal has answered all it was asked.
     Answered,
+    /// A paste starts, which runs up to [`PASTE_END`].
+    PasteStart,
 }
+
+/// Where a paste the terminal marks ends.
+pub const PASTE_END: &[u8] = b"\x1b[201~";
 
 /// The first input in `bytes`, and how many bytes it took; `enhanced` when the terminal
 /// was asked to write keys apart.
@@ -211,7 +216,9 @@ pub fn next(bytes: &[u8], enhanced: bool) -> (Input<'_>, usize) {
     }
     let length = sequence_length(bytes);
     let sequence = &bytes[..length];
-    let input = if let Some(mouse) = mouse(sequence) {
+    let input = if sequence == b"\x1b[200~" {
+        Input::PasteStart
+    } else if let Some(mouse) = mouse(sequence) {
         Input::Mouse(mouse)
     } else if matches!(sequence, b"\x1b[?997;1n" | b"\x1b[?997;2n") {
         Input::SchemeChanged
@@ -507,6 +514,7 @@ mod tests {
         };
         assert_eq!(next(b"\x1b[1;5Ax", false), (Input::Key(Key::Up, ctrl), 6));
         assert_eq!(next(b"\x1d", false), (Input::Control, 1));
+        assert_eq!(next(b"\x1b[200~text", false), (Input::PasteStart, 6));
         assert_eq!(next(b"\x1d", true), (Input::Bytes(b"\x1d"), 1));
         assert_eq!(next(b"\x1b[32;6u", true), (Input::Control, 7));
         let ctrl_c = Modifiers {

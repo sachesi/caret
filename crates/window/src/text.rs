@@ -88,9 +88,9 @@ pub fn run(session: SessionId) -> Result<(), String> {
     restore.before_a_panics_message();
     let _restore = restore;
     // The other screen, the cursor hidden until a pane shows its own, mouse reports while
-    // a button is held, and keys written apart where the terminal can.
+    // a button is held, pastes marked, and keys written apart where the terminal can.
     // Told when its colours go from dark to light or back.
-    print!("\x1b[?1049h\x1b[?25l\x1b[?1002h\x1b[?1006h\x1b[?2031h");
+    print!("\x1b[?1049h\x1b[?25l\x1b[?1002h\x1b[?1006h\x1b[?2004h\x1b[?2031h");
     if host.enhanced {
         print!("\x1b[>1u");
     }
@@ -135,7 +135,7 @@ impl Restore {
         } else {
             "\x1b[0 q"
         });
-        text.push_str("\x1b[?1006l\x1b[?1002l\x1b[0m\x1b[?25h\x1b[?1049l");
+        text.push_str("\x1b[?2004l\x1b[?1006l\x1b[?1002l\x1b[0m\x1b[?25h\x1b[?1049l");
         // Not `print!`, which panics when the terminal has gone.
         let mut out = io::stdout();
         let _ = out.write_all(text.as_bytes());
@@ -257,6 +257,8 @@ struct Client {
     enhanced: bool,
     /// The start of an escape sequence typed, waiting for the rest.
     typed_in_part: Vec<u8>,
+    /// What the terminal has given of a paste, until it says where the paste ends.
+    pasted: Option<Vec<u8>>,
     control: bool,
     zoomed: bool,
     asked: u32,
@@ -350,6 +352,7 @@ fn show(stream: &mut UnixStream, session: SessionId, host: Host) -> Result<(), S
         sizes: HashMap::new(),
         enhanced: host.enhanced,
         typed_in_part: Vec::new(),
+        pasted: None,
         session_name: None,
         session_color: None,
         config: Config::load(None),
@@ -658,6 +661,10 @@ impl Client {
     fn take_typed(&mut self, bytes: &[u8], wait: bool) -> bool {
         let mut rest = bytes;
         while !rest.is_empty() {
+            if self.pasted.is_some() {
+                rest = self.take_pasted(rest, wait);
+                continue;
+            }
             if wait && host::unfinished(rest) {
                 self.typed_in_part = rest.to_vec();
                 break;
@@ -672,6 +679,7 @@ impl Client {
                     let looks = look(&self.host);
                     self.send(&looks);
                 }
+                Input::PasteStart => self.pasted = Some(Vec::new()),
                 Input::Mouse(mouse) => self.mouse(mouse),
                 Input::Key(key, modifiers) if self.control => {
                     let bytes = encode::key(key, modifiers, Mode::default()).unwrap_or_default();
@@ -687,12 +695,47 @@ impl Client {
                 Input::Key(key, modifiers) => self.key(key, modifiers),
                 Input::Bytes(bytes) => {
                     if let Some(terminal) = self.focused() {
-                        self.input(terminal, bytes.to_vec(), true);
+                        self.input(terminal, bytes, true);
                     }
                 }
             }
         }
         true
+    }
+
+    /// Takes what `bytes` hold of the paste going on, up to its end, and gives what is left
+    /// after that. The end's first bytes closing them wait for the rest, while `wait`.
+    fn take_pasted<'a>(&mut self, bytes: &'a [u8], wait: bool) -> &'a [u8] {
+        let end = bytes
+            .windows(host::PASTE_END.len())
+            .position(|window| window == host::PASTE_END);
+        let pasted = self.pasted.get_or_insert_default();
+        if let Some(end) = end {
+            pasted.extend_from_slice(&bytes[..end]);
+            let text = self.pasted.take().unwrap_or_default();
+            self.paste(&text);
+            return &bytes[end + host::PASTE_END.len()..];
+        }
+        let held = if wait {
+            (1..host::PASTE_END.len())
+                .rev()
+                .find(|&length| bytes.ends_with(&host::PASTE_END[..length]))
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        let (text, rest) = bytes.split_at(bytes.len() - held);
+        pasted.extend_from_slice(text);
+        self.typed_in_part = rest.to_vec();
+        &[]
+    }
+
+    /// Gives the focused pane's program `text` as pasted, marked if it asked for that.
+    fn paste(&mut self, text: &[u8]) {
+        if let Some(terminal) = self.focused() {
+            let bracketed = self.mode(terminal).contains(Mode::BRACKETED_PASTE);
+            self.input(terminal, &encode::paste(text, bracketed), true);
+        }
     }
 
     fn focused(&self) -> Option<TerminalId> {
@@ -705,11 +748,11 @@ impl Client {
             .map_or(Mode::default(), |screen| screen.mode)
     }
 
-    fn input(&mut self, terminal: TerminalId, bytes: Vec<u8>, bottom: bool) {
-        if !bytes.is_empty() {
+    fn input(&mut self, terminal: TerminalId, bytes: &[u8], bottom: bool) {
+        for piece in bytes.chunks(crate::connection::INPUT_PIECE) {
             self.send(&Request::Input {
                 terminal,
-                bytes: Bytes(bytes),
+                bytes: Bytes(piece.to_vec()),
                 bottom,
             });
         }
@@ -726,7 +769,7 @@ impl Client {
         };
         let mode = self.mode(terminal);
         if let Some(bytes) = encode::key_event(key, modifiers, Press::Down, text.as_deref(), mode) {
-            self.input(terminal, bytes, true);
+            self.input(terminal, &bytes, true);
         }
     }
 
@@ -914,7 +957,7 @@ impl Client {
         );
         let reported = bytes.is_some();
         if let Some(bytes) = bytes {
-            self.input(terminal, bytes, false);
+            self.input(terminal, &bytes, false);
         }
         reported
     }
@@ -931,7 +974,7 @@ impl Client {
             // Programs on the alternate screen have no history to scroll: they get arrows.
             let key = if up { Key::Up } else { Key::Down };
             if let Some(bytes) = encode::key(key, Modifiers::default(), mode) {
-                self.input(terminal, bytes.repeat(LINES), false);
+                self.input(terminal, &bytes.repeat(LINES), false);
             }
         } else {
             let lines = LINES as i32;
