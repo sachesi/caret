@@ -99,7 +99,15 @@ impl Clipboard {
 impl App {
     /// Offers `text` as the clipboard, or as the primary selection.
     pub(super) fn copy(&mut self, text: String, primary: bool) {
-        let (qh, serial) = (&self.qh, self.serial);
+        // The compositor takes a selection only with a serial of input it sent lately: the
+        // later of the last press and the keys' coming to the window, past a wrap included.
+        let newer = self.entered_serial.wrapping_sub(self.serial).cast_signed() > 0;
+        let serial = if newer {
+            self.entered_serial
+        } else {
+            self.serial
+        };
+        let qh = &self.qh;
         let clipboard = &mut self.clipboard;
         if primary {
             let (Some(manager), Some(device)) =

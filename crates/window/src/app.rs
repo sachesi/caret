@@ -294,6 +294,9 @@ struct App {
     modifiers: Modifiers,
     /// The serial of the last key or button press, which taking a selection needs.
     serial: u32,
+    /// The serial of the keys' last coming to the window, which a program copying before
+    /// any press there offers its text with.
+    entered_serial: u32,
     blink: blink::Blink,
     pointer: pointer::Pointer,
     touch: touch::Touch,
@@ -502,6 +505,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         text_input: None,
         modifiers: Modifiers::default(),
         serial: 0,
+        entered_serial: 0,
         blink: blink::Blink::default(),
         pointer: pointer::Pointer::default(),
         touch: touch::Touch::default(),
@@ -1841,10 +1845,11 @@ impl KeyboardHandler for App {
         _: &QueueHandle<Self>,
         _: &wl_keyboard::WlKeyboard,
         _: &wl_surface::WlSurface,
-        _: u32,
+        serial: u32,
         _: &[u32],
         _: &[Keysym],
     ) {
+        self.entered_serial = serial;
         self.keys_here = true;
         if !self.focused {
             self.set_focus(true);
