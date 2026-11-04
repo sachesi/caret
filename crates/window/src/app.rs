@@ -4,8 +4,9 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::num::NonZeroU32;
-use std::os::unix::ffi::OsStringExt;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::process::CommandExt;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use caret_protocol::encode::{self, Modifiers, Press};
@@ -630,7 +631,7 @@ fn pane_jobs(
 /// Opens another window, a program of its own, which takes the focus with `token`.
 pub fn new_window(arguments: &[impl AsRef<OsStr>], token: Option<&str>) {
     let started = std::env::current_exe().and_then(|program| {
-        let mut command = std::process::Command::new(program);
+        let mut command = std::process::Command::new(on_disk(program));
         command.args(arguments).process_group(0);
         match token {
             Some(token) => command.env("XDG_ACTIVATION_TOKEN", token),
@@ -644,6 +645,15 @@ pub fn new_window(arguments: &[impl AsRef<OsStr>], token: Option<&str>) {
             std::thread::spawn(move || window.wait());
         }
         Err(error) => tracing::warn!("opening a window: {error}"),
+    }
+}
+
+/// Where the running program's file is now. Once an update has replaced it, the kernel
+/// names the old one's path with ` (deleted)` after it, and the new one is at the path.
+fn on_disk(program: PathBuf) -> PathBuf {
+    match program.as_os_str().as_bytes().strip_suffix(b" (deleted)") {
+        Some(path) => PathBuf::from(OsStr::from_bytes(path)),
+        None => program,
     }
 }
 
@@ -2030,3 +2040,20 @@ impl ProvidesRegistryState for App {
 
 delegate_registry!(App);
 delegate_dispatch2!(App);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_program_an_update_replaced_is_started_from_its_path() {
+        assert_eq!(
+            on_disk(PathBuf::from("/usr/bin/caret (deleted)")),
+            PathBuf::from("/usr/bin/caret")
+        );
+        assert_eq!(
+            on_disk(PathBuf::from("/usr/bin/caret")),
+            PathBuf::from("/usr/bin/caret")
+        );
+    }
+}
