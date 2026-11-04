@@ -315,7 +315,10 @@ impl App {
             return;
         };
         let (key, panes) = (tab.key, tab.root.panes());
-        self.closing_tab = Some(TabClosing {
+        if self.closing_tabs.iter().any(|closing| closing.key == key) {
+            return;
+        }
+        self.closing_tabs.push(TabClosing {
             key,
             left: panes.len(),
             program: None,
@@ -329,13 +332,14 @@ impl App {
     /// Counts a pane's answer to whether a program runs in it, and once every pane of
     /// the tab has answered, closes it or asks.
     pub(super) fn tab_busy(&mut self, key: TerminalId, answer: Answer) {
-        let Some(closing) = self
-            .closing_tab
-            .as_mut()
-            .filter(|closing| closing.key == key)
+        let Some(at) = self
+            .closing_tabs
+            .iter()
+            .position(|closing| closing.key == key)
         else {
             return;
         };
+        let closing = &mut self.closing_tabs[at];
         closing.left -= 1;
         if let Answer::Busy {
             program: Some(program),
@@ -346,8 +350,7 @@ impl App {
         if closing.left > 0 {
             return;
         }
-        let program = closing.program.take();
-        self.closing_tab = None;
+        let program = self.closing_tabs.remove(at).program;
         match program {
             Some(program) if self.tab_of(key).is_some() => {
                 let dialog = Dialog::new(
