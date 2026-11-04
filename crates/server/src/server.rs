@@ -678,7 +678,10 @@ impl Server {
                 },
                 _ => Answer::Gone,
             },
-            Question::Foreground { terminal } => self.foreground(terminal),
+            Question::Foreground { terminal } => {
+                self.answer_foreground(client, id, terminal);
+                return;
+            }
             Question::SessionOf { terminal } => self.session_of(terminal),
             Question::ProgramNames { session } => self.program_names(session),
             Question::Directory { terminal } => match self.terminals.get(&terminal) {
@@ -748,16 +751,41 @@ impl Server {
         Answer::Session { session }
     }
 
-    fn foreground(&self, terminal: TerminalId) -> Answer {
-        match self.running(terminal) {
-            Some(running) => Answer::Command {
-                command: Command {
-                    argv: running.foreground_command(),
-                    ..Command::default()
-                },
+    /// Answers `client` with the command line of the program in `terminal`'s foreground,
+    /// none for its shell. Reading it waits on the program's memory, which a program stuck
+    /// on a file system that stopped answering holds, so it is read on a thread of its own:
+    /// the input and frames of every terminal go through this loop.
+    fn answer_foreground(&self, client: ClientId, id: u32, terminal: TerminalId) {
+        let Some(writer) = self.clients.get(&client).map(|state| state.writer.clone()) else {
+            return;
+        };
+        let command = |argv| Answer::Command {
+            command: Command {
+                argv,
+                ..Command::default()
             },
+        };
+        let answer = match self.running(terminal).map(Terminal::foreground_process) {
             None => Answer::Gone,
-        }
+            Some(None) => command(Vec::new()),
+            Some(Some(process)) => {
+                let answered = writer.clone();
+                let spawned = std::thread::Builder::new()
+                    .name("command line".to_owned())
+                    .spawn(move || {
+                        let answer = command(terminal::command_line(process));
+                        answered.send(encoded(&Message::Answer { id, answer }));
+                    });
+                match spawned {
+                    Ok(_) => return,
+                    Err(error) => {
+                        tracing::warn!("starting a thread for a command line: {error}");
+                        Answer::Gone
+                    }
+                }
+            }
+        };
+        writer.send(encoded(&Message::Answer { id, answer }));
     }
 
     /// Answers `client` with what `answer` makes of where `entry`'s shell is. Whether a
