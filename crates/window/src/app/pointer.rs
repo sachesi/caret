@@ -70,8 +70,9 @@ pub struct Pointer {
     pub(super) dragged_row: Option<(TerminalId, (f64, f64), bool)>,
     /// The dividers between panes held by the left button, which follow the pointer.
     dividing: Vec<Divider>,
-    /// The pane whose room the pointer is in, as `scroll-bars` at `"hover"` shows its bar.
-    pub(super) over_pane: Option<TerminalId>,
+    /// The pane whose scroll bar the pointer is over, which `scroll-bars` at `"hover"`
+    /// shows.
+    pub(super) bar_hovered: Option<TerminalId>,
     /// The scroll bar held by the left button, whose thumb follows the pointer.
     pub(super) held_bar: Option<HeldBar>,
     /// The pane held by the left button, to move where it is let go of.
@@ -686,7 +687,7 @@ impl App {
         if let Some(terminal) = self.terminal() {
             self.unhover(terminal);
         }
-        self.pointer_over_pane(None);
+        self.hover_bar(None);
         self.show_link();
         self.draw();
     }
@@ -711,7 +712,7 @@ impl App {
             self.hover();
         } else {
             self.hover();
-            self.follow_pane_under_pointer();
+            self.follow_bar_under_pointer();
             self.hover_cell();
             if self.chrome.hovered.is_none() {
                 self.moved(position);
@@ -824,7 +825,7 @@ impl PointerHandler for App {
                     self.pointer.shown = None;
                     self.chrome.hovered = self.part();
                     self.follow_submenu();
-                    self.follow_pane_under_pointer();
+                    self.follow_bar_under_pointer();
                     self.hover_cell();
                 }
                 PointerEventKind::Leave { .. } => {

@@ -49,7 +49,7 @@ pub enum ColorScheme {
 pub enum ScrollBars {
     Hidden,
     Visible,
-    /// While the pointer is over the pane.
+    /// While the pointer is on the bar, at the pane's right edge.
     Hover,
 }
 
@@ -559,7 +559,7 @@ const STARTER: &str = r##"# Caret's settings. Take the # off a setting to change
 # Whether the history glides under the wheel, a touchpad and a finger, not by whole lines.
 #smooth-scroll = false
 # When each pane with history to scroll shows its scroll bar: "hidden", "visible", or
-# "hover" for while the pointer is over the pane.
+# "hover" for while the pointer is on the bar, at the pane's right edge.
 #scroll-bars = "hidden"
 # Whether programs may put text on the clipboard, and show notifications while
 # their tab is out of sight.
