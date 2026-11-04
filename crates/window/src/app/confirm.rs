@@ -17,7 +17,8 @@ const WEBSITE: &str = "https://github.com/sachesi/caret";
 pub enum Confirm {
     CloseTab(TerminalId),
     ClosePane(TerminalId),
-    CloseWindow,
+    /// Closing the window, which leaves running the sessions other clients show.
+    CloseWindow(Vec<SessionId>),
     Paste {
         terminal: TerminalId,
         text: Vec<u8>,
@@ -31,10 +32,12 @@ pub enum Confirm {
     About,
 }
 
-/// The panes asked whether a program runs in them before the window closes.
+/// The panes asked whether a program runs in them before the window closes, and the
+/// server which sessions other clients show too: those stay running.
 pub struct Closing {
     left: usize,
-    busy: u32,
+    busy: Vec<TerminalId>,
+    shown_elsewhere: Vec<SessionId>,
 }
 
 /// The panes of a tab asked whether a program runs in them before it closes.
@@ -63,7 +66,7 @@ impl App {
             .dialog
             .as_ref()
             .is_some_and(|dialog| dialog.accepts(index));
-        if index > 0 && !accepts && matches!(self.confirming, Some(Confirm::CloseWindow)) {
+        if index > 0 && !accepts && matches!(self.confirming, Some(Confirm::CloseWindow(_))) {
             self.respond(false);
             self.end(true);
             return;
@@ -87,7 +90,9 @@ impl App {
                 self.server.send(&Request::CloseTab { terminal });
             }
             Some(Confirm::ClosePane(terminal)) if accepted => self.end_pane(terminal),
-            Some(Confirm::CloseWindow) if accepted => self.end(false),
+            Some(Confirm::CloseWindow(shown_elsewhere)) if accepted => {
+                self.end_keeping(false, &shown_elsewhere);
+            }
             Some(Confirm::Paste { terminal, text }) if accepted => {
                 self.server
                     .input(terminal, &encode::paste(&text, false), true);
@@ -396,8 +401,8 @@ impl App {
         }
     }
 
-    /// Closes the window, asking first if programs run in its tabs and closing would
-    /// stop them.
+    /// Closes the window, asking first if closing would stop programs, or end a session
+    /// that is named or one of several. Sessions other clients show stay running.
     pub(super) fn close(&mut self) {
         if self.closing.is_some() {
             return;
@@ -408,33 +413,73 @@ impl App {
         }
         let panes: Vec<TerminalId> = self.tabs.iter().flat_map(|tab| tab.root.panes()).collect();
         self.closing = Some(Closing {
-            left: panes.len(),
-            busy: 0,
+            left: panes.len() + 1,
+            busy: Vec::new(),
+            shown_elsewhere: Vec::new(),
         });
         for terminal in panes {
             let id = self.server.ask(Question::Busy { terminal });
-            self.asked.insert(id, Asked::Closing);
+            self.asked.insert(id, Asked::Closing(terminal));
         }
+        let id = self.server.ask(Question::Sessions);
+        self.asked.insert(id, Asked::ClosingShared);
     }
 
-    /// Counts a pane's answer to whether a program runs in it, and once every pane has
-    /// answered, closes the window or asks.
-    pub(super) fn closing_busy(&mut self, answer: &Answer) {
+    /// Counts a pane's answer to whether a program runs in it.
+    pub(super) fn closing_busy(&mut self, terminal: TerminalId, answer: &Answer) {
+        let Some(closing) = &mut self.closing else {
+            return;
+        };
+        if let Answer::Busy { program: Some(_) } = answer {
+            closing.busy.push(terminal);
+        }
+        self.closing_answered();
+    }
+
+    /// Notes the window's sessions that another client shows too.
+    pub(super) fn closing_shared(&mut self, answer: &Answer) {
+        let Some(closing) = &mut self.closing else {
+            return;
+        };
+        if let Answer::Sessions { sessions } = answer {
+            closing.shown_elsewhere = sessions
+                .iter()
+                .filter(|info| info.clients > 1 && self.sessions.contains(&info.session))
+                .map(|info| info.session)
+                .collect();
+        }
+        self.closing_answered();
+    }
+
+    /// Once every question is answered, closes the window or asks.
+    fn closing_answered(&mut self) {
         let Some(closing) = &mut self.closing else {
             return;
         };
         closing.left -= 1;
-        if let Answer::Busy { program: Some(_) } = answer {
-            closing.busy += 1;
-        }
         if closing.left > 0 {
             return;
         }
-        let busy = closing.busy;
-        self.closing = None;
-        let several = self.sessions.len() > 1;
-        let named = self
+        let Some(closing) = self.closing.take() else {
+            return;
+        };
+        let shown_elsewhere = closing.shown_elsewhere;
+        let ending: Vec<SessionId> = self
             .sessions
+            .iter()
+            .copied()
+            .filter(|session| !shown_elsewhere.contains(session))
+            .collect();
+        let busy = closing
+            .busy
+            .iter()
+            .filter(|&&terminal| {
+                self.tab_of(terminal)
+                    .is_some_and(|index| ending.contains(&self.tabs[index].session))
+            })
+            .count() as u32;
+        let several = ending.len() > 1;
+        let named = ending
             .iter()
             .find_map(|session| self.session_names.get(session).cloned());
         let body = if busy > 0 {
@@ -445,7 +490,7 @@ impl App {
                 &[("count", &busy.to_string())],
             )
         } else if several {
-            let count = self.sessions.len() as u32;
+            let count = ending.len() as u32;
             ngettext_f(
                 "{count} session will end with this window.",
                 "{count} sessions will end with this window.",
@@ -458,7 +503,7 @@ impl App {
                 &[("session", &name)],
             )
         } else {
-            self.end(false);
+            self.end_keeping(false, &shown_elsewhere);
             return;
         };
         let close = if several {
@@ -470,7 +515,7 @@ impl App {
         let detach = gettext("Detach");
         let mut dialog = Dialog::new(&gettext("Close Window?"), &body, [&cancel, &close]);
         dialog.responses.insert(1, detach);
-        self.confirm(dialog, Confirm::CloseWindow);
+        self.confirm(dialog, Confirm::CloseWindow(shown_elsewhere));
     }
 
     /// Pastes `text` into `terminal`, asking first if the program there would run each

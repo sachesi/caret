@@ -169,8 +169,12 @@ enum Asked {
     /// Whether a program runs in a pane of the tab with this key, to close it or ask
     /// first.
     TabBusy(TerminalId),
-    /// Whether a program runs in one of the tabs, to close the window or ask first.
-    Closing,
+    /// Whether a program runs in this pane of the window's, to close the window or ask
+    /// first.
+    Closing(TerminalId),
+    /// The sessions, to leave running those another client shows too when the window
+    /// closes.
+    ClosingShared,
     /// The link where the terminal's menu opens, at this point of the window.
     Menu((f32, f32)),
     /// The sessions, to show those no window shows.
@@ -940,7 +944,8 @@ impl App {
             }
             (Some(Asked::Busy(terminal)), answer) => self.busy(terminal, answer),
             (Some(Asked::TabBusy(key)), answer) => self.tab_busy(key, answer),
-            (Some(Asked::Closing), answer) => self.closing_busy(&answer),
+            (Some(Asked::Closing(terminal)), answer) => self.closing_busy(terminal, &answer),
+            (Some(Asked::ClosingShared), answer) => self.closing_shared(&answer),
             (Some(Asked::Menu(at)), Answer::Link { uri }) => self.terminal_menu(at, uri),
             (Some(Asked::Menu(at)), _) => self.terminal_menu(at, None),
             (Some(Asked::DetachedHint), Answer::Sessions { sessions }) => {
@@ -1084,13 +1089,18 @@ impl App {
     /// Ends the window, and its session unless `detach` keeps it running for another
     /// window to show.
     fn end(&mut self, detach: bool) {
+        self.end_keeping(detach, &[]);
+    }
+
+    /// Closes the window as `end` does, leaving the sessions in `shown_elsewhere` running.
+    fn end_keeping(&mut self, detach: bool, shown_elsewhere: &[SessionId]) {
         WindowState {
             size: self.floating_size,
             maximized: self.chrome.maximized,
         }
         .save();
         for session in self.sessions.clone() {
-            if detach {
+            if detach || shown_elsewhere.contains(&session) {
                 self.leave_session(session);
             } else {
                 self.server.send(&Request::CloseSession { session });

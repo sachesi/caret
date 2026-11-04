@@ -109,8 +109,10 @@ Open All Detached in the Sessions list, or
 `caret --attach`, opens a window for each detached one, on the tab it showed and with its
 profile. A window that crashes or is
 killed is detached the same way. With `close-detaches`, closing a window detaches it
-too; otherwise closing it ends its programs, as closing a tab does. A window with a program
-running, with several sessions or with a named one asks first, and offers to detach instead.
+too; otherwise closing it ends its programs, as closing a tab does, except in a session
+another window or `caret session attach` also shows, which goes on there. A window with a
+program running, with several sessions or with a named one asks first, and offers to detach
+instead.
 
 Sessions… in the main menu (Ctrl+Shift+S) lists them by where they are: in this window, in
 others, or detached, with New Session last. A click or Enter adds a session to the window
