@@ -610,6 +610,7 @@ impl App {
             // as after a typed space.
             crate::timings::output();
             self.grid.apply(frame, self.atlas.lookup(&mut self.fonts));
+            self.take_due_dark();
         } else {
             pane.grid.apply(frame, self.atlas.lookup(&mut self.fonts));
         }
