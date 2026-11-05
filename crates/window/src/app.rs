@@ -11,8 +11,8 @@ use std::time::{Duration, Instant};
 
 use caret_protocol::encode::{self, Modifiers, Press};
 use caret_protocol::{
-    Answer, Bytes, Command, Message, Options, Question, Request, Scroll, Select, SessionId,
-    Size, TerminalId,
+    Answer, Bytes, Command, Message, Options, Question, Request, Rgb, Scroll, Select,
+    SessionId, Size, TerminalId,
 };
 use gettextrs::gettext;
 use smithay_client_toolkit::compositor::{
@@ -20,6 +20,7 @@ use smithay_client_toolkit::compositor::{
 };
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::calloop::generic::Generic;
+use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::{
     self, EventLoop, Interest, LoopHandle, Mode, PostAction, RegistrationToken,
 };
@@ -102,6 +103,10 @@ const ZOOM_STEPS: i32 = 12;
 /// session can take more than a second on a slow machine; a missing one answers at once,
 /// and only one that hangs holds every window this long.
 const DESKTOP_WAIT: Duration = Duration::from_secs(3);
+
+/// How long the bars keep their style for the terminal's frame in new colours, which a
+/// program that set a background of its own never sends.
+const DARK_DUE: Duration = Duration::from_millis(100);
 
 /// How long after drawing on a new device the window ends rather than tries another, if
 /// drawing fails again.
@@ -320,6 +325,9 @@ struct App {
     /// The frame held back for rows asked for, by its number, until they come or a timer
     /// lets it go.
     rows_due: Option<u32>,
+    /// The style the bars take once the focused terminal's colours change from the
+    /// background given, so that the two change in one frame.
+    dark_due: Option<(bool, Rgb)>,
     /// How many frames have been held back, to tell the current hold from an earlier one
     /// whose timer still runs.
     rows_holds: u32,
@@ -543,6 +551,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
         dirty: true,
         glide_rest: None,
         rows_due: None,
+        dark_due: None,
         rows_holds: 0,
         waiting: false,
         sent_glyphs: (0, 0),
@@ -1100,14 +1109,56 @@ impl App {
         // Read again, as a scheme's file may have changed without the settings.
         let palette = palette(&self.config, &self.desktop);
         let look = look(&self.config, &palette);
+        let recolored = palette.background != self.palette.background;
         if look != before.1 || palette != self.palette {
             self.palette = palette;
             self.server.send(&look);
         }
-        self.chrome.dark = self.config.dark(self.desktop.dark);
+        let dark = self.config.dark(self.desktop.dark);
+        if recolored && !self.grid.cells.is_empty() {
+            self.await_dark(dark);
+        } else {
+            if recolored {
+                self.grid.background = self.palette.background;
+            }
+            self.chrome.dark = dark;
+        }
         self.fit();
         self.dirty = true;
         self.draw();
+    }
+
+    /// Gives the bars the `dark` style or not once the focused terminal's frame in the
+    /// palette's colours comes, or a while later.
+    fn await_dark(&mut self, dark: bool) {
+        if self.dark_due.is_none() {
+            let timer = self
+                .events
+                .insert_source(Timer::from_duration(DARK_DUE), |_, (), app| {
+                    if let Some((dark, _)) = app.dark_due.take() {
+                        app.chrome.dark = dark;
+                        app.dirty = true;
+                        app.draw();
+                    }
+                    TimeoutAction::Drop
+                });
+            if let Err(error) = timer {
+                tracing::warn!("timing the window's change of style: {error}");
+                self.chrome.dark = dark;
+                return;
+            }
+        }
+        self.dark_due = Some((dark, self.grid.background));
+    }
+
+    /// Gives the bars the style they wait for once the focused terminal's colours changed.
+    fn take_due_dark(&mut self) {
+        if let Some((dark, background)) = self.dark_due
+            && self.grid.background != background
+        {
+            self.chrome.dark = dark;
+            self.dark_due = None;
+        }
     }
 
     /// Loads the font the settings or the desktop name at the window's scale, among the
