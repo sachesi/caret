@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: caret 0.3.1\n"
+"Project-Id-Version: caret 0.3.2\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/caret/issues\n"
-"POT-Creation-Date: 2026-11-04 22:13+0200\n"
+"POT-Creation-Date: 2026-11-05 09:20+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,15 +18,15 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#: crates/window/src/app.rs:762
+#: crates/window/src/app.rs:786
 msgid "The text is too long to paste"
 msgstr ""
 
-#: crates/window/src/app.rs:806
+#: crates/window/src/app.rs:830
 msgid "This terminal could not run its program"
 msgstr ""
 
-#: crates/window/src/app.rs:1036
+#: crates/window/src/app.rs:1060
 #, rust-format
 msgid "The settings file cannot be read and is not used: {why}"
 msgstr ""
@@ -600,11 +600,11 @@ msgstr ""
 msgid "Showing sessions together needs a newer terminal server"
 msgstr ""
 
-#: crates/window/src/app/tabs.rs:825
+#: crates/window/src/app/tabs.rs:826
 msgid "Splitting needs a newer terminal server"
 msgstr ""
 
-#: crates/window/src/app/tabs.rs:833
+#: crates/window/src/app/tabs.rs:834
 msgid "This tab cannot be split any further"
 msgstr ""
 
@@ -727,60 +727,76 @@ msgid "sachesi"
 msgstr ""
 
 #: data/io.github.sachesi.caret.metainfo.xml:38
-msgid "Fixes for closing, copying and drawing."
+msgid "Fixes for the window's colours."
 msgstr ""
 
 #: data/io.github.sachesi.caret.metainfo.xml:40
+msgid ""
+"A window opened on a dark desktop no longer flashes light while the settings "
+"portal starts, as for the first window after login"
+msgstr ""
+
+#: data/io.github.sachesi.caret.metainfo.xml:41
+msgid ""
+"The header bar and the terminal change together when the style switches "
+"between light and dark"
+msgstr ""
+
+#: data/io.github.sachesi.caret.metainfo.xml:47
+msgid "Fixes for closing, copying and drawing."
+msgstr ""
+
+#: data/io.github.sachesi.caret.metainfo.xml:49
 msgid ""
 "Closing a tab, a pane or a window asks first when it would end a program the "
 "tab was started with, or a job stopped or running in the background"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:41
+#: data/io.github.sachesi.caret.metainfo.xml:50
 msgid ""
 "Closing a window leaves running the sessions another window or caret session "
 "attach shows"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:42
+#: data/io.github.sachesi.caret.metainfo.xml:51
 msgid "Closing several tabs in quick succession closes all of them"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:43
+#: data/io.github.sachesi.caret.metainfo.xml:52
 msgid "A scroll bar set to show on hover shows only with the pointer on it"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:44
+#: data/io.github.sachesi.caret.metainfo.xml:53
 msgid ""
 "Programs can copy to the clipboard in a window before any key or click in it"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:45
+#: data/io.github.sachesi.caret.metainfo.xml:54
 msgid "New windows open after an update replaced Caret"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:46
+#: data/io.github.sachesi.caret.metainfo.xml:55
 msgid ""
 "A window keeps drawing after the GPU is reset or lost, as after a suspend"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:47
+#: data/io.github.sachesi.caret.metainfo.xml:56
 msgid ""
 "caret session attach takes a paste as one paste, and no longer types out "
 "mouse reports cut in two"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:48
+#: data/io.github.sachesi.caret.metainfo.xml:57
 msgid "The window size is kept when windows close together, as at logout"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:49
+#: data/io.github.sachesi.caret.metainfo.xml:58
 msgid ""
 "Saving a layout no longer freezes every terminal while a program is stuck on "
 "an unresponsive file system"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:55
+#: data/io.github.sachesi.caret.metainfo.xml:64
 msgid ""
 "Caret is written anew: programs run in a background server and output goes "
 "through a terminal emulator of its own, drawn with Vulkan and without GTK. "
@@ -788,105 +804,105 @@ msgid ""
 "config.toml and start from the defaults."
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:57
+#: data/io.github.sachesi.caret.metainfo.xml:66
 msgid ""
 "Programs keep running after a window is detached, and can be attached to "
 "again from another window, over ssh or from a console"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:58
+#: data/io.github.sachesi.caret.metainfo.xml:67
 msgid ""
 "Sessions: several can be shown in one window, named, given a colour, listed, "
 "and managed with caret session"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:59
+#: data/io.github.sachesi.caret.metainfo.xml:68
 msgid ""
 "Tabs split into panes, which can be swapped, moved, resized and zoomed by "
 "key and mouse; split presets lay out a tab from a file"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:60
+#: data/io.github.sachesi.caret.metainfo.xml:69
 msgid ""
 "Settings, colour schemes and presets are files that apply as soon as they "
 "are saved, and any key can be rebound"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:61
+#: data/io.github.sachesi.caret.metainfo.xml:70
 msgid ""
 "Scrolling moves by the pixel, with a scroll bar along each pane and a "
 "setting for how fast the wheel and the touchpad go"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:62
+#: data/io.github.sachesi.caret.metainfo.xml:71
 msgid "Text stays sharp at fractional scales"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:63
+#: data/io.github.sachesi.caret.metainfo.xml:72
 msgid ""
 "Scrolling, clicking and menus work with a finger, screen readers are told "
 "what the window shows, and shell completions are included"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:64
+#: data/io.github.sachesi.caret.metainfo.xml:73
 msgid ""
 "Ctrl+Shift+W closes the pane rather than the tab, which close-tab in the "
 "settings can bind, and Ctrl+Shift+O splits the pane rather than showing all "
 "tabs"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:70
+#: data/io.github.sachesi.caret.metainfo.xml:79
 msgid "Tangent is now called Caret. Its settings start from the defaults."
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:72
+#: data/io.github.sachesi.caret.metainfo.xml:81
 msgid ""
 "New tabs open in the folder of the current one, and in its Toolbox or "
 "Distrobox container, where the shell reports them"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:73
+#: data/io.github.sachesi.caret.metainfo.xml:82
 msgid ""
 "Tabs show a running command, and a finished one or a notification in a tab "
 "that is not in view; Ctrl+Shift+Up and Down scroll between prompts"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:74
+#: data/io.github.sachesi.caret.metainfo.xml:83
 msgid "Tabs can be renamed from their context menu"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:75
+#: data/io.github.sachesi.caret.metainfo.xml:84
 msgid "The title bar can be hidden, and is in full screen"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:76
+#: data/io.github.sachesi.caret.metainfo.xml:85
 msgid "Selecting with the mouse scrolls past the edge; Select All and Deselect"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:77
+#: data/io.github.sachesi.caret.metainfo.xml:86
 msgid ""
 "The link under the pointer is underlined, and one a program broke into lines "
 "is followed"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:78
+#: data/io.github.sachesi.caret.metainfo.xml:87
 msgid ""
 "Symbols the font joins, such as -> and !=, are drawn joined, and a setting "
 "turns features of the font on and off"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:79
+#: data/io.github.sachesi.caret.metainfo.xml:88
 msgid ""
 "Settings for a command to run instead of the shell and for scrolling on "
 "output and on keystroke"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:80
+#: data/io.github.sachesi.caret.metainfo.xml:89
 msgid ""
 "Pasting several lines asks first where they would run, and programs can be "
 "kept from notifying and from copying"
 msgstr ""
 
-#: data/io.github.sachesi.caret.metainfo.xml:86
+#: data/io.github.sachesi.caret.metainfo.xml:95
 msgid "The first release."
 msgstr ""

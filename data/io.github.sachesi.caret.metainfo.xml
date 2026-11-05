@@ -33,6 +33,15 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.2" date="2026-11-05">
+      <description>
+        <p>Fixes for the window's colours.</p>
+        <ul>
+          <li>A window opened on a dark desktop no longer flashes light while the settings portal starts, as for the first window after login</li>
+          <li>The header bar and the terminal change together when the style switches between light and dark</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.3.1" date="2026-11-04">
       <description>
         <p>Fixes for closing, copying and drawing.</p>
