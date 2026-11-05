@@ -96,8 +96,12 @@ const DEFAULT_CELLS: (u32, u32) = (80, 24);
 const ZOOM: f32 = 1.1;
 const ZOOM_STEPS: i32 = 12;
 
-/// How long the window waits, before its first frame, for the desktop's preferences.
-const DESKTOP_WAIT: Duration = Duration::from_millis(250);
+/// How long the window waits, before its first frame, for the desktop's preferences,
+/// from when it starts reading them. Without them it is drawn in the light style, so a
+/// window on a dark desktop flashes light if they come later. A portal starting with the
+/// session can take more than a second on a slow machine; a missing one answers at once,
+/// and only one that hangs holds every window this long.
+const DESKTOP_WAIT: Duration = Duration::from_secs(3);
 
 /// How long after drawing on a new device the window ends rather than tries another, if
 /// drawing fails again.
@@ -394,6 +398,7 @@ pub fn run(start: Start) -> Result<(), AppError> {
     let shell = XdgShell::bind(&globals, &qh)?;
     let (mut server, received) = connection::Connection::open(crate::APP_ID)?;
     let (desktop_changes, desktop_changed) = calloop::channel::channel();
+    let reading = Instant::now();
     let first_desktop = desktop::follow(desktop_changes);
     let profile = start.profile.clone();
     let config = Config::load(profile.as_deref());
@@ -421,7 +426,17 @@ pub fn run(start: Start) -> Result<(), AppError> {
     )
     .map_err(AppError::Render)?;
 
-    let desktop = first_desktop.recv_timeout(DESKTOP_WAIT).unwrap_or_default();
+    let desktop = match first_desktop.recv_timeout(DESKTOP_WAIT.saturating_sub(reading.elapsed())) {
+        Ok(desktop) => desktop,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            tracing::warn!(
+                "the settings portal did not answer within {DESKTOP_WAIT:?}: the window opens \
+                 in the light style until it does"
+            );
+            Desktop::default()
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Desktop::default(),
+    };
     let installed = finding
         .ok()
         .and_then(|finding| finding.join().ok())
