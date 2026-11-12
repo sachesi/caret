@@ -1156,13 +1156,7 @@ impl Server {
             return;
         };
         tab.root = root;
-        let Some(tab) = self.tab_state(place) else {
-            return;
-        };
-        let layout = Self::layout(place.0, tab);
-        self.broadcast_versions(place.0, None, |version| {
-            (version >= PANES).then(|| layout.clone())
-        });
+        self.relaid(place, terminal);
         for (terminal, failure) in started {
             if let Some(title) = self
                 .terminals
@@ -2699,6 +2693,58 @@ mod tests {
             })
             .collect();
         assert_eq!(tabs, [(true, first), (true, second), (false, first)]);
+        harness.request(Request::CloseSession { session });
+    }
+
+    #[test]
+    fn a_client_from_before_panes_sees_a_tab_laid_out_by_a_plan_as_its_new_first_pane() {
+        const OLDER: ClientId = ClientId(2);
+        let mut harness = harness();
+        let (writer, older) = outbox();
+        harness.server.handle(Input::Connected {
+            client: OLDER,
+            version: 1,
+            writer,
+        });
+        let session = harness.new_session();
+        harness.request(Request::Attach { session });
+        harness
+            .server
+            .handle(Input::Request(OLDER, Request::Attach { session }));
+        let kept = harness.open(session, &["sh", "-c", "sleep 30"]);
+        harness.request(Request::Ask {
+            id: 5,
+            question: Question::Arrange {
+                terminal: kept,
+                plan: Plan::Split {
+                    vertical: true,
+                    share: 5000,
+                    first: Box::new(Plan::Run {
+                        command: Command {
+                            argv: vec!["sleep".to_owned(), "30".to_owned()],
+                            ..Command::default()
+                        },
+                        size: SIZE,
+                    }),
+                    second: Box::new(Plan::Kept),
+                },
+            },
+        });
+        let first = harness.panes()[0];
+        assert_ne!(first, kept);
+        assert!(harness.server.terminals[&first].views.contains_key(&OLDER));
+        assert!(!harness.server.terminals[&kept].views.contains_key(&OLDER));
+        let tabs: Vec<(bool, TerminalId)> = older
+            .try_iter()
+            .filter_map(|bytes| {
+                match caret_protocol::receive::<Message>(&mut bytes.as_slice()).ok()?? {
+                    Message::TabOpened { tab, .. } => Some((true, tab.terminal)),
+                    Message::TabClosed { terminal, .. } => Some((false, terminal)),
+                    _ => None,
+                }
+            })
+            .collect();
+        assert_eq!(tabs, [(true, kept), (true, first), (false, kept)]);
         harness.request(Request::CloseSession { session });
     }
 
