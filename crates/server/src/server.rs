@@ -2993,6 +2993,29 @@ mod tests {
                 assert!(server.sessions.contains_key(session), "seed {seed}");
             }
         }
+        // Each client sees the panes of the sessions it shows, as far as its version
+        // knows panes, and nothing else.
+        for (terminal, entry) in &server.terminals {
+            let Some(session) = server.sessions.get(&entry.session) else {
+                continue;
+            };
+            let tab = session.tabs.iter().find(|tab| tab.root.contains(*terminal));
+            for client in &session.clients {
+                let version = server.version(*client);
+                let shown = tab.is_some_and(|tab| tab.shown(version).contains(terminal));
+                assert_eq!(
+                    entry.views.contains_key(client),
+                    shown,
+                    "seed {seed}: {client:?} sees {terminal:?}"
+                );
+            }
+            for client in entry.views.keys() {
+                assert!(
+                    session.clients.contains(client),
+                    "seed {seed}: {client:?} sees {terminal:?} of a session it left"
+                );
+            }
+        }
     }
 
     #[test]
