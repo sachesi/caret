@@ -5,7 +5,7 @@
 
 Name:           caret
 # Copr's script for the package sets Version to the tag it builds.
-Version:        0.3.2
+Version:        0.3.3
 Release:        1%{?dist}
 Summary:        GPU-rendered terminal for Wayland
 
