@@ -1530,11 +1530,16 @@ impl Server {
             });
             return;
         }
-        let old_clients = self
+        let mut old_clients = self
             .sessions
             .get(&from.0)
             .map(|session| session.clients.clone())
             .unwrap_or_default();
+        // A client showing both sessions moves the tab itself and keeps its panes, so its
+        // views stay as they are: shown again, they would forget the frames it asked for.
+        let keeps =
+            old_clients.contains(&client) && self.sessions[&session_id].clients.contains(&client);
+        old_clients.retain(|&viewer| !(keeps && viewer == client));
         let panes = self
             .tab_state(from)
             .map(|tab| tab.root.panes())
@@ -1560,7 +1565,8 @@ impl Server {
         };
         let index = index.min(session.tabs.len());
         session.tabs.insert(index, tab);
-        let new_clients: Vec<ClientId> = session.clients.iter().copied().collect();
+        let mut new_clients: Vec<ClientId> = session.clients.iter().copied().collect();
+        new_clients.retain(|&viewer| !(keeps && viewer == client));
         let place = (session_id, index);
         for &viewer in &new_clients {
             let shown = self
@@ -2438,6 +2444,33 @@ mod tests {
         );
         assert_eq!(harness.server.sessions[&second].tabs[0].key, terminal);
         harness.frame_with(terminal, "moved");
+        harness.request(Request::CloseSession { session: second });
+    }
+
+    #[test]
+    fn a_frame_asked_for_comes_after_its_tab_moves_between_sessions_the_client_shows() {
+        let mut harness = harness();
+        let first = harness.new_session();
+        harness.request(Request::Attach { session: first });
+        let terminal = harness.open(
+            first,
+            &["sh", "-c", "echo before; read _; echo after; sleep 30"],
+        );
+        let second = harness.new_session();
+        harness.request(Request::Attach { session: second });
+        harness.frame_with(terminal, "before");
+        harness.request(Request::Frame { terminal });
+        harness.request(Request::MoveTab {
+            terminal,
+            session: second,
+            index: 0,
+        });
+        harness.request(Request::Input {
+            terminal,
+            bytes: Bytes(b"\n".to_vec()),
+            bottom: false,
+        });
+        harness.next(|message| matches!(message, Message::Frame { terminal: framed, .. } if *framed == terminal));
         harness.request(Request::CloseSession { session: second });
     }
 
