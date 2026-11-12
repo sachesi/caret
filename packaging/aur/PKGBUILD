@@ -2,7 +2,7 @@
 
 # pkgver and sha256sums are filled in by .github/workflows/aur.yml for each release.
 pkgname=caret
-pkgver=0.3.2
+pkgver=0.3.3
 pkgrel=1
 pkgdesc='GPU-rendered terminal for Wayland'
 arch=('x86_64' 'aarch64')

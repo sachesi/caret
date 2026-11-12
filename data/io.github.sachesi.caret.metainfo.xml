@@ -33,6 +33,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.3" date="2026-11-12">
+      <description>
+        <p>A tab moved to another session shown in the same window no longer stops updating.</p>
+      </description>
+    </release>
     <release version="0.3.2" date="2026-11-05">
       <description>
         <p>Fixes for the window's colours.</p>
